@@ -98,14 +98,23 @@ over many operand/flag permutations and CRC the results.
 64 KiB space in place of the Mega Drive memory map: the core under test is
 byte-for-byte the one that ships. Only BDOS functions 2 and 9 are emulated.
 
-**Status: `prelim.com` passes, `zexdoc` fails.** Execution derails during the
-first test group (`<adc,sbc> hl,<bc,de,hl,sp>`, an ED-prefix group), falls into
-the zero page below `0x0100`, NOP-slides to the `JP` at `0x00FF` and restarts.
-The trail shows a bad address computed upstream rather than a decode failure at
-the point of the crash.
+**Status: `prelim.com` and `zexdoc` both pass — 67 groups OK, 0 errors,
+46.7 billion cycles.**
 
-This matters: the Z80 was entirely unvalidated until now and is a live suspect
-for the house-select rendering fault. Tracked as task 15.
+Three bugs found and fixed getting there, none visible at game level:
+
+| Bug | Effect |
+|-----|--------|
+| `z80_step` cached HL and wrote it back at exit | **every** 8-bit write to H or L was discarded (`LD H,n`, `INC L`, `LD H,B`); under DD/FD it wrote HL into the index register |
+| undocumented index half-registers unimplemented | a DD/FD prefix on an instruction not using `(HL)` must redirect H/L to `IXH`/`IXL`/`IYH`/`IYL` |
+| accumulator rotates recomputed S/Z/P | `RLCA`/`RRCA`/`RLA`/`RRA` must preserve them |
+
+The first was catastrophic and the sound driver leans hard on DD/FD — they were
+the two most common opcodes in it — so the second was very likely being hit
+constantly.
+
+`zexall` (undocumented flag bits) is fetched but not yet run; it is the
+stricter test.
 
 VDP test ROMs exist but are less standardised; not attempted.
 

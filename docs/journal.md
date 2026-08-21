@@ -1323,3 +1323,25 @@ all three other suites green, invariants clean.
 
 House-select is unchanged at 984 blocks and 68 nametable entries, confirming
 again that the Z80 is not that fault.
+
+### zexdoc passes
+
+Confirming re-run after the index-half-register and accumulator-rotate fixes:
+
+```
+67 groups OK, 0 ERROR, completed after 46,764,012,741 cycles
+```
+
+The Z80 core is now validated against the documented-flag exerciser. Three
+bugs were found and fixed in total, none of them visible at game level:
+
+1. a cached HL written back at instruction exit, discarding every 8-bit write
+   to H or L, and corrupting the index register under a DD/FD prefix
+2. undocumented index half-registers (IXH/IXL/IYH/IYL) unimplemented
+3. accumulator rotates recomputing S/Z/P instead of preserving them
+
+`zexall`, which additionally checks the undocumented flag bits, is fetched but
+not yet run.
+
+This closes the Z80 as a suspect for the house-select fault. Remaining
+suspects: the VDP and timing.
