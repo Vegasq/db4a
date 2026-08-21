@@ -80,10 +80,12 @@ def i_move(mn, sz, ops, ctx):
     # MOVE to/from SR, CCR or USP is a privileged transfer that does NOT set
     # the condition codes from the value moved.
     if isinstance(src, ea.Special) or isinstance(dst, ea.Special):
-        w = 'b' if (isinstance(src, ea.Special) and src.name == 'ccr') or \
-                   (isinstance(dst, ea.Special) and dst.name == 'ccr') else \
-            ('l' if (isinstance(src, ea.Special) and src.name == 'usp') or
-                    (isinstance(dst, ea.Special) and dst.name == 'usp') else 'w')
+        # MOVE to/from CCR is a WORD-sized bus access even though only the low
+        # byte is meaningful. Reading a byte instead fetches the high half on a
+        # big-endian bus, which is the wrong one entirely.
+        usp = (isinstance(src, ea.Special) and src.name == 'usp') or \
+              (isinstance(dst, ea.Special) and dst.name == 'usp')
+        w = 'l' if usp else 'w'
         v = _read(src, w, ctx, out)
         _write(dst, w, ctx, out, v)
         return out
@@ -450,16 +452,32 @@ def _muldiv(name):
             return out
         # Division by zero traps on real hardware; the ROM guards its divides,
         # so leave the register untouched and flag it rather than invent a result.
+        #
+        # Overflow matters as much as the arithmetic: if the quotient will not
+        # fit in 16 bits the 68000 sets V and leaves the destination register
+        # COMPLETELY UNCHANGED. Writing the truncated result anyway corrupts the
+        # register silently, which is what this code used to do.
         out.append("if ((uint16_t)%s == 0) { m68k_div_by_zero(); } else {" % v)
         if name == 'divu':
-            out += ["  uint32_t q = CPU.d[%d] / (uint16_t)%s;" % (dst.n, v),
-                    "  uint32_t rem = CPU.d[%d] %% (uint16_t)%s;" % (dst.n, v)]
+            out += ["  uint32_t dv = (uint16_t)%s;" % v,
+                    "  uint32_t qq = CPU.d[%d] / dv;" % dst.n,
+                    "  uint32_t rr = CPU.d[%d] %% dv;" % dst.n,
+                    "  if (qq > 0xFFFFu) { CPU.v = 1; CPU.c = 0; CPU.n = 1; CPU.z = 0; }",
+                    "  else {",
+                    "    CPU.d[%d] = ((rr & 0xFFFFu) << 16) | (qq & 0xFFFFu);" % dst.n,
+                    "    flags_logic16((uint16_t)qq);",
+                    "  }"]
         else:
-            out += ["  int32_t q = (int32_t)CPU.d[%d] / (int16_t)%s;" % (dst.n, v),
-                    "  int32_t rem = (int32_t)CPU.d[%d] %% (int16_t)%s;" % (dst.n, v)]
-        out += ["  CPU.d[%d] = ((uint32_t)(rem) << 16) | ((uint32_t)(q) & 0xFFFFu);" % dst.n,
-                "  flags_logic16((uint16_t)q);",
-                "}"]
+            out += ["  int32_t dv = (int16_t)%s;" % v,
+                    "  int32_t nn = (int32_t)CPU.d[%d];" % dst.n,
+                    "  int32_t qq = nn / dv;",
+                    "  int32_t rr = nn % dv;",
+                    "  if (qq > 32767 || qq < -32768) { CPU.v = 1; CPU.c = 0; CPU.n = 1; CPU.z = 0; }",
+                    "  else {",
+                    "    CPU.d[%d] = (((uint32_t)rr & 0xFFFFu) << 16) | ((uint32_t)qq & 0xFFFFu);" % dst.n,
+                    "    flags_logic16((uint16_t)qq);",
+                    "  }"]
+        out.append("}")
         return out
     return f
 

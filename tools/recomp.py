@@ -14,9 +14,17 @@ just before the next boundary.
 """
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ea, semantics, timing
+import ea, semantics, timing, struct
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+def _load_rom():
+    import glob
+    for p in glob.glob(os.path.join(ROOT, 'roms', '*', '*.bin')):
+        if '[' not in os.path.basename(p):
+            return open(p, 'rb').read()
+    return None
+ROM_BYTES = _load_rom()
 
 def block_starts(insns, order, starts, xrefs):
     b = set(starts)
@@ -32,8 +40,20 @@ def block_starts(insns, order, starts, xrefs):
     b.add(order[0])
     return b
 
+# capstone mis-decodes ROXL/ROXR when the shift count comes from a register:
+# 0xEC31 is ROXR.B D6,D1 but is reported as "roxr.l #$6, d1" -- wrong size and
+# wrong count source. Verified against m68k-linux-gnu-objdump. This ROM contains
+# no such instruction (its three ROX uses are all immediate-count), but silently
+# generating wrong code for another ROM would be far worse than refusing to.
+def capstone_misdecodes(rom, addr, mnemonic):
+    if mnemonic.split('.')[0] not in ('roxl', 'roxr'):
+        return False
+    w = struct.unpack(">H", rom[addr:addr+2])[0]
+    return (w & 0xF000) == 0xE000 and (w & 0x20) and (w & 0xC0) != 0xC0
+
 def main():
     cm = json.load(open(os.path.join(ROOT, 'build', 'codemap.json')))
+    rom_path = cm.get('rom_path')
     insns = {int(k, 16): tuple(v) for k, v in cm['insns'].items()}
     order = sorted(insns)
     starts = {int(x, 16) for x in cm['starts']}
@@ -57,6 +77,10 @@ def main():
             if addr != cur:
                 break                      # gap: data between instructions
             sz, mn, op = insns[addr]
+            if ROM_BYTES and capstone_misdecodes(ROM_BYTES, addr, mn):
+                raise SystemExit(
+                    "refusing to generate: capstone mis-decodes the register-count "
+                    "ROX form at %06X (%s %s). See tools/recomp.py." % (addr, mn, op))
             try:
                 parsed = ea.parse(op)
                 _, isz = semantics.split_mnemonic(mn)

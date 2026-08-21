@@ -19,6 +19,7 @@ typedef struct {
     uint8_t  n, z, v, c, x; /* condition codes, 0 or 1 */
     uint8_t  imask;         /* interrupt mask, SR bits 8-10 */
     bool     super;         /* supervisor mode, SR bit 13 */
+    bool     trace;         /* trace mode, SR bit 15 -- MOVE from SR returns it */
     bool     stopped;
     uint64_t cycles;
 } m68k_t;
@@ -205,7 +206,7 @@ static inline bool cond_le(void){ return CPU.n != CPU.v || CPU.z; }
 
 /* ---- SR packing, for the code that reads/writes SR directly ---- */
 static inline uint16_t get_sr(void) {
-    return (uint16_t)((CPU.super << 13) | (CPU.imask << 8) |
+    return (uint16_t)((CPU.trace << 15) | (CPU.super << 13) | (CPU.imask << 8) |
                       (CPU.x << 4) | (CPU.n << 3) | (CPU.z << 2) |
                       (CPU.v << 1) | CPU.c);
 }

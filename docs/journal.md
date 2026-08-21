@@ -1392,3 +1392,53 @@ exclude registers a polling loop scribbles on.
 Reporting the first divergence alone would have been actively misleading here:
 it looked like a single crisp fault, and it is one instance of 68,763 mostly
 benign ones.
+
+## Closing the CPU vector failures
+
+Fixed three real classes; the fourth turned out not to be ours.
+
+**DIVS/DIVU — overflow.** When the quotient does not fit in 16 bits the 68000
+sets V and leaves the destination register **completely unchanged**. The code
+computed and wrote the truncated result regardless. The vectors made it
+unmistakable: expected CCR `0x0A` (N+V) with the destination still holding the
+original dividend. 150/150 after the fix. This one probably mattered — the ROM
+performs 29 divisions, and a silently wrong quotient corrupts whatever it feeds.
+
+**MOVEfromSR — the trace bit.** Every difference was exactly `0x8000`. The SR
+model had no trace bit at all, so bit 15 always read back as zero. Added it to
+`m68k_t` and to `get_sr`, and — the part that actually made the tests pass —
+to every `set_sr`, since discarding it on the way in makes reading it back
+impossible.
+
+**MOVEtoCCR — operand width.** `MOVE <ea>,CCR` is a *word* bus access even
+though only the low byte reaches CCR. Reading a byte fetches the high half on a
+big-endian bus, i.e. the wrong one entirely. 161/161 across
+MOVEfromSR/MOVEtoCCR/MOVEtoSR after the fix.
+
+**ROXR.b — a capstone bug, not ours.** `0xEC31` is `ROXR.B D6,D1`: bits 7-6 =
+`00` (byte), bit 5 = `1` (count in a register), bits 11-9 = `110` (D6).
+capstone reports `roxr.l #$6, d1` — wrong size *and* wrong count source.
+`m68k-linux-gnu-objdump` agrees with the manual, not capstone.
+
+I initially wrote that this "matters well beyond ROXR" because the recompiler
+trusts capstone's `op_str`. **That was wrong and the data said so**: all 84
+register-count shifts in the corpus (`lsl.l d1,d0` etc.) decode correctly
+against objdump, and all three ROX instructions here are the immediate-count
+form, decoded correctly. Impact on this ROM is zero.
+
+It remains a live trap for any other ROM, so `recomp.py` now detects the
+register-count ROX encoding and refuses to generate rather than emitting
+silently wrong code. Failing loudly is the only acceptable behaviour when the
+decoder underneath is known to lie.
+
+```
+make check-cpu -> 4666/4710   (was 4586)
+title screen   -> 71680/71680 exact, 100.00%   (was 99.98%)
+```
+
+The title screen becoming pixel-perfect is a side effect of these fixes — the
+last 13 differing pixels had been outstanding since the colour-ramp work.
+
+Remaining: ROXR.b (capstone's fault, the harness feeds it a bad decode),
+MOVEM.l/w (the `(An)+` with An in its own list case) and SUB.b. House-select is
+unchanged at 981 blocks, so none of this was that fault.

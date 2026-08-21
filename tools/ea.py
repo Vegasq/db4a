@@ -234,7 +234,7 @@ def store(op, sz, t, val):
         return "%s(%s, %s);" % (WR[sz], t, val)
     if isinstance(op, Special):
         if op.name == 'sr':  return "set_sr((uint16_t)(%s));" % val
-        if op.name == 'ccr': return "set_ccr((uint8_t)(%s));" % val
+        if op.name == 'ccr': return "set_ccr((uint8_t)((%s) & 0xFF));" % val
         if op.name == 'usp': return "CPU.usp = %s;" % val
     raise TypeError("cannot store to %r" % (op,))
 

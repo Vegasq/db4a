@@ -30,7 +30,7 @@ uint32_t m68k_read32(uint32_t a){return ((uint32_t)m68k_read16(a)<<16)|m68k_read
 void m68k_write8 (uint32_t a,uint8_t v){MEM[a&0xFFFFFF]=v;}
 void m68k_write16(uint32_t a,uint16_t v){a&=0xFFFFFF;MEM[a]=(uint8_t)(v>>8);MEM[a+1]=(uint8_t)v;}
 void m68k_write32(uint32_t a,uint32_t v){m68k_write16(a,(uint16_t)(v>>16));m68k_write16(a+2,(uint16_t)v);}
-void set_sr(uint16_t v){ set_ccr((uint8_t)(v & 0xFF)); CPU.imask=(v>>8)&7; CPU.super=(v>>13)&1; }
+void set_sr(uint16_t v){ set_ccr((uint8_t)(v & 0xFF)); CPU.imask=(v>>8)&7;\n                         CPU.super=(v>>13)&1; CPU.trace=(v>>15)&1; }
 void m68k_div_by_zero(void){}
 void m68k_illegal(uint32_t pc){(void)pc;}
 void m68k_unimplemented(uint32_t pc){(void)pc;}
