@@ -1294,3 +1294,32 @@ So the Z80 was a genuine bug and a reasonable suspect, and it was **not** the
 cause of the rendering fault. Worth stating plainly rather than implying the
 fix was more than it was. The remaining suspects are the VDP and timing — and
 the full `zexdoc` run may yet surface more Z80 faults.
+
+### zexdoc complete: 59 OK / 8 ERROR, then two more fixes
+
+The full run finished — 46.7 billion cycles, 68 groups. The eight failures fell
+into exactly two families, both real:
+
+**Seven: undocumented index half-registers.** A DD/FD prefix on an instruction
+that does *not* reference `(HL)` redirects the H and L operands to the high and
+low halves of the index register (`IXH`/`IXL`/`IYH`/`IYL`). The core only
+applied the prefix to `(HL)` addressing. Affected `aluop a,<ixh...>`,
+`<inc,dec> ixh/ixl/iyh/iyl`, `ld <ixh...>,nn` and `ld <bcdexya>,<bcdexya>`.
+
+The two readings never collide, which makes the rule clean: if the instruction
+uses `(HL)`, the prefix supplies a displacement and H/L keep their meaning; if
+it does not, H/L become the index halves. Computed once per instruction as
+`x.halves` and consulted by `rd_r`/`wr_r`, which also let the previous ad-hoc
+special cases in `LD r,r'` be deleted.
+
+**One: accumulator rotates.** `RLCA`/`RRCA`/`RLA`/`RRA` differ from their CB
+counterparts — S, Z and P/V are *preserved*, not recomputed. The code routed
+them through the generic `rot()` helper, which overwrites all of them. It also
+assigned `Z80.f` twice, the second assignment discarding the first. Now the
+preserved bits are captured before the rotate and only C is taken from it.
+
+No regression: probe passes, `prelim.com` passes, title screen still 99.98%,
+all three other suites green, invariants clean.
+
+House-select is unchanged at 984 blocks and 68 nametable entries, confirming
+again that the Z80 is not that fault.

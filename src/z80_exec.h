@@ -17,7 +17,12 @@ static void daa(void) {
    `reg` points at the real index register so that instructions which MODIFY it
    (INC IX, ADD IX,rp, LD IX,nn, POP IX, EX (SP),IX) write back rather than
    silently discarding the result. */
-typedef struct { int indexed; int8_t disp; uint16_t *reg; } hlctx;
+typedef struct {
+    int      indexed;   /* a DD/FD prefix is in effect */
+    int      halves;    /* ...and it substitutes IXH/IXL for H/L (see below) */
+    int8_t   disp;
+    uint16_t *reg;
+} hlctx;
 
 /* Always read and write the LIVE register.
  *
@@ -37,15 +42,34 @@ static inline uint16_t xaddr(hlctx *x) {
     return x->indexed ? (uint16_t)(*x->reg + x->disp) : get_hl();
 }
 
+/* Undocumented but real: a DD/FD prefix on an instruction that does NOT use
+   (HL) redirects the H and L operands to the high and low halves of the index
+   register. On an instruction that does use (HL), the prefix means (IX+d) and
+   H/L keep their normal meaning -- so the two readings never collide. */
+static inline uint8_t xhalf_get(int r, hlctx *x) {
+    uint16_t v = *x->reg;
+    return (r == 4) ? (uint8_t)(v >> 8) : (uint8_t)v;
+}
+static inline void xhalf_set(int r, hlctx *x, uint8_t b) {
+    uint16_t v = *x->reg;
+    *x->reg = (r == 4) ? (uint16_t)((v & 0x00FFu) | ((uint16_t)b << 8))
+                       : (uint16_t)((v & 0xFF00u) | b);
+}
+static inline int is_half(int r, hlctx *x) {
+    return x->halves && (r == 4 || r == 5);
+}
+
 static inline uint16_t get_hl(void) { return (uint16_t)((Z80.h << 8) | Z80.l); }
 static inline void set_hl(uint16_t v) { Z80.h = (uint8_t)(v >> 8); Z80.l = (uint8_t)v; }
 
 /* Read/write register index z, resolving (HL) / (IX+d) / (IY+d). */
 static uint8_t rd_r(int z, hlctx *x) {
+    if (is_half(z, x)) return xhalf_get(z, x);
     if (z != 6) return *REG8[z];
     return z80_read(xaddr(x));
 }
 static void wr_r(int z, hlctx *x, uint8_t v) {
+    if (is_half(z, x)) { xhalf_set(z, x, v); return; }
     if (z != 6) { *REG8[z] = v; return; }
     z80_write(xaddr(x), v);
 }
@@ -193,7 +217,7 @@ static void do_ed(unsigned *cyc) {
 
 unsigned z80_step(void) {
     unsigned cyc = 4;
-    hlctx x = { 0, 0, NULL };
+    hlctx x = { 0, 0, 0, NULL };
 
     if (Z80.halted) { Z80.cycles += 4; return 4; }
 
@@ -214,11 +238,15 @@ unsigned z80_step(void) {
 
     {
     int xx = op >> 6, y = (op >> 3) & 7, z = op & 7, p = y >> 1, q = y & 1;
-    /* Non-CB indexed instructions take their displacement when z or y is 6. */
-    if (x.indexed && ((xx == 1 && (z == 6 || y == 6)) ||
-                      (xx == 0 && (z == 4 || z == 5 || z == 6) && y == 6) ||
-                      (xx == 2 && z == 6)))
+    /* Does this instruction reference (HL)? If so the prefix supplies a
+       displacement and H/L keep their meaning; if not, H/L become the index
+       register's halves. */
+    int uses_mem = (xx == 1 && (z == 6 || y == 6))
+                || (xx == 0 && (z == 4 || z == 5 || z == 6) && y == 6)
+                || (xx == 2 && z == 6);
+    if (x.indexed && uses_mem)
         x.disp = (int8_t)fetch();
+    x.halves = x.indexed && !uses_mem;
 
     switch (xx) {
     case 0:
@@ -266,10 +294,13 @@ unsigned z80_step(void) {
         default:
             switch (y) {
             case 0: case 1: case 2: case 3: {
+                /* RLCA/RRCA/RLA/RRA differ from their CB counterparts: S, Z
+                   and P/V are PRESERVED, H and N are cleared, C comes from the
+                   rotated bit and Y/X from the result. rot() computes the CB
+                   flags, so keep the preserved bits and take only C from it. */
+                uint8_t keep = (uint8_t)(Z80.f & (ZF_S | ZF_Z | ZF_P));
                 uint8_t r = rot(y, Z80.a);
-                Z80.f = (uint8_t)((Z80.f & ZF_C) | (r & (ZF_Y|ZF_X)));
-                /* the accumulator rotates keep S/Z/P from before */
-                Z80.f = (uint8_t)((Z80.f & (ZF_C|ZF_Y|ZF_X)));
+                Z80.f = (uint8_t)(keep | (Z80.f & ZF_C) | (r & (ZF_Y | ZF_X)));
                 Z80.a = r; break; }
             case 4: daa(); break;
             case 5: Z80.a = (uint8_t)~Z80.a;
@@ -287,14 +318,8 @@ unsigned z80_step(void) {
     case 1:
         if (y == 6 && z == 6) { Z80.halted = true; }
         else {
-            /* An indexed LD r,(IX+d) uses the real H/L for the register half. */
-            uint8_t v;
-            if (z == 6) v = rd_r(6, &x);
-            else if (x.indexed && (z == 4 || z == 5) && y == 6) v = *REG8[z];
-            else v = rd_r(z, &x);
-            if (y == 6) wr_r(6, &x, v);
-            else if (x.indexed && (y == 4 || y == 5) && z == 6) *REG8[y] = v;
-            else wr_r(y, &x, v);
+            uint8_t v = rd_r(z, &x);
+            wr_r(y, &x, v);
             if (y == 6 || z == 6) cyc += 3;
         }
         break;
