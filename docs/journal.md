@@ -1149,3 +1149,33 @@ not corrupted. So the game does not reach the code that would upload them.
 tested, five refuted — three of them failures in the measuring tooling rather
 than the emulator. That ratio is the argument for the execution-level oracle
 that has now been deferred four times.
+
+## Layer 2: machine invariants
+
+Cheap tripwires that fire at the moment state goes bad rather than thousands of
+blocks later. `include/invariant.h` + `src/invariant.c`, permanent and
+flag-gated (`DB4A_NO_INVARIANTS=1` to disable), reporting once per site so a
+persistently broken machine cannot flood the log.
+
+Checks: SP inside RAM, SP even, PC inside ROM, DMA length no larger than VRAM.
+Evaluated once per 500-cycle slice rather than per block — a corrupted SP stays
+corrupted, so slice granularity still catches it immediately at no measurable
+cost.
+
+**Validated in both directions**, which is the part that matters:
+
+1. No false positives — clean across the title screen and the house-select
+   path. An invariant that cries wolf is worse than none.
+2. It actually catches its target. Temporarily reintroducing the LINK
+   sign-extension bug produces:
+
+```
+*** INVARIANT VIOLATED: stack pointer left RAM
+    value=0000FFCA context=000203BC
+```
+
+versus the original symptom, which was a jump to `6D00FF12` long after the
+damage was done. The first validation attempt was itself wrong — run at 600
+frames with no input, where the corruption has not yet accumulated — and
+reported "all clean". Testing the tripwire under the scenario that actually
+crashed is what proved it.

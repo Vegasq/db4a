@@ -6,6 +6,7 @@
 #include "input.h"
 #include "z80.h"
 #include "system.h"
+#include "invariant.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -142,6 +143,7 @@ int main(int argc, char **argv) {
       printf("\nvsync-wait callers (who is blocked):\n");
       for (unsigned i = 0; i < waiter_n; i++)
         printf("   return to %06X : %lu samples\n", waiter_addr[i], waiter_hits[i]); }
+    invariant_report();
     pad_report();
     vdp_dump();
     render_frame();

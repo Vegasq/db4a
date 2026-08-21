@@ -9,6 +9,7 @@
 #include "render.h"
 #include "input.h"
 #include "system.h"
+#include "invariant.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -122,6 +123,7 @@ int main(int argc, char **argv) {
     }
 
     printf("ran %u frames, %lu blocks\n", frames, m68k_blocks_run);
+    invariant_report();
     pad_report();
     SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win);
     SDL_Quit();

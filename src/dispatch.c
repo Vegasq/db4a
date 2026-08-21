@@ -7,6 +7,7 @@
 #include "m68k.h"
 #include "hal.h"
 #include "z80.h"
+#include "invariant.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -146,6 +147,12 @@ uint32_t m68k_run_frame(uint32_t pc) {
         uint64_t chunk = CPU.cycles + SLICE_CYCLES;
         if (chunk > deadline) chunk = deadline;
         sample_waiter(pc);
+        /* Checked per slice rather than per block: a corrupted SP or PC stays
+           corrupted, so slice granularity still catches it within 500 cycles
+           while costing nothing measurable. */
+        INV_CHECK(INV_SP_RANGE, IS_RAM_ADDR(CPU.a[7]), "stack pointer left RAM", CPU.a[7], pc);
+        INV_CHECK(INV_SP_ALIGN, (CPU.a[7] & 1) == 0,   "stack pointer is odd",   CPU.a[7], pc);
+        INV_CHECK(INV_PC_RANGE, IS_ROM_ADDR(pc),       "PC left ROM",            pc,       CPU.a[7]);
         pc = m68k_run_until(pc, chunk);
         if (m68k_last_unknown) return pc;
         z80_on = hal_z80_running();

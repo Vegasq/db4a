@@ -12,6 +12,7 @@
  */
 #include "vdp.h"
 #include "m68k.h"
+#include "invariant.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -152,6 +153,9 @@ static void vdp_dma_run(void) {
     unsigned mode = (VDP.reg[23] >> 6) & 3;
     uint32_t len = (uint32_t)((VDP.reg[20] << 8) | VDP.reg[19]);
     if (!len) len = 0x10000;
+    /* A transfer larger than VRAM itself is either a decode error or a
+       runaway; either way it will wipe the display. */
+    INV_CHECK(INV_VDP_DMA_LEN, len <= 0x10000, "DMA length exceeds VRAM", len, VDP.addr);
     if (dma_logging() && VDP.dma_transfers < 40)
         fprintf(stderr, "[dma] #%lu mode=%u len=%u code=%02X addr=%04X src=%06X\n",
                 VDP.dma_transfers, mode, len, VDP.code, VDP.addr,
@@ -160,17 +164,16 @@ static void vdp_dma_run(void) {
                             | (VDP.reg[22] << 9) | (VDP.reg[21] << 1));
     /* Tally DMA destinations by target region so a missing tilemap upload is
        visible without wading through thousands of log lines. */
-    { extern unsigned long dma_code[64];
-      dma_code[VDP.code & 0x3F] += len; }
-    { extern unsigned long dma_dest[10];
-unsigned long dma_code[64];
+    dma_code[VDP.code & 0x3F] += len;
+    {
       /* Bucket by target. VRAM buckets are 8 KiB each; note 0xE000+ is bucket
          7, which is a VRAM region and NOT VSRAM -- conflating the two sent an
          earlier investigation off after a non-existent misclassification. */
       unsigned bucket = (VDP.code & 0x0F) == 0x03 ? 8         /* CRAM  */
                       : (VDP.code & 0x0F) == 0x05 ? 9         /* VSRAM */
                       : (VDP.addr >> 13) & 7;                 /* VRAM 8K bucket */
-      dma_dest[bucket] += len; }
+      dma_dest[bucket] += len;
+    }
     if (dma_logging() && VDP.addr >= 0xE000 && (VDP.code & 0x0F) == 1) {
         static unsigned shown;
         if (shown++ < 6) {
