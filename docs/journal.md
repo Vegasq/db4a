@@ -641,3 +641,48 @@ renderer defect; the static screen has no artifacts.
 - The mid-wipe streaking is *assumed* to be animation, not confirmed.
 - DMA runs regardless of the reg1 DMA-enable bit.
 - No SDL output yet; frames are written as PPM.
+
+### Differential oracle
+
+Built Genesis-Plus-GX as a libretro core and `tools/refhost.c`, a headless
+libretro host that runs the reference for N frames and dumps PPM.
+`tools/framediff.py` compares framebuffers and writes a diff map.
+
+`ref/` is gitignored — third-party source is not vendored. GPGX's licence is
+non-commercial with source-disclosure terms, but it is used purely as a
+development oracle and is never linked into db4a, so it does not constrain what
+the project ships.
+
+**The first comparison was wrong, and the bug was in the oracle.** It reported
+69% agreement, flat across every reference frame from 500 to 3600 — no peak,
+which ruled out frame misalignment and looked like a serious renderer defect.
+The reference images were green-tinted with content squeezed into the left of
+the frame.
+
+That is the signature of misreading RGB565 as XRGB8888: two 16-bit pixels get
+consumed per 32-bit read, halving the apparent width and scrambling channels.
+The host's environment callback returned false for RGB565, and GPGX simply
+carried on using it — refusing a format is not the same as changing it. The
+host now honours whatever format the core picks and converts all three.
+
+Corrected result at frame 600:
+
+```
+exact match : 54883 / 71680  (76.57%)
+near match  : 16388          (<= one palette step)
+hard mismatch: 409 px        (0.57%), spread over 94 rows
+```
+
+99.4% of pixels agree within one palette step. The bulk of the residual is
+quantisation: the oracle path goes 9-bit CRAM → RGB565 → 8-bit, while the
+renderer goes 9-bit CRAM → 8-bit directly. Only 0.57% differ by more than one
+step, thinly scattered rather than clustered, which does not look like a
+structural fault.
+
+**Lesson, again:** a disagreeing oracle is not automatically evidence about the
+thing under test. The first instinct was to hunt for a renderer bug; the fault
+was in the measuring instrument. Verify the oracle before trusting its verdict.
+
+Remaining: the 0.57% hard mismatch is not yet explained, and exact comparison
+is limited by RGB565 quantisation — comparing at palette-index level would be
+sharper.

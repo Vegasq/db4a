@@ -4,3 +4,4 @@ roms/
 *.bin.disasm
 __pycache__/
 src/gen/*.c
+ref/
