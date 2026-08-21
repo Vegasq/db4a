@@ -84,10 +84,30 @@ For integration bugs that only appear in the real game, once the CPU is already
 known good. Run against Genesis-Plus-GX in lockstep from reset with identical
 scripted input and report the first divergent block. Tracked as task 13.
 
-## Layer 4 — component suites  (not built)
+## Layer 4 — Z80 exerciser  (`make check-z80`)
 
-`zexdoc`/`zexall` for the Z80, which is currently entirely unvalidated. VDP test
-ROMs exist but are less standardised.
+Ground truth for the Z80 with no Mega Drive, no sound driver and no 68000
+involved. Uses the Frank Cringle CP/M exercisers, which run each instruction
+over many operand/flag permutations and CRC the results.
+
+    cd ref && git clone --filter=blob:none --no-checkout --depth 1         https://github.com/superzazu/z80.git z80-tests
+    cd z80-tests && git checkout HEAD -- roms/prelim.com roms/zexdoc.cim
+    cd ../.. && make check-z80
+
+`src/z80.c` takes its bus through externs, so the harness supplies a flat
+64 KiB space in place of the Mega Drive memory map: the core under test is
+byte-for-byte the one that ships. Only BDOS functions 2 and 9 are emulated.
+
+**Status: `prelim.com` passes, `zexdoc` fails.** Execution derails during the
+first test group (`<adc,sbc> hl,<bc,de,hl,sp>`, an ED-prefix group), falls into
+the zero page below `0x0100`, NOP-slides to the `JP` at `0x00FF` and restarts.
+The trail shows a bad address computed upstream rather than a decode failure at
+the point of the crash.
+
+This matters: the Z80 was entirely unvalidated until now and is a live suspect
+for the house-select rendering fault. Tracked as task 15.
+
+VDP test ROMs exist but are less standardised; not attempted.
 
 ## Rule for debug tooling
 

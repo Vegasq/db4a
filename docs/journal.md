@@ -1222,3 +1222,31 @@ Remaining failures are eight classes (`DIVS`, `DIVU`, `MOVEfromSR`, `MOVEM.l`,
 `MOVEM.w`, `MOVEtoCCR`, `ROXR.b`, `SUB.b`) and ten instructions that are not
 implemented at all. None of the unimplemented ones appear in this ROM's
 histogram, but the skip counts keep that visible instead of assumed.
+
+## Layer 4: Z80 exerciser
+
+`tests/z80_zex.c` runs the Frank Cringle CP/M exercisers against `src/z80.c`.
+The core takes its bus through externs, so the harness swaps the Mega Drive
+memory map for a flat 64 KiB space and tests the shipping core unchanged.
+
+`prelim.com` **passes** — basic instruction behaviour is sound.
+
+`zexdoc` **fails**. It derails during the very first test group,
+`<adc,sbc> hl,<bc,de,hl,sp>` — an ED-prefix group. Added derailment detection
+(the exerciser never restarts itself, so a return to `0x0100` is proof of a
+fault) with a PC ring buffer. The trail is unambiguous:
+
+```
+last PCs : 00E0 00E1 ... 00FE 00FF
+opcodes  : all 00 (NOP) until 00FF:C3 (JP)
+SP=0598  stack: 0010 0000 ...
+```
+
+Execution fell into the zero page below the load address, NOP-slid up to the
+`JP` at `0x00FF`, and jumped back to the entry point. So the fault is a bad
+address computed *upstream* — a wrong jump or a corrupted return — not a decode
+failure where it lands.
+
+The Z80 was completely unvalidated before this and is now a live suspect for
+the house-select fault, which is exactly the elimination this layer exists to
+provide.

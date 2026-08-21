@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands check-cpu recomp run play vectors clean
+.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -33,6 +33,16 @@ build/test_vec.c: tests/gen_vector_test.py tools/m68ktest.py tools/semantics.py 
 
 build/test_vec: build/test_vec.c include/m68k.h
 	$(CC) $(CFLAGS) $< -o $@
+
+## check-z80 - run the Z80 core against the CP/M exerciser suite
+##             (needs ref/z80-tests; see docs/verification.md)
+Z80ROMS ?= ref/z80-tests/roms
+check-z80: build/z80_zex
+	./build/z80_zex $(Z80ROMS)/prelim.com 200
+
+build/z80_zex: tests/z80_zex.c build/z80.o include/z80.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/z80_zex.c build/z80.o -o $@
 
 ## check-operands - assert every operand in the corpus parses (needs analyse)
 check-operands: build/codemap.json
