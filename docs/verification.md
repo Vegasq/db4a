@@ -78,11 +78,25 @@ The LINK bug surfaced originally as a jump to `6D00FF12` long after the damage.
 With invariants it reports `stack pointer left RAM value=0000FFCA` at the point
 of corruption.
 
-## Layer 3 — execution-level differential oracle  (not built)
+## Layer 3 — execution-level differential oracle  (in progress)
 
-For integration bugs that only appear in the real game, once the CPU is already
-known good. Run against Genesis-Plus-GX in lockstep from reset with identical
-scripted input and report the first divergent block. Tracked as task 13.
+For integration bugs that only appear in the real game, once the CPUs are
+already known good.
+
+The reference core is patched locally (`ref/` is gitignored and never shipped)
+with a trace hook in the 68000 instruction loop, emitting one 8-byte record per
+instruction: PC plus a 32-bit FNV-1a hash of D0-D7/A0-A7. Full state per
+instruction would be 68 bytes and hundreds of gigabytes; the hash is cheap
+enough to run to the point of interest and still pinpoints where two
+implementations part company. Once a divergence PC is known, re-run with full
+state around it.
+
+Rate: ~13.7 MB per 100 frames, so roughly 0.3 GB to reach the house-select
+transition. Enable with `DB4A_TRACE=<path>`.
+
+Granularity differs between the two sides — the recompiler executes whole
+blocks, the reference executes instructions — so comparison is at block-entry
+PCs, which both can report.
 
 ## Layer 4 — Z80 exerciser  (`make check-z80`)
 
@@ -113,8 +127,9 @@ The first was catastrophic and the sound driver leans hard on DD/FD — they wer
 the two most common opcodes in it — so the second was very likely being hit
 constantly.
 
-`zexall` (undocumented flag bits) is fetched but not yet run; it is the
-stricter test.
+**`zexall` also passes — 67 groups OK, 0 errors.** That is the stricter suite,
+checking the undocumented flag bits (Y and X) as well as the documented ones,
+so the Z80 core is fully validated against both exercisers.
 
 VDP test ROMs exist but are less standardised; not attempted.
 
