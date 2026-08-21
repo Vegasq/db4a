@@ -98,6 +98,28 @@ Granularity differs between the two sides — the recompiler executes whole
 blocks, the reference executes instructions — so comparison is at block-entry
 PCs, which both can report.
 
+**Status: built and working, but the signal is dominated by timing noise.**
+It located a first divergence precisely — a VDP status poll at `$4FE`, with the
+12 preceding blocks matching on both PC and register hash — which is exactly
+the kind of exact answer the layer exists to give.
+
+Across 100 frames, though, 10.96% of records diverge, and every hot site is a
+polling loop:
+
+    000FDA : 24602   wait-for-vsync
+    000522 : 20165   VDP status poll
+    000FEE :  6745   second wait loop
+
+The cycle model is approximate by design (no prefetch overlap, no bus
+contention), so spin loops iterate a different number of times on each side and
+leave different scratch values. Both sides still *branch* identically and
+reconverge; the difference is dead register content.
+
+So the oracle currently measures timing divergence, not logic divergence. To
+find logic bugs it needs to ignore spin-loop noise — compare only where the two
+provably resync, or exclude registers a polling loop scribbles on. That
+refinement is the remaining work, not the trace machinery.
+
 ## Layer 4 — Z80 exerciser  (`make check-z80`)
 
 Ground truth for the Z80 with no Mega Drive, no sound driver and no 68000

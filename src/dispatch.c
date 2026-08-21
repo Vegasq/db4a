@@ -12,6 +12,31 @@
 #include <stdlib.h>
 
 unsigned long m68k_blocks_run;
+
+/* Execution trace for the differential oracle (layer 3).
+ *
+ * One 8-byte record per BLOCK entry: PC plus a 32-bit FNV-1a hash of
+ * D0-D7/A0-A7, using byte-for-byte the same hash as the patched reference
+ * core so the two traces are directly comparable. The reference logs every
+ * instruction, so its trace is filtered to block-start PCs before diffing. */
+static FILE *trace_fp;
+static int   trace_init;
+
+static void trace_block(uint32_t pc) {
+    if (!trace_init) {
+        const char *path = getenv("DB4A_TRACE");
+        trace_fp = path ? fopen(path, "wb") : NULL;
+        trace_init = 1;
+    }
+    if (!trace_fp) return;
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < 16; i++) {
+        uint32_t v = (i < 8) ? CPU.d[i] : CPU.a[i - 8];
+        for (int b = 0; b < 4; b++) { h ^= (v >> (b * 8)) & 0xFF; h *= 16777619u; }
+    }
+    uint32_t rec[2] = { pc, h };
+    fwrite(rec, 4, 2, trace_fp);
+}
 uint32_t m68k_cur_block;   /* block currently executing, for I/O attribution */
 unsigned long m68k_irq_taken, m68k_irq_masked;
 uint32_t m68k_last_unknown;
@@ -105,6 +130,7 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         if (m68k_profiling) m68k_profile[i]++;
         m68k_cur_block = pc;
         trail_push(pc);
+        trace_block(pc);
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
@@ -181,6 +207,7 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         if (m68k_profiling) m68k_profile[i]++;
         m68k_cur_block = pc;
         trail_push(pc);
+        trace_block(pc);
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }

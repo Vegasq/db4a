@@ -1345,3 +1345,50 @@ not yet run.
 
 This closes the Z80 as a suspect for the house-select fault. Remaining
 suspects: the VDP and timing.
+
+## Layer 3: the execution oracle, and what it actually measures
+
+Patched the reference core's 68000 instruction loop to emit `(PC, FNV-1a hash
+of D0-D7/A0-A7)` per instruction, added the matching emission at block entry in
+`dispatch.c` with a byte-identical hash, and wrote `tools/tracediff.py` to
+filter the reference trace to block-start PCs and compare in order.
+
+It works. First run located an exact divergence with the 12 preceding blocks
+matching on both PC and register hash:
+
+```
+record 558505:  both at PC=000506
+   db4a      reghash=4E281874
+   reference reghash=013F56D0
+```
+
+`$4FE` is a VDP status poll — read status, test bit 1 (DMA busy), spin. Modelled
+DMA duration (transfers are instantaneous, so a completion deadline drives the
+busy flag), which changed block counts but not this divergence: both sides
+*branch* identically and reach `$506` together. Only the value left in `d0`
+differs — the status register's unused upper bits, which are open bus on real
+hardware and which we return as a constant.
+
+Extending the tool to report many divergences rather than the first showed the
+real shape:
+
+```
+68763 divergent records of 627268 (10.96%)
+   000FDA : 24602   wait-for-vsync
+   000522 : 20165   VDP status poll
+   000FEE :  6745   second wait loop
+```
+
+Every hot site is a polling loop. The cycle model is approximate by design, so
+spin loops iterate different counts on each side and leave different scratch
+values, then reconverge.
+
+**Honest reading: the oracle currently measures timing divergence, not logic
+divergence.** That is a limitation of how it compares, not of the trace
+machinery — which does exactly what was wanted. Making it useful for logic bugs
+means ignoring spin-loop noise: compare only where the two provably resync, or
+exclude registers a polling loop scribbles on.
+
+Reporting the first divergence alone would have been actively misleading here:
+it looked like a single crisp fault, and it is one instance of 68,763 mostly
+benign ones.

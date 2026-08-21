@@ -19,6 +19,7 @@ typedef struct {
     uint8_t  code;
 
     int      dma_fill_pending;
+    uint64_t dma_busy_until;   /* CPU cycle at which the current DMA completes */
 
     /* Counters, so we can see what the ROM actually did. */
     unsigned long vram_writes, cram_writes, vsram_writes, reg_writes;

@@ -24,11 +24,11 @@ uint8_t FB[FB_H][FB_W][3];
  */
 #define LVL(n)  ((uint8_t)(((n) * 255 + 7) / 15))
 
-static const uint8_t LVL_SHADOW[8]    = { LVL(0), LVL(1), LVL(2),  LVL(3),
+__attribute__((unused)) static const uint8_t LVL_SHADOW[8]    = { LVL(0), LVL(1), LVL(2),  LVL(3),
                                           LVL(4), LVL(5), LVL(6),  LVL(7)  };
 static const uint8_t LVL_NORMAL[8]    = { LVL(0), LVL(2), LVL(4),  LVL(6),
                                           LVL(8), LVL(10),LVL(12), LVL(14) };
-static const uint8_t LVL_HIGHLIGHT[8] = { LVL(7), LVL(8), LVL(9),  LVL(10),
+__attribute__((unused)) static const uint8_t LVL_HIGHLIGHT[8] = { LVL(7), LVL(8), LVL(9),  LVL(10),
                                           LVL(11),LVL(12),LVL(13), LVL(15) };
 
 static void cram_rgb_mode(uint16_t c, uint8_t out[3], const uint8_t lvl[8]) {

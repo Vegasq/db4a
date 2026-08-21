@@ -37,6 +37,11 @@ unsigned long dma_code[64];
 #define CD_CRAM_READ   0x08
 #define CD_DMA         0x20
 
+/* 68000 to VRAM runs at roughly one word per 7.6 cycles with the bus held.
+   This approximates the DURATION of a transfer, not the transfer itself:
+   the copy is performed instantly and this only drives the busy flag. */
+#define DMA_CYCLES_PER_WORD 8
+
 void vdp_reset(void) {
     memset(&VDP, 0, sizeof VDP);
     VDP.reg[1]  = 0x04;      /* Mega Drive mode, display off */
@@ -123,6 +128,7 @@ void vdp_write_data(uint16_t v) {
             VDP.addr = (VDP.addr + vdp_autoinc()) & 0xFFFF;
         }
         VDP.dma_transfers++; VDP.dma_words += len;
+        VDP.dma_busy_until = CPU.cycles + (uint64_t)len * DMA_CYCLES_PER_WORD;
         return;
     }
     vdp_store(v);
@@ -143,11 +149,21 @@ uint16_t vdp_read_data(void) {
     return r;
 }
 
-/* Status: report "no DMA in progress, FIFO empty" plus the PAL bit.
-   Bit 1 = FIFO empty, bit 9 = FIFO full(0), bit 0 = PAL. */
+/* Status register.
+ *
+ * bit 0 PAL   bit 1 DMA busy   bit 3 VBlank   bit 9 FIFO empty
+ *
+ * The DMA-busy bit matters more than it looks. The ROM polls it in a spin loop
+ * at $4FE, and reporting "never busy" made execution diverge from the
+ * reference within the first 100 frames -- the loop exited immediately here
+ * and span there. Transfers are performed instantaneously, so a completion
+ * deadline is recorded and the bit reports busy until the CPU reaches it. */
 uint16_t vdp_read_status(void) {
-    return 0x3400 | 0x0200 | 0x0001;
+    uint16_t st = 0x3400 | 0x0200 | 0x0001;
+    if (CPU.cycles < VDP.dma_busy_until) st |= 0x0002;
+    return st;
 }
+
 
 static void vdp_dma_run(void) {
     unsigned mode = (VDP.reg[23] >> 6) & 3;
@@ -193,6 +209,7 @@ static void vdp_dma_run(void) {
         }
     }
     VDP.dma_transfers++; VDP.dma_words += len;
+    VDP.dma_busy_until = CPU.cycles + (uint64_t)len * DMA_CYCLES_PER_WORD;
 }
 
 void vdp_dump(void) {
