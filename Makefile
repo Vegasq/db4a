@@ -99,9 +99,10 @@ vectors: verify-rom
 	python3 tools/vectors.py "$(ROM)"
 
 ## test - build and run all unit tests
-test: build/test_flags build/test_ea
+test: build/test_flags build/test_ea build/test_sem
 	./build/test_flags
 	./build/test_ea
+	./build/test_sem
 
 build/test_flags: tests/test_flags.c include/m68k.h
 	@mkdir -p build
@@ -112,6 +113,13 @@ build/test_ea.c: tests/gen_ea_test.py tools/ea.py
 	python3 tests/gen_ea_test.py $@
 
 build/test_ea: build/test_ea.c include/m68k.h
+	$(CC) $(CFLAGS) $< -o $@
+
+build/test_sem.c: tests/gen_sem_test.py tools/semantics.py tools/ea.py
+	@mkdir -p build
+	python3 tests/gen_sem_test.py $@
+
+build/test_sem: build/test_sem.c include/m68k.h
 	$(CC) $(CFLAGS) $< -o $@
 
 clean:
