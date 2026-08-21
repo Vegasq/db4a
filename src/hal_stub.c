@@ -3,6 +3,7 @@
    see what the ROM asks for. Replaced by hal_mem.c / hal_vdp.c at M2. */
 #include "m68k.h"
 #include "hal.h"
+#include "vdp.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -42,10 +43,12 @@ static uint8_t io_read8(uint32_t a) {
     case 0xA10001: v = VERSION_REG; break;
     case 0xA11100:
     case 0xA11101: v = 0x00; break;            /* Z80 bus granted */
-    case 0xC00004: v = 0x34; break;
-    case 0xC00005: v = 0x00; break;
-    case 0xC00006: v = 0x34; break;
-    case 0xC00007: v = 0x00; break;
+    case 0xC00004: v = (uint8_t)(vdp_read_status() >> 8); break;
+    case 0xC00005: v = (uint8_t)(vdp_read_status() & 0xFF); break;
+    case 0xC00006: v = (uint8_t)(vdp_read_status() >> 8); break;
+    case 0xC00007: v = (uint8_t)(vdp_read_status() & 0xFF); break;
+    case 0xC00000: case 0xC00002: v = (uint8_t)(vdp_read_data() >> 8); break;
+    case 0xC00001: case 0xC00003: v = (uint8_t)(vdp_read_data() & 0xFF); break;
     default:       v = 0; break;
     }
     if (hal_log_io)
@@ -74,12 +77,24 @@ uint32_t m68k_read32(uint32_t a) {
 void m68k_write8(uint32_t a, uint8_t v) {
     a &= 0xFFFFFF;
     if (a >= 0xFF0000) { ram[a & 0xFFFF] = v; return; }
+    if ((a & 0xFFFFE0) == 0xC00000) {
+        /* A byte write to a VDP port duplicates the byte into both halves. */
+        m68k_write16(a & ~1u, (uint16_t)((v << 8) | v));
+        return;
+    }
     if (a >= 0xA00000) { hal_io_writes++; return; }
 }
 void m68k_write16(uint32_t a, uint16_t v) {
     a &= 0xFFFFFF;
     if (a >= 0xFF0000) { ram[a & 0xFFFF] = (uint8_t)(v >> 8);
                          ram[(a + 1) & 0xFFFF] = (uint8_t)v; return; }
+    if ((a & 0xFFFFE0) == 0xC00000) {
+        hal_io_writes++;
+        uint32_t p = a & 0x1F;
+        if      (p < 4) vdp_write_data(v);
+        else if (p < 8) vdp_write_control(v);
+        return;
+    }
     if (a >= 0xA00000) { hal_io_writes++; return; }
 }
 void m68k_write32(uint32_t a, uint32_t v) {

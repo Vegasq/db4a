@@ -37,7 +37,7 @@ build/blocks.o: src/gen/blocks.c include/m68k.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Wno-unused-parameter -c $< -o $@
 
-build/hal_stub.o: src/hal_stub.c include/m68k.h
+build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -45,8 +45,16 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-build/db4a: build/blocks.o build/hal_stub.o build/dispatch.o build/main.o
+build/db4a: build/blocks.o build/hal_stub.o build/hal_vdp.o build/render.o build/dispatch.o build/main.o
 	$(CC) $^ -o $@
+
+build/hal_vdp.o: src/hal_vdp.c include/vdp.h include/m68k.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/render.o: src/render.c include/render.h include/vdp.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/dispatch.o: src/dispatch.c include/m68k.h include/hal.h
 	@mkdir -p build

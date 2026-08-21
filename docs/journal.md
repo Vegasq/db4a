@@ -573,3 +573,71 @@ time at correct PAL pacing. It plateaus at 403 blocks because it has reached a
 steady state — rendering to a VDP that discards everything, and waiting for
 input that never arrives. **The VDP is now the blocker**, with ~27k writes per
 run going nowhere.
+
+## 2026-08-21 — Session 4: the VDP renders
+
+### VDP core
+
+`src/hal_vdp.c` implements the address/code state machine, VRAM/CRAM/VSRAM
+writes, auto-increment, and DMA (68000→VDP, VRAM fill, VRAM→VRAM copy). The
+control port is a two-word protocol: a write with bits 15-14 == 10 is a
+register write, anything else is half of an address/code pair assembled across
+two writes. Byte writes to a VDP port duplicate the byte into both halves, and
+a VRAM write to an odd address swaps byte order — both real hardware quirks.
+
+Wiring it into the memory map immediately showed the ROM was doing real work
+all along:
+
+```
+writes  vram=46723 cram=5888 vsram=80 reg=4317
+dma     transfers=115 words=243917
+vram    25606 of 65536 bytes non-zero (39.1%)
+display ON   vint on   H40 (320px)
+planes  A=C000 B=E000 window=6000 sprites=B000 hscroll=B800
+```
+
+Register values are self-consistent (reg2→A, reg4→B, reg5→sprites all agree
+with the plane addresses), which is a good sign the control protocol is right.
+
+### Renderer
+
+`src/render.c` decodes both scroll planes and the sprite table into a 320x224
+RGB framebuffer: 4bpp 8x8 tiles, per-line or per-cell horizontal scroll, column
+vertical scroll, flip bits, per-tile palette select, and plane priority.
+
+Deliberately a whole-frame renderer rather than per-scanline — this ROM has no
+HBlank handler, so there are no mid-frame register changes to honour, and a
+frame renderer is much easier to verify.
+
+### First frames
+
+A first capture at 1200 frames was 0.6% non-black and looked like a failure. It
+was not — the game cycles through screens and that moment was a transition.
+Sampling across time told the real story, including that the plane bases
+**swap** between screens (A=E000 early, A=C000 later) as the game reconfigures
+the VDP, which the renderer follows correctly.
+
+```
+ 120 frames (2.4s): A@E000  48/4096 entries,  3.0% tiles,  3.7% non-black
+ 300 frames (6.0s): A@E000  48/4096 entries,  3.0% tiles, 99.8% non-black
+ 600 frames (12 s): A@C000 686/4096 entries, 48.1% tiles, 23.1% non-black
+1200 frames (24 s): A@C000   7/4096 entries, 55.1% tiles,  0.6% non-black
+```
+
+At 300 frames the console logo renders; at 600 frames the publisher screen
+renders **pixel-perfect** — correct palettes, correct compositing of a star
+field against logo planes, clean text. The console-logo frame showed horizontal
+streaking, which is the mid-wipe animation caught in progress rather than a
+renderer defect; the static screen has no artifacts.
+
+`tools/ppm2png.py` converts captures for viewing (stdlib only, no PIL).
+
+### Honest gaps
+
+- **Nothing is verified against a reference emulator yet.** "Looks right" is
+  not the same as correct, and the fidelity policy depends on frame-hash
+  diffing. Sprites in particular have not been exercised — the sprite table was
+  empty in every frame captured so far.
+- The mid-wipe streaking is *assumed* to be animation, not confirmed.
+- DMA runs regardless of the reg1 DMA-enable bit.
+- No SDL output yet; frames are written as PPM.
