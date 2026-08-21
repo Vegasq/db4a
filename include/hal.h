@@ -14,4 +14,7 @@ extern const unsigned BLOCK_COUNT;
 
 uint32_t m68k_run(uint32_t pc, unsigned long max_blocks);
 uint32_t m68k_interrupt(uint32_t pc, int level);
+uint32_t m68k_run_until(uint32_t pc, uint64_t deadline);
+
+#define PAL_FRAME_CYCLES 152009u
 #endif

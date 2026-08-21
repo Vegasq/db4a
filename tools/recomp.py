@@ -14,7 +14,7 @@ just before the next boundary.
 """
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ea, semantics
+import ea, semantics, timing
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -49,6 +49,7 @@ def main():
     while i < len(order):
         a = order[i]
         body = []
+        timed = []          # (mnemonic, operands, size) for the cycle estimate
         cur = a
         j = i
         while j < len(order):
@@ -57,7 +58,10 @@ def main():
                 break                      # gap: data between instructions
             sz, mn, op = insns[addr]
             try:
-                stmts = semantics.emit(mn, ea.parse(op), semantics.Ctx(addr, sz, addr + sz))
+                parsed = ea.parse(op)
+                _, isz = semantics.split_mnemonic(mn)
+                timed.append((mn, parsed, isz or 'w'))
+                stmts = semantics.emit(mn, parsed, semantics.Ctx(addr, sz, addr + sz))
             except Exception as e:
                 stmts = ['m68k_unimplemented(0x%Xu); return 0x%Xu;' % (addr, addr + sz)]
                 nfail += 1
@@ -78,6 +82,9 @@ def main():
         if not any(l.strip().startswith('return') for l in body[-3:]):
             body.append('  return 0x%Xu;' % cur)
         out.append('static uint32_t blk_%06X(void) {' % a)
+        # Cycle cost is fixed per block and known at generation time, so it is
+        # a constant here rather than an accumulation per instruction.
+        out.append('  CPU.cycles += %d;' % timing.block_cycles(timed))
         out += body
         out.append('}')
         out.append('')
@@ -96,6 +103,7 @@ def main():
     dst = os.path.join(ROOT, 'src', 'gen', 'blocks.c')
     open(dst, 'w').write('\n'.join(out) + '\n')
     print('blocks emitted   : %d' % len(blocks))
+    print('PAL frame budget : %d cycles' % timing.PAL_FRAME_CYCLES)
     print('instructions     : %d' % len(order))
     print('unimplemented    : %d' % nfail)
     print('wrote %s (%d lines)' % (dst, len(out)))

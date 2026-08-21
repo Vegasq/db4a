@@ -18,8 +18,10 @@ static int cmp_hot(const void *a, const void *b) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) { fprintf(stderr, "usage: %s <rom> [max_blocks]\n", argv[0]); return 2; }
-    unsigned long budget = (argc > 2) ? strtoul(argv[2], NULL, 0) : 1000000;
+    if (argc < 2) { fprintf(stderr, "usage: %s <rom> [frames]\n", argv[0]); return 2; }
+    /* Pacing is cycle-based now, so the budget is a frame count: at PAL
+       50 Hz, 1 frame = 152009 cycles = 20 ms of game time. */
+    unsigned max_frames = (argc > 2) ? (unsigned)strtoul(argv[2], NULL, 0) : 600;
 
     FILE *f = fopen(argv[1], "rb");
     if (!f) { perror(argv[1]); return 1; }
@@ -41,7 +43,7 @@ int main(int argc, char **argv) {
     printf("recompiled blocks : %u\n", BLOCK_COUNT);
     printf("reset SSP         : %08X\n", CPU.a[7]);
     printf("reset PC          : %06X\n", pc);
-    printf("running (budget %lu blocks)...\n\n", budget);
+    printf("running %u frames (%.1f s of game time)...\n\n", max_frames, max_frames/50.0);
     m68k_profile_enable();
     { extern int hal_log_sr, hal_log_io;
       hal_log_sr = getenv("DB4A_LOG_SR") != NULL;
@@ -50,18 +52,16 @@ int main(int argc, char **argv) {
     /* Run in frame-sized slices, firing VBlank between them. The ROM boots
        into an idle loop and does all its work from the level 6 handler, so
        without this nothing past initialisation ever executes. */
-    unsigned long slice = budget / 300 ? budget / 300 : 1;
     uint32_t end = pc;
     unsigned frames = 0;
-    unsigned long total = 0;
-    for (frames = 0; frames < 300 && total < budget; frames++) {
-        end = m68k_run(end, slice);
-        total += m68k_blocks_run;
+    for (frames = 0; frames < max_frames; frames++) {
+        end = m68k_run_until(end, CPU.cycles + PAL_FRAME_CYCLES);
         if (m68k_last_unknown) break;
-        end = m68k_interrupt(end, 6);          /* VBlank */
+        end = m68k_interrupt(end, 6);          /* VBlank at end of frame */
     }
-    m68k_blocks_run = total;
-    printf("frames simulated  : %u\n", frames);
+    printf("frames simulated  : %u  (%.2f s of game time)\n",
+           frames, frames / 50.0);
+    printf("cycles emulated   : %llu\n", (unsigned long long)CPU.cycles);
 
     printf("\nblocks executed   : %lu\n", m68k_blocks_run);
     printf("stopped at PC     : %06X\n", end);

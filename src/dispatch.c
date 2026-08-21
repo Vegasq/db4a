@@ -57,6 +57,20 @@ static int find_block(uint32_t pc) {
     return -1;
 }
 
+/* Run until CPU.cycles reaches `deadline`, or a PC has no block. */
+uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
+    m68k_last_unknown = 0;
+    while (CPU.cycles < deadline) {
+        int i = find_block(pc);
+        if (i < 0) { m68k_last_unknown = pc; return pc; }
+        if (m68k_profiling) m68k_profile[i]++;
+        m68k_cur_block = pc;
+        pc = BLOCK_FN[i]();
+        m68k_blocks_run++;
+    }
+    return pc;
+}
+
 uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
     m68k_blocks_run = 0;
     m68k_last_unknown = 0;

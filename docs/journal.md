@@ -530,3 +530,46 @@ counter at `$FFFFE006` (the `addq.w #$1, $e006.w` at `0x181C`). Correct game
 behaviour, not a bug. It over-spins only because frames are sliced by a fixed
 block count rather than a cycle budget. **Cycle counting is needed** for v1
 acceptance criterion 6 (PAL 50 Hz, no drift).
+
+### Cycle counting and real frame pacing
+
+`tools/timing.py` gives each instruction a cycle cost from the 68000 manual —
+a base cost per operation plus effective-address calculation per memory
+operand. `recomp.py` sums it per block at generation time and emits a single
+constant `CPU.cycles += N;` at block entry, so pacing costs one add per block
+rather than per instruction.
+
+Corrected a mistake in my own task note: I had written the PAL budget as
+`3579545/50`. That is the Z80/colourburst clock. The 68000 on a PAL Mega Drive
+runs at `53203424/7` = 7,600,489 Hz, so a 50 Hz frame is **152,009 cycles**.
+
+Documented limitations, deliberately: the model ignores prefetch overlap and
+Mega Drive bus contention (the 68000 stalls while the VDP holds the bus), and
+uses typical values for data-dependent `MULU`/`DIVU` and shift counts. It is
+accurate enough to pace frames, which is its only job. It is *not* accurate
+enough for raster effects — acceptable here because this ROM has no HBlank
+handler.
+
+Switched the CLI from a block budget to a frame count, since pacing is now
+cycle-based and frames are the meaningful unit.
+
+The first paced run looked like a regression — `$FFFFE002` back to zero, 272
+distinct blocks against 338. It was not. A cycle-bounded frame runs ~6,700
+blocks where the old fixed slice ran 10,000, so 300 frames covered less work
+than before. With frames as the unit:
+
+```
+ 300 frames ( 6 s): 403? no -- 272 distinct, handler not yet installed
+1200 frames (24 s): 403 distinct, $FFFFE002 = 00017C32, IRQ 1109
+3000 frames (60 s): 403 distinct, $FFFFE002 = 00017C32, IRQ 2909
+```
+
+Cycle pacing is a net improvement: 403 distinct blocks versus 338. Masked
+interrupts stay pinned at 91 no matter how long the run, i.e. all of them occur
+during boot before interrupts are enabled, which is the expected shape.
+
+The game now boots, installs its handler, and runs stably for a minute of game
+time at correct PAL pacing. It plateaus at 403 blocks because it has reached a
+steady state — rendering to a VDP that discards everything, and waiting for
+input that never arrives. **The VDP is now the blocker**, with ~27k writes per
+run going nowhere.
