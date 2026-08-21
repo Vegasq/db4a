@@ -1,0 +1,5 @@
+build/
+roms/
+*.o
+*.bin.disasm
+__pycache__/
