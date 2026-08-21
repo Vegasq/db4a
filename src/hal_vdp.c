@@ -24,6 +24,8 @@ static int dma_logging(void) {
 
 vdp_t VDP;
 unsigned long vdp_fills;
+unsigned long dma_dest[10];
+unsigned long dma_code[64];
 
 /* Code field values, after assembling both control words. */
 #define CD_VRAM_READ   0x00
@@ -156,6 +158,27 @@ static void vdp_dma_run(void) {
                 (unsigned)(((VDP.reg[23] & 0x7F) << 17) | (VDP.reg[22] << 9) | (VDP.reg[21] << 1)));
     uint32_t src = (uint32_t)(((VDP.reg[23] & 0x7F) << 17)
                             | (VDP.reg[22] << 9) | (VDP.reg[21] << 1));
+    /* Tally DMA destinations by target region so a missing tilemap upload is
+       visible without wading through thousands of log lines. */
+    { extern unsigned long dma_code[64];
+      dma_code[VDP.code & 0x3F] += len; }
+    { extern unsigned long dma_dest[10];
+unsigned long dma_code[64];
+      /* Bucket by target. VRAM buckets are 8 KiB each; note 0xE000+ is bucket
+         7, which is a VRAM region and NOT VSRAM -- conflating the two sent an
+         earlier investigation off after a non-existent misclassification. */
+      unsigned bucket = (VDP.code & 0x0F) == 0x03 ? 8         /* CRAM  */
+                      : (VDP.code & 0x0F) == 0x05 ? 9         /* VSRAM */
+                      : (VDP.addr >> 13) & 7;                 /* VRAM 8K bucket */
+      dma_dest[bucket] += len; }
+    if (dma_logging() && VDP.addr >= 0xE000 && (VDP.code & 0x0F) == 1) {
+        static unsigned shown;
+        if (shown++ < 6) {
+            uint32_t s0 = m68k_read32(src), s1 = m68k_read32(src + 4);
+            fprintf(stderr, "[dma] ->nametable addr=%04X len=%u src=%06X first8=%08X %08X\n",
+                    VDP.addr, len, src, s0, s1);
+        }
+    }
     if (mode == 3) {                       /* VRAM -> VRAM copy */
         for (uint32_t i = 0; i < len; i++) {
             VDP.vram[VDP.addr & 0xFFFF] = VDP.vram[(src + i) & 0xFFFF];
@@ -191,6 +214,14 @@ void vdp_dump(void) {
            (VDP.reg[2] & 0x38) << 10, (VDP.reg[4] & 0x07) << 13,
            (VDP.reg[3] & 0x3E) << 10, (VDP.reg[5] & 0x7F) << 9,
            (VDP.reg[13] & 0x3F) << 10);
+    printf("dma by CD code (words):\n");
+    for (int i = 0; i < 64; i++)
+        if (dma_code[i]) printf("   code %02X : %lu\n", i, dma_code[i]);
+    printf("dma dest by region (words):\n");
+    for (int i = 0; i < 8; i++)
+        if (dma_dest[i]) printf("   VRAM %04X-%04X : %lu\n", i*0x2000, i*0x2000+0x1FFF, dma_dest[i]);
+    if (dma_dest[8]) printf("   CRAM          : %lu\n", dma_dest[8]);
+    if (dma_dest[9]) printf("   VSRAM         : %lu\n", dma_dest[9]);
     printf("regs   ");
     for (int i = 0; i < 24; i++) printf(" %02X", VDP.reg[i]);
     printf("\n");

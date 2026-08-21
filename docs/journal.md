@@ -1109,3 +1109,43 @@ nothing exercises LINK/UNLK. The gap was in the test suite, not just the code.
 
 Remaining: house-select renders only partially (75% frame agreement, fragments
 and an empty box where the crests belong) rather than not at all.
+
+### House-select: narrowed, not solved
+
+Added end-to-end instruction tests (`tests/gen_sem_test.py`, 11 cases) covering
+LINK/UNLK, which the earlier bug had slipped through. Its first run failed on
+`ext.w` — and the fault was in my expectation, not the implementation.
+
+Then chased the partial house-select render. VDP state:
+
+```
+nametable A @E000:  68/4096 non-zero
+nametable B @C000:   0/4096 non-zero
+tile area        : 22.1% non-zero
+cram             : 60/64 entries
+```
+
+Palette and tile graphics load; the tilemaps are near-empty. So the artwork is
+in VRAM and nothing tells the VDP to draw it.
+
+**Two false trails, both caused by my own analysis tooling.**
+
+1. A DMA-destination tally showed `VSRAM: 259392 words` against a 40-entry
+   VSRAM. That looked like a smoking gun. It was a labelling bug: the VRAM
+   bucket was `(addr >> 13) & 7`, so VRAM at `0xE000+` landed in bucket 7,
+   which I had labelled VSRAM. A CD-code histogram showed only codes `21`
+   (VRAM) and `23` (CRAM) — no VSRAM DMA exists at all.
+2. With that fixed, the 259392 words are real DMAs to nametable A, arriving as
+   zeros. That also looked conclusive. It is not: the **working** title screen
+   performs the identical zero-source DMAs to `0xE000`. They are nametable
+   clears, normal on both screens.
+
+What is actually established: house-select performs its clears plus one real
+upload (`addr=F780 len=128 src=064246`, real ROM data — the fragments visible
+on screen), and the crest tilemaps are then **never uploaded at all**. Absent,
+not corrupted. So the game does not reach the code that would upload them.
+
+**Root cause still open.** Running total for this screen: five hypotheses
+tested, five refuted — three of them failures in the measuring tooling rather
+than the emulator. That ratio is the argument for the execution-level oracle
+that has now been deferred four times.
