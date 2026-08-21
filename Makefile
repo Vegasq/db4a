@@ -46,7 +46,7 @@ run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
 COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o \
-               build/hal_z80.o build/z80.o build/render.o build/dispatch.o
+               build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
 	$(CC) $^ -o $@
@@ -61,6 +61,10 @@ build/db4a-sdl: $(COMMON_OBJS) build/sdl_main.o
 build/sdl_main.o: src/sdl_main.c include/render.h include/input.h include/hal.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(shell pkg-config --cflags sdl2) -c $< -o $@
+
+build/system.o: src/system.c include/system.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/z80.o: src/z80.c src/z80_exec.h include/z80.h
 	@mkdir -p build

@@ -17,6 +17,7 @@ uint32_t m68k_interrupt(uint32_t pc, int level);
 uint32_t m68k_run_until(uint32_t pc, uint64_t deadline);
 uint32_t m68k_run_frame(uint32_t pc);
 int hal_z80_running(void);
+extern uint32_t m68k_last_unknown;
 
 #define PAL_FRAME_CYCLES 152009u
 #endif

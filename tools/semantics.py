@@ -270,11 +270,22 @@ def i_nop(mn, sz, ops, ctx):
     return ["/* nop */"]
 
 def i_link(mn, sz, ops, ctx):
+    """LINK An,#d -- push An, set An to SP, then add a SIGNED 16-bit
+    displacement to SP.
+
+    The displacement is essentially always negative (it allocates the stack
+    frame), and capstone renders it as an unsigned word: `link.w a6, #$ffc8`
+    means -56, not +65480. Taking it at face value moves SP the wrong way by
+    ~64 KiB per call, which walks the stack pointer out of RAM entirely.
+    """
     an, disp = ops
+    d = disp.v & 0xFFFF
+    if d & 0x8000:
+        d -= 0x10000
     return ["CPU.a[7] -= 4;",
             "m68k_write32(CPU.a[7], CPU.a[%d]);" % an.n,
             "CPU.a[%d] = CPU.a[7];" % an.n,
-            "CPU.a[7] += %d;" % disp.v]
+            "CPU.a[7] += %d;" % d]
 
 def i_unlk(mn, sz, ops, ctx):
     an = ops[0]

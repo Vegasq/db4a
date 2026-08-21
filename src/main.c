@@ -5,6 +5,7 @@
 #include "render.h"
 #include "input.h"
 #include "z80.h"
+#include "system.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,19 +36,10 @@ int main(int argc, char **argv) {
     if (fread(rom, 1, (size_t)n, f) != (size_t)n) { fprintf(stderr, "short read\n"); return 1; }
     fclose(f);
 
-    hal_set_rom(rom, (size_t)n);
-    hal_reset_ram();
-    vdp_reset();
-    { extern void hal_z80_init(void); hal_z80_init(); }
+    uint32_t pc = system_reset(rom, (size_t)n);
     { extern int z80_profiling; z80_profiling = 1; }
     { extern int waiter_enable; waiter_enable = 1; }
 
-    /* Reset: SSP from $000000, PC from $000004, supervisor, interrupts masked */
-    CPU.a[7]   = m68k_read32(0);
-    CPU.ssp    = CPU.a[7];
-    CPU.super  = true;
-    CPU.imask  = 7;
-    uint32_t pc = m68k_read32(4);
 
     printf("recompiled blocks : %u\n", BLOCK_COUNT);
     printf("reset SSP         : %08X\n", CPU.a[7]);
@@ -93,10 +85,8 @@ int main(int argc, char **argv) {
             if (frames == script[k].at)          pad_set(script[k].pad, 1);
             if (frames == script[k].at + hold)   pad_set(script[k].pad, 0);
         }
-        end = m68k_run_frame(end);
+        end = system_frame(end);
         if (m68k_last_unknown) break;
-        if (hal_z80_running()) z80_irq();
-        end = m68k_interrupt(end, 6);          /* VBlank at end of frame */
     }
     printf("frames simulated  : %u  (%.2f s of game time)\n",
            frames, frames / 50.0);

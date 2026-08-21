@@ -8,6 +8,7 @@
 #include "vdp.h"
 #include "render.h"
 #include "input.h"
+#include "system.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,12 +78,7 @@ int main(int argc, char **argv) {
         if (SDL_IsGameController(i)) { gc = SDL_GameControllerOpen(i); break; }
     if (gc) printf("gamepad: %s\n", SDL_GameControllerName(gc));
 
-    hal_set_rom(rom, romlen);
-    hal_reset_ram();
-    vdp_reset();
-    CPU.a[7] = m68k_read32(0); CPU.ssp = CPU.a[7];
-    CPU.super = true; CPU.imask = 7;
-    uint32_t pc = m68k_read32(4);
+    uint32_t pc = system_reset(rom, romlen);
 
     printf("controls: arrows = D-pad, Z/X/C = A/B/C, Enter = Start, Esc = quit\n");
 
@@ -106,12 +102,11 @@ int main(int argc, char **argv) {
             }
         }
 
-        pc = m68k_run_until(pc, CPU.cycles + PAL_FRAME_CYCLES);
+        pc = system_frame(pc);
         if (m68k_last_unknown) {
             fprintf(stderr, "no block for PC %06X -- stopping\n", m68k_last_unknown);
             running = 0;
         }
-        pc = m68k_interrupt(pc, 6);
 
         render_frame();
         SDL_UpdateTexture(tex, NULL, FB, FB_W * 3);

@@ -1047,3 +1047,65 @@ The execution-level differential oracle — run both against Genesis-Plus-GX and
 find the first block where state diverges — has been deferred repeatedly and is
 now clearly the cheapest remaining route. Frame comparison has taken us as far
 as it can.
+
+### The crash: LINK displacement sign extension
+
+User report: `make play` crashes on Start with `no block for PC 6D00FF12`.
+
+**First finding — the two frontends had diverged.** `sdl_main.c` had no Z80
+references at all: no `hal_z80_init()`, no `m68k_run_frame()`, no `z80_irq()`.
+Z80 support was added to `main.c` and never to the SDL path, so the interactive
+build was running the 68000 with a dead Z80 while all my headless testing ran
+both. That is why the crash was not reproducing here.
+
+Fixed properly rather than by patching the copy: `src/system.c` now owns
+`system_reset()` and `system_frame()`, and both frontends call them, so the two
+cannot drift again.
+
+**Second finding — a correction.** With the frontends unified the crash
+reproduced headlessly, and it turned out it had been happening all along. The
+previous entry recorded that the game "clears VRAM then enters an input wait
+without reloading graphics". It had actually **crashed**; the black screen was
+the frozen post-crash framebuffer. I had been grepping VDP statistics and never
+looked at the `reason` line.
+
+**Root cause.** Added a crash dump (register state, stack, and a 64-entry ring
+buffer of recently executed blocks). It pointed straight at the problem:
+
+```
+A0-A7 ... FFFFFFF0 0000FFC8
+                   ^^^^^^^^ A7
+```
+
+Mega Drive RAM is at `$FF0000-$FFFFFF`, so a valid stack pointer looks like
+`0xFFFFFFC8`. The high word had been zeroed, so `rts` fetched garbage from ROM.
+
+capstone renders LINK displacements as **unsigned** words:
+
+```
+00A934  link.w  a6, #$ffc8      ; this is -56, not +65480
+04935C  link.w  a6, #$ffa8      ; -88
+```
+
+`i_link` used the value directly, so every stack frame moved SP *up* by ~64 KiB
+instead of allocating a few dozen bytes. After enough calls A7 wrapped past
+`0xFFFFFFFF` into low memory — and the crashed A7 still carried that
+displacement in its low word. LINK's displacement is always signed 16-bit; now
+sign-extended.
+
+```
+distinct blocks : 684 -> 981
+VRAM            : 0 -> 10053 bytes non-zero
+sprite table    : 40 bytes
+crash           : gone
+title screen    : still 99.98%, no regression
+```
+
+**A correction worth recording.** I had claimed every bug so far was in the HAL
+or the measuring tools, never in the generated code. That is no longer true —
+this one was a genuine semantics bug in the recompiler, and it survived because
+`tests/test_flags.c` and `test_ea.c` cover flags and addressing modes but
+nothing exercises LINK/UNLK. The gap was in the test suite, not just the code.
+
+Remaining: house-select renders only partially (75% frame agreement, fragments
+and an empty box where the crests belong) rather than not at all.

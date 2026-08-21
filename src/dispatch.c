@@ -48,6 +48,39 @@ uint32_t m68k_interrupt(uint32_t pc, int level) {
     return m68k_read32(0x60 + (uint32_t)level * 4);   /* autovector 24+level */
 }
 
+/* Ring buffer of recently executed blocks. When execution reaches a PC with no
+   block -- almost always a jump through a corrupted pointer -- the trail of
+   blocks that led there is far more useful than the faulting address alone. */
+#define TRAIL 64
+static uint32_t trail[TRAIL];
+static unsigned trail_n;
+
+static void trail_push(uint32_t pc) { trail[trail_n++ % TRAIL] = pc; }
+
+void m68k_dump_crash(uint32_t pc) {
+    fprintf(stderr, "\n=== BAD PC %08X ===\n", pc);
+    fprintf(stderr, "D0-D7 %08X %08X %08X %08X %08X %08X %08X %08X\n",
+            CPU.d[0],CPU.d[1],CPU.d[2],CPU.d[3],CPU.d[4],CPU.d[5],CPU.d[6],CPU.d[7]);
+    fprintf(stderr, "A0-A7 %08X %08X %08X %08X %08X %08X %08X %08X\n",
+            CPU.a[0],CPU.a[1],CPU.a[2],CPU.a[3],CPU.a[4],CPU.a[5],CPU.a[6],CPU.a[7]);
+    fprintf(stderr, "SR imask=%u super=%d  N=%u Z=%u V=%u C=%u X=%u\n",
+            CPU.imask, (int)CPU.super, CPU.n, CPU.z, CPU.v, CPU.c, CPU.x);
+
+    fprintf(stderr, "\nstack at A7=%08X:\n", CPU.a[7]);
+    for (int i = 0; i < 8; i++) {
+        uint32_t a = CPU.a[7] + (uint32_t)(i * 4);
+        fprintf(stderr, "   %08X: %08X\n", a, m68k_read32(a));
+    }
+
+    unsigned n = trail_n < TRAIL ? trail_n : TRAIL;
+    fprintf(stderr, "\nlast %u blocks executed (most recent last):\n", n);
+    for (unsigned i = 0; i < n; i++) {
+        unsigned idx = (trail_n - n + i) % TRAIL;
+        fprintf(stderr, "   %2u: %06X\n", n - i - 1, trail[idx]);
+    }
+    fflush(stderr);
+}
+
 static int find_block(uint32_t pc) {
     unsigned lo = 0, hi = BLOCK_COUNT;
     while (lo < hi) {
@@ -63,9 +96,14 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
     m68k_last_unknown = 0;
     while (CPU.cycles < deadline) {
         int i = find_block(pc);
-        if (i < 0) { m68k_last_unknown = pc; return pc; }
+        if (i < 0) {
+            m68k_last_unknown = pc;
+            m68k_dump_crash(pc);
+            return pc;
+        }
         if (m68k_profiling) m68k_profile[i]++;
         m68k_cur_block = pc;
+        trail_push(pc);
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
@@ -130,10 +168,12 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         int i = find_block(pc);
         if (i < 0) {                       /* interpreter fallback goes here */
             m68k_last_unknown = pc;
+            m68k_dump_crash(pc);
             return pc;
         }
         if (m68k_profiling) m68k_profile[i]++;
         m68k_cur_block = pc;
+        trail_push(pc);
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
