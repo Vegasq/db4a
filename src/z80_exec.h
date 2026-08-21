@@ -17,7 +17,25 @@ static void daa(void) {
    `reg` points at the real index register so that instructions which MODIFY it
    (INC IX, ADD IX,rp, LD IX,nn, POP IX, EX (SP),IX) write back rather than
    silently discarding the result. */
-typedef struct { uint16_t v; int indexed; int8_t disp; uint16_t *reg; } hlctx;
+typedef struct { int indexed; int8_t disp; uint16_t *reg; } hlctx;
+
+/* Always read and write the LIVE register.
+ *
+ * An earlier version cached HL in the context at instruction entry and wrote
+ * it back at exit. That silently discarded every 8-bit write to H or L
+ * (LD H,n / INC L / LD H,B), because those go through REG8 and never touched
+ * the cache -- and under a DD/FD prefix it wrote HL into the index register.
+ * Caching a register that other paths can modify is the bug; not caching it
+ * removes the whole class. */
+static inline uint16_t get_hl(void);
+static inline void     set_hl(uint16_t v);
+static inline uint16_t xget(hlctx *x) { return x->indexed ? *x->reg : get_hl(); }
+static inline void     xset(hlctx *x, uint16_t v) {
+    if (x->indexed) *x->reg = v; else set_hl(v);
+}
+static inline uint16_t xaddr(hlctx *x) {
+    return x->indexed ? (uint16_t)(*x->reg + x->disp) : get_hl();
+}
 
 static inline uint16_t get_hl(void) { return (uint16_t)((Z80.h << 8) | Z80.l); }
 static inline void set_hl(uint16_t v) { Z80.h = (uint8_t)(v >> 8); Z80.l = (uint8_t)v; }
@@ -25,11 +43,11 @@ static inline void set_hl(uint16_t v) { Z80.h = (uint8_t)(v >> 8); Z80.l = (uint
 /* Read/write register index z, resolving (HL) / (IX+d) / (IY+d). */
 static uint8_t rd_r(int z, hlctx *x) {
     if (z != 6) return *REG8[z];
-    return z80_read(x->indexed ? (uint16_t)(x->v + x->disp) : x->v);
+    return z80_read(xaddr(x));
 }
 static void wr_r(int z, hlctx *x, uint8_t v) {
     if (z != 6) { *REG8[z] = v; return; }
-    z80_write(x->indexed ? (uint16_t)(x->v + x->disp) : x->v, v);
+    z80_write(xaddr(x), v);
 }
 
 static void do_cb(hlctx *x, unsigned *cyc) {
@@ -39,11 +57,11 @@ static void do_cb(hlctx *x, unsigned *cyc) {
     int xx = op >> 6, y = (op >> 3) & 7, z = op & 7;
     uint8_t v = rd_r(z, x);
     /* An indexed CB always addresses memory, even when z names a register. */
-    if (x->indexed) v = z80_read((uint16_t)(x->v + x->disp));
+    if (x->indexed) v = z80_read(xaddr(x));
 
     if (xx == 0) {
         uint8_t r = rot(y, v);
-        if (x->indexed) { z80_write((uint16_t)(x->v + x->disp), r); if (z != 6) *REG8[z] = r; }
+        if (x->indexed) { z80_write(xaddr(x), r); if (z != 6) *REG8[z] = r; }
         else wr_r(z, x, r);
         *cyc += (z == 6) ? 15 : 8;
     } else if (xx == 1) {                       /* BIT */
@@ -53,7 +71,7 @@ static void do_cb(hlctx *x, unsigned *cyc) {
         *cyc += (z == 6) ? 12 : 8;
     } else {
         uint8_t r = (xx == 2) ? (uint8_t)(v & ~(1u << y)) : (uint8_t)(v | (1u << y));
-        if (x->indexed) { z80_write((uint16_t)(x->v + x->disp), r); if (z != 6) *REG8[z] = r; }
+        if (x->indexed) { z80_write(xaddr(x), r); if (z != 6) *REG8[z] = r; }
         else wr_r(z, x, r);
         *cyc += (z == 6) ? 15 : 8;
     }
@@ -175,7 +193,7 @@ static void do_ed(unsigned *cyc) {
 
 unsigned z80_step(void) {
     unsigned cyc = 4;
-    hlctx x = { get_hl(), 0, 0, NULL };
+    hlctx x = { 0, 0, NULL };
 
     if (Z80.halted) { Z80.cycles += 4; return 4; }
 
@@ -187,7 +205,6 @@ unsigned z80_step(void) {
     while (op == 0xDD || op == 0xFD) {
         x.indexed = 1;
         x.reg = (op == 0xDD) ? &Z80.ix : &Z80.iy;
-        x.v   = *x.reg;
         op = fetch();
         cyc += 4;
         Z80.r = (uint8_t)((Z80.r & 0x80) | ((Z80.r + 1) & 0x7F));
@@ -219,28 +236,30 @@ unsigned z80_step(void) {
                 if (cc(y - 4)) { Z80.pc = (uint16_t)(Z80.pc + d); cyc += 8; } else cyc += 3; }
             break;
         case 1:
-            if (q) { x.v = add16(x.v, rp(p, x.v)); cyc += 7; }
-            else   { uint16_t nn = fetch16(); set_rp(p, nn, &x.v); cyc += 6; }
+            if (q) { xset(&x, add16(xget(&x), rp(p, xget(&x)))); cyc += 7; }
+            else   { uint16_t nn = fetch16(); uint16_t h = xget(&x);
+                     set_rp(p, nn, &h); xset(&x, h); cyc += 6; }
             break;
         case 2:
             if (!q) switch (p) {
                 case 0: z80_write((uint16_t)((Z80.b<<8)|Z80.c), Z80.a); cyc += 3; break;
                 case 1: z80_write((uint16_t)((Z80.d<<8)|Z80.e), Z80.a); cyc += 3; break;
-                case 2: { uint16_t nn = fetch16();
-                          z80_write(nn, (uint8_t)x.v);
-                          z80_write((uint16_t)(nn+1), (uint8_t)(x.v >> 8)); cyc += 12; break; }
+                case 2: { uint16_t nn = fetch16(); uint16_t h = xget(&x);
+                          z80_write(nn, (uint8_t)h);
+                          z80_write((uint16_t)(nn+1), (uint8_t)(h >> 8)); cyc += 12; break; }
                 default:{ uint16_t nn = fetch16(); z80_write(nn, Z80.a); cyc += 9; break; }
             } else switch (p) {
                 case 0: Z80.a = z80_read((uint16_t)((Z80.b<<8)|Z80.c)); cyc += 3; break;
                 case 1: Z80.a = z80_read((uint16_t)((Z80.d<<8)|Z80.e)); cyc += 3; break;
                 case 2: { uint16_t nn = fetch16();
-                          x.v = (uint16_t)(z80_read(nn) | (z80_read((uint16_t)(nn+1)) << 8));
+                          xset(&x, (uint16_t)(z80_read(nn) | (z80_read((uint16_t)(nn+1)) << 8)));
                           cyc += 12; break; }
                 default:{ uint16_t nn = fetch16(); Z80.a = z80_read(nn); cyc += 9; break; }
             }
             break;
-        case 3: { uint16_t v = rp(p, x.v);
-                  set_rp(p, (uint16_t)(v + (q ? -1 : 1)), &x.v); cyc += 2; break; }
+        case 3: { uint16_t h = xget(&x); uint16_t v = rp(p, h);
+                  set_rp(p, (uint16_t)(v + (q ? -1 : 1)), &h);
+                  xset(&x, h); cyc += 2; break; }
         case 4: wr_r(y, &x, inc8(rd_r(y, &x))); if (y == 6) cyc += 7; break;
         case 5: wr_r(y, &x, dec8(rd_r(y, &x))); if (y == 6) cyc += 7; break;
         case 6: { uint8_t n = fetch(); wr_r(y, &x, n); cyc += (y == 6) ? 7 : 3; break; }
@@ -292,10 +311,11 @@ unsigned z80_step(void) {
                     t=Z80.b;Z80.b=Z80.b_;Z80.b_=t; t=Z80.c;Z80.c=Z80.c_;Z80.c_=t;
                     t=Z80.d;Z80.d=Z80.d_;Z80.d_=t; t=Z80.e;Z80.e=Z80.e_;Z80.e_=t;
                     t=Z80.h;Z80.h=Z80.h_;Z80.h_=t; t=Z80.l;Z80.l=Z80.l_;Z80.l_=t;
-                    x.v = get_hl(); break; }
-                case 2: Z80.pc = x.v; break;
-                default: Z80.sp = x.v; cyc += 2; break;
-            } else { uint16_t v = pop16(); set_rp2(p, v, &x.v); cyc += 6; }
+                    break; }   /* EXX never touches IX/IY */
+                case 2: Z80.pc = xget(&x); break;
+                default: Z80.sp = xget(&x); cyc += 2; break;
+            } else { uint16_t v = pop16(); uint16_t h = xget(&x);
+                     set_rp2(p, v, &h); xset(&x, h); cyc += 6; }
             break;
         case 2: { uint16_t nn = fetch16(); if (cc(y)) Z80.pc = nn; cyc += 6; break; }
         case 3:
@@ -306,16 +326,14 @@ unsigned z80_step(void) {
             case 3: { uint8_t n = fetch();
                       Z80.a = z80_in((uint16_t)((Z80.a << 8) | n)); cyc += 7; break; }
             case 4: { uint16_t t = (uint16_t)(z80_read(Z80.sp) | (z80_read((uint16_t)(Z80.sp+1)) << 8));
-                      z80_write(Z80.sp, (uint8_t)x.v);
-                      z80_write((uint16_t)(Z80.sp+1), (uint8_t)(x.v >> 8));
-                      x.v = t; cyc += 15; break; }
+                      uint16_t h = xget(&x);
+                      z80_write(Z80.sp, (uint8_t)h);
+                      z80_write((uint16_t)(Z80.sp+1), (uint8_t)(h >> 8));
+                      xset(&x, t); cyc += 15; break; }
             case 5: {   /* EX DE,HL always swaps the REAL HL, never IX/IY */
                       uint8_t t;
                       t = Z80.d; Z80.d = Z80.h; Z80.h = t;
                       t = Z80.e; Z80.e = Z80.l; Z80.l = t;
-                      if (!x.indexed) {
-                          x.v = get_hl();
-                      }
                       break; }
             case 6: Z80.iff1 = Z80.iff2 = false; break;
             default:Z80.iff1 = Z80.iff2 = true;  break;
@@ -326,7 +344,7 @@ unsigned z80_step(void) {
                   break; }
         case 5:
             if (q) { uint16_t nn = fetch16(); push16(Z80.pc); Z80.pc = nn; cyc += 13; }
-            else   { push16(rp2(p, x.v)); cyc += 7; }
+            else   { push16(rp2(p, xget(&x))); cyc += 7; }
             break;
         case 6: alu(y, fetch()); cyc += 3; break;
         default: push16(Z80.pc); Z80.pc = (uint16_t)(y * 8); cyc += 7; break;
@@ -335,9 +353,6 @@ unsigned z80_step(void) {
 
     }
 out:
-    /* Write the active 16-bit register back to wherever it came from. */
-    if (x.indexed) { if (x.reg) *x.reg = x.v; }
-    else           set_hl(x.v);
     Z80.cycles += cyc;
     return cyc;
 }

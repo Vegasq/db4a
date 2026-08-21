@@ -1250,3 +1250,47 @@ failure where it lands.
 The Z80 was completely unvalidated before this and is now a live suspect for
 the house-select fault, which is exactly the elimination this layer exists to
 provide.
+
+### The Z80 bug: a stale HL cache
+
+`zexdoc` derailed on its first group. The cause was structural, not a single
+opcode: `z80_step` cached HL in the instruction context at entry and wrote it
+back unconditionally at exit.
+
+Every 8-bit write to H or L goes through the `REG8` table and never touched
+that cache, so it was silently overwritten. A four-case probe made it obvious:
+
+```
+LD H,$55  -> H=11 L=22   (want H=55)
+INC L     -> H=AA L=0F   (want L=10)
+LD H,B    -> H=11 L=22   (want H=77)
+DD EXX    -> IX=0000     (want 1234)
+```
+
+All four failed. `LD H,n` and `LD H,B` are among the most common Z80
+instructions; it is remarkable `prelim.com` passed at all. Under a DD/FD prefix
+the same write-back put HL into the *index* register, which is the fourth case.
+
+Fixed by deleting the cache rather than patching the instances: `xget`/`xset`/
+`xaddr` always read and write the live register, choosing HL or IX/IY from the
+prefix. Caching a register other paths can modify was the bug; not caching it
+removes the class. Zero `x.v` references remain.
+
+All four probes now pass, `prelim.com` still passes, and the groups that
+previously derailed report OK:
+
+```
+<adc,sbc> hl,<bc,de,hl,sp>....  OK
+add hl,<bc,de,hl,sp>..........  OK
+```
+
+### It did not fix house-select
+
+Title screen unchanged at 99.98%, invariants clean, no regression. But the
+house-select path is byte-for-byte where it was: 984 blocks, 68 nametable
+entries, same VRAM occupancy.
+
+So the Z80 was a genuine bug and a reasonable suspect, and it was **not** the
+cause of the rendering fault. Worth stating plainly rather than implying the
+fix was more than it was. The remaining suspects are the VDP and timing — and
+the full `zexdoc` run may yet surface more Z80 faults.
