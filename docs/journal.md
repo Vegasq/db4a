@@ -397,3 +397,59 @@ makes swapping the stub HAL for a real one a contained change.
 
 `src/gen/blocks.c` is gitignored — it is reproducible output, and per ground
 rule 2 nothing derived is tracked.
+
+### First execution
+
+Built `src/dispatch.c` (PC→block binary search, flat run loop), `src/hal_stub.c`
+(memory map with logged-not-emulated hardware) and `src/main.c` (load ROM,
+reset, run, report). `make run` now executes the recompiled ROM.
+
+**First run stopped after 5 blocks** at `0x238` with no block for that PC —
+exactly the loud failure the design intended rather than silent corruption.
+The cause was a tracer bug, not a dispatch bug: `0x23E` is `dbra d1, $238`, and
+branch detection tested `m.startswith("b")`. `dbra` starts with `d`, so **all
+161 DBcc branch targets were never recorded as block boundaries**. Loop bodies
+had been decoded only because flow fell through them linearly. Fixed, +50
+instructions recovered.
+
+After the fix, execution ran millions of blocks without a missing block.
+
+### The ROM self-test passes
+
+Profiling showed block `0x293C` executing **524,032 times**, which is exactly
+`(0x100000 - 0x200) / 2` — the precise word count of the ROM checksum region.
+Reading the routine at `0x2928` confirms what it is: mask interrupts, sum words
+from `0x200` to the ROM end, compare against the stored header checksum, and
+execute `illegal` at `0x294C` on mismatch.
+
+**No trap fired.** The recompiled code computed the checksum over half a
+million iterations and matched the stored `0x5E34`. That exercises postincrement
+addressing, 16-bit addition with wraparound, `cmpa.l`, and signed branch
+control, and is the first real evidence the semantics are correct rather than
+merely well-formed.
+
+### Interrupts, and where boot actually stops
+
+`0x28D6` is `bra.b $28d6`, an infinite self-loop, and the generated C for it
+(`return 0x28D6u;`) is correct. This is not an error path — it is the standard
+Mega Drive idle loop, where the main thread spins and the VBlank handler does
+all the work via the pointer at `$FFFFE002`.
+
+Implemented 68000 interrupt entry (latch SR, force supervisor, swap to the
+supervisor stack, raise the mask, push PC and SR, vector through `0x78`) and
+drove VBlank between frame-sized slices.
+
+**It still does not fire.** Instrumenting every SR write shows only 27 of them,
+all `0x2700` or `0x2708` — `imask` is never lowered below 7, so every VBlank is
+correctly masked, and `$FFFFE002` is never populated.
+
+That is not a CPU bug. The ROM never reaches its interrupt-enabling path
+because `hal_stub.c` does not model the hardware well enough: VDP status is a
+constant, controller reads return zero, TMSS writes are discarded. Some init
+routine polls hardware and takes a branch real hardware would not.
+
+Chasing that by inspection would be guesswork. It is exactly what the
+differential oracle exists for, so **Genesis-Plus-GX (M2/task 8) is now the
+critical path** — run both from reset and find the first divergent block.
+
+Current state: 122 of 9,411 blocks executed, ~87M blocks/sec.

@@ -87,9 +87,12 @@ class Tracer:
                 self.insns[pc] = (ins.size, m, op)
 
                 is_branch = (m in ("bsr","jsr","jmp","bra")
+                             or m.startswith("db")
                              or (m.startswith("b") and m not in ("bset","bclr","bchg","btst")))
                 if is_branch:
-                    tgt = resolve(op)
+                    # DBcc is `dbra dN, target` -- the destination is the LAST
+                    # operand, not the whole string.
+                    tgt = resolve(op.rsplit(',', 1)[-1] if m.startswith("db") else op)
                     if tgt is None:
                         if m in ("jmp","jsr"):
                             self.indirect.append((pc, "%s %s" % (m, op)))

@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands recomp vectors clean
+.PHONY: all verify-rom analyse test check-operands recomp run vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -38,6 +38,21 @@ build/blocks.o: src/gen/blocks.c include/m68k.h
 	$(CC) $(CFLAGS) -Wno-unused-parameter -c $< -o $@
 
 build/hal_stub.o: src/hal_stub.c include/m68k.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+## run - build the boot harness and execute the ROM
+run: build/db4a
+	./build/db4a "$(ROM)" 200000
+
+build/db4a: build/blocks.o build/hal_stub.o build/dispatch.o build/main.o
+	$(CC) $^ -o $@
+
+build/dispatch.o: src/dispatch.c include/m68k.h include/hal.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/main.o: src/main.c include/m68k.h include/hal.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 

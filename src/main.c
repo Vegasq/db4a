@@ -1,0 +1,97 @@
+/* Boot harness: load the ROM, reset the CPU, execute, report where it got to. */
+#include "m68k.h"
+#include "hal.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+extern unsigned long m68k_blocks_run;
+extern uint32_t m68k_last_unknown;
+extern unsigned long *m68k_profile;
+extern unsigned long m68k_irq_taken, m68k_irq_masked;
+void m68k_profile_enable(void);
+
+static int cmp_hot(const void *a, const void *b) {
+    unsigned ia = *(const unsigned *)a, ib = *(const unsigned *)b;
+    if (m68k_profile[ia] < m68k_profile[ib]) return 1;
+    if (m68k_profile[ia] > m68k_profile[ib]) return -1;
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc < 2) { fprintf(stderr, "usage: %s <rom> [max_blocks]\n", argv[0]); return 2; }
+    unsigned long budget = (argc > 2) ? strtoul(argv[2], NULL, 0) : 1000000;
+
+    FILE *f = fopen(argv[1], "rb");
+    if (!f) { perror(argv[1]); return 1; }
+    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+    uint8_t *rom = malloc((size_t)n);
+    if (fread(rom, 1, (size_t)n, f) != (size_t)n) { fprintf(stderr, "short read\n"); return 1; }
+    fclose(f);
+
+    hal_set_rom(rom, (size_t)n);
+    hal_reset_ram();
+
+    /* Reset: SSP from $000000, PC from $000004, supervisor, interrupts masked */
+    CPU.a[7]   = m68k_read32(0);
+    CPU.ssp    = CPU.a[7];
+    CPU.super  = true;
+    CPU.imask  = 7;
+    uint32_t pc = m68k_read32(4);
+
+    printf("recompiled blocks : %u\n", BLOCK_COUNT);
+    printf("reset SSP         : %08X\n", CPU.a[7]);
+    printf("reset PC          : %06X\n", pc);
+    printf("running (budget %lu blocks)...\n\n", budget);
+    m68k_profile_enable();
+    { extern int hal_log_sr; hal_log_sr = getenv("DB4A_LOG_SR") != NULL; }
+
+    /* Run in frame-sized slices, firing VBlank between them. The ROM boots
+       into an idle loop and does all its work from the level 6 handler, so
+       without this nothing past initialisation ever executes. */
+    unsigned long slice = budget / 300 ? budget / 300 : 1;
+    uint32_t end = pc;
+    unsigned frames = 0;
+    unsigned long total = 0;
+    for (frames = 0; frames < 300 && total < budget; frames++) {
+        end = m68k_run(end, slice);
+        total += m68k_blocks_run;
+        if (m68k_last_unknown) break;
+        end = m68k_interrupt(end, 6);          /* VBlank */
+    }
+    m68k_blocks_run = total;
+    printf("frames simulated  : %u\n", frames);
+
+    printf("\nblocks executed   : %lu\n", m68k_blocks_run);
+    printf("stopped at PC     : %06X\n", end);
+    if (m68k_last_unknown)
+        printf("reason            : no block for PC %06X (needs interpreter fallback)\n",
+               m68k_last_unknown);
+    else
+        printf("reason            : block budget exhausted\n");
+    printf("I/O reads / writes: %lu / %lu\n", hal_io_reads, hal_io_writes);
+    printf("IRQ taken / masked: %lu / %lu\n", m68k_irq_taken, m68k_irq_masked);
+    { extern unsigned long hal_sr_writes;
+      printf("SR writes         : %lu\n", hal_sr_writes); }
+    printf("SR state          : imask=%u super=%d\n", CPU.imask, (int)CPU.super);
+    printf("RAM $FFFFE002     : %08X  (main-loop handler pointer)\n", m68k_read32(0xFFFFE002));
+    printf("D0-D7 %08X %08X %08X %08X %08X %08X %08X %08X\n",
+           CPU.d[0],CPU.d[1],CPU.d[2],CPU.d[3],CPU.d[4],CPU.d[5],CPU.d[6],CPU.d[7]);
+    printf("A0-A7 %08X %08X %08X %08X %08X %08X %08X %08X\n",
+           CPU.a[0],CPU.a[1],CPU.a[2],CPU.a[3],CPU.a[4],CPU.a[5],CPU.a[6],CPU.a[7]);
+
+    if (m68k_profile) {
+        unsigned *idx = malloc(BLOCK_COUNT * sizeof *idx);
+        unsigned live = 0;
+        for (unsigned i = 0; i < BLOCK_COUNT; i++) {
+            if (m68k_profile[i]) idx[live++] = i;
+        }
+        qsort(idx, live, sizeof *idx, cmp_hot);
+        printf("\ndistinct blocks executed: %u of %u\n", live, BLOCK_COUNT);
+        printf("hottest blocks:\n");
+        for (unsigned i = 0; i < live && i < 12; i++)
+            printf("   %06X  %12lu  %5.1f%%\n", BLOCK_ADDR[idx[i]],
+                   m68k_profile[idx[i]],
+                   100.0 * m68k_profile[idx[i]] / (double)m68k_blocks_run);
+    }
+    return 0;
+}
