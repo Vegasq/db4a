@@ -453,3 +453,80 @@ differential oracle exists for, so **Genesis-Plus-GX (M2/task 8) is now the
 critical path** — run both from reset and find the first divergent block.
 
 Current state: 122 of 9,411 blocks executed, ~87M blocks/sec.
+
+### The region register: one byte blocking the whole boot
+
+Rather than build emulator infrastructure to find the divergence, logged all
+26 I/O reads with the block that made each. The list was small enough to read
+directly, and the last entry gave it away: `blk 002840 read A10001 -> 0000`.
+
+`$A10001` is the console version register — bit 7 export, bit 6 PAL, bit 5 no
+Mega CD. The boot code:
+
+```
+002840  move.b  $a10001.l, d0
+002846  andi.b  #$40, d0        ; isolate the PAL bit
+00284A  beq.w   $2860           ; not PAL -> skip
+00285A  move.w  #$2000, sr      ; <- the ONLY instruction that unmasks IRQs
+```
+
+`move.w #$2000, sr` at `0x285A` is the sole instruction that lowers the
+interrupt mask, and it sits on the PAL branch only. The stub returned 0, bit 6
+was clear, the branch skipped it. That one byte explains the stuck `imask=7`,
+the dead VBlank and the empty `$FFFFE002`. This is a region E (PAL Europe)
+cartridge, so the HAL now reports a PAL export console (`0xE0`).
+
+**Lesson: the cheap diagnostic beat the expensive one.** The plan was to
+instrument Genesis-Plus-GX and diff execution. Reading 26 log lines found it in
+minutes. Build the oracle when inspection actually fails, not before.
+
+### Self-bootstrapping coverage
+
+With interrupts live, execution hit `0x8C0` — a PC never statically decoded,
+reachable only through the RAM dispatch.
+
+Realised the running build *is* a PC tracer. `tools/bootstrap.sh` closes the
+loop: run until an unknown PC, record it as a seed, re-run static discovery
+from it, regenerate, repeat. `trace.py` reads `build/seeds.txt` as extra entry
+points.
+
+```
+iter  1: blocks=580010    distinct=149 of 9411   irq=2/56    -> new entry 0008C0
+iter  2: blocks=2780020   distinct=327 of 9426   irq=221/57  -> new entry 017C32
+iter  3: blocks=3000000   distinct=338 of 9445   irq=243/57  -> converged
+```
+
+Two seeds were enough to converge. This is cheaper than instrumenting an
+external emulator and needs no third-party code, though the emulator is still
+required later as a *correctness* oracle — finding unknown PCs and verifying
+behaviour are different jobs.
+
+### The RAM dispatch works
+
+```
+RAM $FFFFE002 : 00017C32   (main-loop handler pointer)
+IRQ taken     : 243
+distinct blocks executed: 338 of 9445
+```
+
+`$FFFFE002` is populated and live. The mechanism that drove the entire
+architecture decision — a state machine dispatching through a RAM function
+pointer — now works end to end: boot installs the handler, VBlank fires, and
+the flat dispatch loop resolves it at runtime with no special case, exactly as
+the block model predicted.
+
+### Pacing is the next honest gap
+
+76% of blocks now run in `0x000FDA`:
+
+```
+000FD6  move.w  $e006.w, d0
+000FDA  cmp.w   $e006.w, d0
+000FDE  beq.b   $fda
+```
+
+That is wait-for-vsync, spinning until the VBlank handler increments the frame
+counter at `$FFFFE006` (the `addq.w #$1, $e006.w` at `0x181C`). Correct game
+behaviour, not a bug. It over-spins only because frames are sliced by a fixed
+block count rather than a cycle budget. **Cycle counting is needed** for v1
+acceptance criterion 6 (PAL 50 Hz, no drift).

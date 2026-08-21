@@ -13,35 +13,58 @@ static size_t rom_len;
 static uint8_t ram[0x10000];        /* $FF0000-$FFFFFF, mirrored */
 
 unsigned long hal_io_reads, hal_io_writes;
+extern uint32_t m68k_cur_block;
+int hal_log_io;
 
 void hal_set_rom(const uint8_t *d, size_t n) { rom = d; rom_len = n; }
 void hal_reset_ram(void) { memset(ram, 0, sizeof ram); }
 
-/* $A00000-$A1FFFF  Z80 / controller / version registers
- * $C00000-$C0001F  VDP data, control and HV counter
- * Reads return 0 for now, except where a zero would deadlock the ROM. */
-static uint16_t io_read16(uint32_t a) {
+/* Hardware reads.
+ *
+ * $A10001  version register. Bit 7 export (non-Japanese), bit 6 PAL,
+ *          bit 5 no Mega CD attached, bits 3-0 hardware revision.
+ *          This matters: the boot code at $2840 tests bit 6 and only the
+ *          PAL branch reaches `move.w #$2000, sr` at $285A, which is the
+ *          sole instruction that unmasks interrupts. Reporting NTSC here
+ *          leaves VBlank masked forever and the game never starts.
+ *          This is a region E (PAL Europe) cartridge, so report a PAL
+ *          export console.
+ * $A11100  Z80 bus request. Bit 0 set means the Z80 still holds the bus;
+ *          report it free so the ROM's wait loops terminate.
+ * $C00004  VDP status. Report "not busy, not in DMA".
+ */
+#define VERSION_REG 0xE0
+
+static uint8_t io_read8(uint32_t a) {
     hal_io_reads++;
-    if ((a & 0xFFFFFF) == 0xC00004 || (a & 0xFFFFFF) == 0xC00006) {
-        /* VDP status: report "not busy, not in DMA" so the ROM's wait loops
-           terminate instead of spinning forever against a constant 0. */
-        return 0x3400;
+    uint8_t v = 0;
+    switch (a) {
+    case 0xA10001: v = VERSION_REG; break;
+    case 0xA11100:
+    case 0xA11101: v = 0x00; break;            /* Z80 bus granted */
+    case 0xC00004: v = 0x34; break;
+    case 0xC00005: v = 0x00; break;
+    case 0xC00006: v = 0x34; break;
+    case 0xC00007: v = 0x00; break;
+    default:       v = 0; break;
     }
-    return 0;
+    if (hal_log_io)
+        fprintf(stderr, "[io ] blk %06X  read  %06X -> %02X\n", m68k_cur_block, a, v);
+    return v;
 }
 
 uint8_t m68k_read8(uint32_t a) {
     a &= 0xFFFFFF;
     if (a < rom_len)   return rom[a];
     if (a >= 0xFF0000) return ram[a & 0xFFFF];
-    if (a >= 0xA00000) return (uint8_t)(io_read16(a) >> ((a & 1) ? 0 : 8));
+    if (a >= 0xA00000) return io_read8(a);
     return 0;
 }
 uint16_t m68k_read16(uint32_t a) {
     a &= 0xFFFFFF;
     if (a + 1 < rom_len) return (uint16_t)((rom[a] << 8) | rom[a + 1]);
     if (a >= 0xFF0000)   return (uint16_t)((ram[a & 0xFFFF] << 8) | ram[(a + 1) & 0xFFFF]);
-    if (a >= 0xA00000)   return io_read16(a);
+    if (a >= 0xA00000)   return (uint16_t)((io_read8(a) << 8) | io_read8(a + 1));
     return 0;
 }
 uint32_t m68k_read32(uint32_t a) {

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 unsigned long m68k_blocks_run;
+uint32_t m68k_cur_block;   /* block currently executing, for I/O attribution */
 unsigned long m68k_irq_taken, m68k_irq_masked;
 uint32_t m68k_last_unknown;
 
@@ -66,6 +67,7 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
             return pc;
         }
         if (m68k_profiling) m68k_profile[i]++;
+        m68k_cur_block = pc;
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }

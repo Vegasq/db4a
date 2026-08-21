@@ -43,7 +43,9 @@ int main(int argc, char **argv) {
     printf("reset PC          : %06X\n", pc);
     printf("running (budget %lu blocks)...\n\n", budget);
     m68k_profile_enable();
-    { extern int hal_log_sr; hal_log_sr = getenv("DB4A_LOG_SR") != NULL; }
+    { extern int hal_log_sr, hal_log_io;
+      hal_log_sr = getenv("DB4A_LOG_SR") != NULL;
+      hal_log_io = getenv("DB4A_LOG_IO") != NULL; }
 
     /* Run in frame-sized slices, firing VBlank between them. The ROM boots
        into an idle loop and does all its work from the level 6 handler, so
@@ -63,9 +65,15 @@ int main(int argc, char **argv) {
 
     printf("\nblocks executed   : %lu\n", m68k_blocks_run);
     printf("stopped at PC     : %06X\n", end);
-    if (m68k_last_unknown)
-        printf("reason            : no block for PC %06X (needs interpreter fallback)\n",
+    if (m68k_last_unknown) {
+        printf("reason            : no block for PC %06X (unknown target)\n",
                m68k_last_unknown);
+        const char *sf = getenv("DB4A_SEEDS");
+        if (sf) {
+            FILE *s = fopen(sf, "a");
+            if (s) { fprintf(s, "%06X\n", m68k_last_unknown); fclose(s); }
+        }
+    }
     else
         printf("reason            : block budget exhausted\n");
     printf("I/O reads / writes: %lu / %lu\n", hal_io_reads, hal_io_writes);

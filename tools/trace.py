@@ -110,6 +110,24 @@ def main(path):
         if v < ROM_END:
             t.trace(v)
 
+    # Entry points found by actually running the recompiled build. The game
+    # dispatches through RAM function pointers, so these are PCs no static
+    # pass could predict; feeding them back is how coverage grows past the
+    # static plateau.
+    seeds_path = os.path.join(ROOT, "build", "seeds.txt")
+    nseeds = 0
+    if os.path.exists(seeds_path):
+        for line in open(seeds_path):
+            line = line.split('#')[0].strip()
+            if not line:
+                continue
+            v = int(line, 16)
+            if v < ROM_END and v not in t.insns:
+                t.trace(v)
+                nseeds += 1
+    if nseeds:
+        print("runtime seeds applied: %d" % nseeds)
+
     tables = {}
     for rnd in range(1, 21):
         order = sorted(t.insns)
