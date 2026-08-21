@@ -80,6 +80,10 @@ class Tracer:
                     self.bad.append(pc)
                     break
                 m, op = ins.mnemonic, ins.op_str
+                if jumptab.is_impossible(op):
+                    # 68020+ addressing cannot occur here; these bytes are data.
+                    self.bad.append(pc)
+                    break
                 self.insns[pc] = (ins.size, m, op)
 
                 is_branch = (m in ("bsr","jsr","jmp","bra")
@@ -110,7 +114,7 @@ def main(path):
                      if a not in tables and jumptab.RE_DISPATCH.match(s.split(None,1)[1].strip())]
         added = 0
         for site, s in new_sites:
-            r = jumptab.resolve(d, t.insns, order, site, s.split(None,1)[1])
+            r = jumptab.resolve(d, t.insns, order, site, s.split(None,1)[1], md=t.md)
             if not r:
                 continue
             tbl, kind, targets, bound = r
@@ -139,15 +143,22 @@ def main(path):
     print("still unresolved     : %d" % len(unres))
     print("failed decodes       : %d" % len(t.bad))
     if t.bad:
+        badset = set(t.bad)
         blame = {}
         for a,(tbl,kind,tgts,bound) in tables.items():
             for tg in tgts:
-                if tg in t.bad: blame.setdefault(a,[]).append(tg)
-        print("  bad decode sites blamed on tables:")
-        for a,v in sorted(blame.items()):
-            tbl,kind,tgts,bound = tables[a]
-            print("    site %06X tbl %06X %-6s bound=%s entries=%d -> %d bad"
-                  % (a,tbl,kind,bound,len(tgts),len(v)))
+                # a target is suspect if it failed to decode OR decoded into
+                # something that is not real 68000 code
+                if tg in badset or not jumptab.probe_valid(t.md, d, tg):
+                    blame.setdefault(a,[]).append(tg)
+        if blame:
+            print("  tables producing suspect targets:")
+            for a,v in sorted(blame.items()):
+                tbl,kind,tgts,bound = tables[a]
+                print("    site %06X tbl %06X %-6s bound=%s entries=%d -> %d suspect"
+                      % (a,tbl,kind,bound,len(tgts),len(v)))
+        else:
+            print("  no table produced a suspect target")
 
     json.dump({
         "insns":    {("%06X"%a): list(v) for a, v in sorted(t.insns.items())},

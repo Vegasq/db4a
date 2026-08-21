@@ -112,17 +112,17 @@ Recursive descent from the vectors, following direct branches and calls, then
 iterating jump-table recovery to a fixpoint. Current expected output:
 
 ```
-round  1: +36 tables, +6295 instructions
-round  2: +10 tables, +414 instructions
+round  1: +36 tables, +5808 instructions
+round  2: +10 tables, +401 instructions
 round  3: +2 tables, +36 instructions
 round  4: +0 tables, +0 instructions
 
-instructions decoded : 32025
-bytes covered as code: 108014 (10.3% of ROM)
-function entry points: 772
+instructions decoded : 31525
+bytes covered as code: 106732 (10.2% of ROM)
+function entry points: 768
 jump tables resolved : 48
 still unresolved     : 13
-failed decodes       : 76
+failed decodes       : 0
 ```
 
 `build/codemap.json` contains `insns` (addr → size/mnemonic/operands),
@@ -245,6 +245,13 @@ These cost real debugging time. Do not rediscover them.
   detail *is* correct (raw displacement in `mem.disp`; `op_str` shows the
   already-resolved target).
 - **`ins.groups` raises `CsError` in SKIPDATA mode.** Do not touch it.
+- **capstone emits 68020+ addressing modes even in `CS_MODE_M68K_000`.** This
+  is a wart, but a useful one: memory-indirect (`([$N, Rn])`), an outer
+  displacement (`([$N, Rn], $N)`), a scale factor (`Rn.l * 8`), and
+  `invalid.w` **cannot occur on a 68000**, so their presence is proof the
+  bytes being decoded are data. `jumptab.is_impossible()` uses this as a
+  validity oracle, and `probe_valid()` vets every guard-less jump-table entry
+  with it. This is what eliminated all 76 bad decodes.
 - **`od -t x2` byte-swaps on x86.** Big-endian ROM data comes out reversed.
   Use `od -A x -t x1`.
 - **`tools/rommap.py` classification is unreliable.** Its CODE/DATA split is a
@@ -316,9 +323,9 @@ Standing order of work:
 6. Audio (YM2612, PSG, Z80) — deliberately after v1, may be stubbed silent.
 7. Full campaign, all three houses.
 
-Ongoing, not blocking: extend static discovery (13 indirect sites, 76 bad
-decodes) and instrument an emulator to log executed PCs to get past the ~10%
-static plateau.
+Ongoing, not blocking: extend static discovery (13 indirect sites remain) and
+instrument Genesis-Plus-GX to log executed PCs to get past the ~10% static
+plateau.
 
 **Open question, not yet decided:** the HAL is roughly 70% of remaining work
 and is identical whether blocks are recompiled or interpreted. Dropping in a

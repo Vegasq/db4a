@@ -232,3 +232,71 @@ frame-hash diffing.
 
 Recorded as an architecture-decision table in `docs/roadmap.md` so the
 reasoning survives past the point where anyone remembers the discussion.
+
+---
+
+## 2026-08-21 — Session 3: a correction, and 76 bad decodes eliminated
+
+### Cataloguing operand forms turned up a bug
+
+Before writing the semantics generator, enumerated every distinct operand shape
+in the corpus to ground the addressing-mode model in real data rather than
+guesswork. 33 shapes — tractable. But five of them **cannot exist on a 68000**:
+memory indirect `([$N, Rn])`, memory indirect with outer displacement,
+a scale factor `Rn.l * 8`, and `invalid.w`. All are 68020+ forms that capstone
+emits anyway despite `CS_MODE_M68K_000`.
+
+Their example addresses clustered in `0x1DF00-0x1E400`, and the "displacement"
+values were ASCII byte patterns. Byte-class analysis confirmed it: the span
+`0x1D000-0x1F000` is **99.3% printable**, versus 30% printable and 19% nul in
+known code. Roughly 8 KiB of text data that the tracer had walked into and
+decoded as 268 fictional instructions.
+
+### Correction to session 1
+
+Session 1 recorded that the 76 bad decodes were "*not* bogus table entries —
+attribution showed no table produced them." **That was wrong.**
+
+The attribution only tested whether a table produced an *undecodable* target.
+The offending target, `0x1DF44`, decoded perfectly well — into nonsense. Tables
+producing decodable garbage were invisible to the check, so it reported a clean
+bill of health it had no basis for.
+
+The actual culprit: dispatch site `0x16F40`, whose table at `0x16F44` has **no
+`cmpi` guard**. `find_bound` returned `None`, the scan fell back to
+`MAX_ENTRIES = 512`, and it read straight past the end of a 32-entry table.
+
+### Fix
+
+Two mechanisms, both in `tools/jumptab.py`:
+
+1. **`is_impossible()` as a validity oracle.** Capstone's willingness to emit
+   68020+ forms is a wart, but it makes an excellent data detector: those forms
+   are proof the bytes are not 68000 code. `probe_valid()` decodes ahead a few
+   instructions from a candidate target and rejects it if any impossible form
+   appears. Applied to every guard-less jump-table entry, and in the trace loop
+   to stop flow.
+2. **`locality_ok()`.** Real dispatch arms cluster together; an entry many KiB
+   outside the span of those already accepted means we have read past the end.
+
+Also widened the blame attribution to catch decodable-garbage targets, closing
+the blind spot that hid this in the first place.
+
+### Result
+
+```
+instructions decoded : 31525   (was 32025)
+bytes covered as code: 106732 (10.2% of ROM)
+function entry points: 768     (was 772)
+failed decodes       : 0       (was 76)
+```
+
+The 500 lost instructions are the fabricated ones, not lost coverage. Table
+`0x16F40` now terminates at exactly 32 entries, ending on a repeated
+`016F84` — the default-case padding of a switch, which is the right boundary.
+Zero instructions remain in the text region and zero use impossible forms.
+
+**Lesson worth keeping:** the operand catalogue was meant to be routine
+groundwork for the semantics generator. It found a real bug because it forced
+every form in the corpus to be accounted for, rather than only the ones that
+looked interesting. Exhaustive enumeration beats sampling.
