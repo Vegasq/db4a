@@ -300,3 +300,35 @@ Zero instructions remain in the text region and zero use impossible forms.
 groundwork for the semantics generator. It found a real bug because it forced
 every form in the corpus to be accounted for, rather than only the ones that
 looked interesting. Exhaustive enumeration beats sampling.
+
+### Addressing-mode model
+
+Built `tools/ea.py`: the layer both backends of the semantics generator share.
+It is deliberately independent of *how* an operand was obtained — the
+recompiler parses capstone's `op_str` at build time and folds constants, the
+interpreter will decode mode/register bits at runtime, but both produce the
+same `Operand` objects and use the same C emitters.
+
+Parsing is validated against the whole corpus: **31,525 / 31,525 instructions,
+zero failures**, across 14 operand kinds. `tests/check_operands.py` keeps that
+as an enforced invariant via `make check-operands`, and also fails if any
+impossible-on-68000 form reappears — an unparseable operand means either a gap
+in the model or the tracer decoding data as code, and both must fail loudly.
+
+Emission is split into four steps so side effects land in the right order and
+each address is computed exactly once: `setup` (where `-(An)` predecrement
+happens), `load`, `store`, `post` (where `(An)+` postincrement happens).
+
+Two 68000 rules that are easy to get wrong are encoded and tested explicitly:
+
+- **Byte access via `(A7)+` / `-(A7)` moves the stack by 2, not 1**, keeping it
+  word-aligned.
+- **Address register writes are always full 32-bit and sign-extend from word.**
+  `movea.w` sign-extends into the entire register; truncating would be wrong.
+
+Partial-width data register writes preserve the upper bits, also tested.
+
+`tests/gen_ea_test.py` generates C exercising every addressing mode, which is
+then compiled and run by `make test`. Kept as a tracked generator rather than a
+throwaway — the same mistake caught earlier with source living in gitignored
+`build/`.
