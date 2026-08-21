@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands recomp run vectors clean
+.PHONY: all verify-rom analyse test check-operands recomp run play vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -45,8 +45,26 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-build/db4a: build/blocks.o build/hal_stub.o build/hal_vdp.o build/render.o build/dispatch.o build/main.o
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o \
+               build/render.o build/dispatch.o
+
+build/db4a: $(COMMON_OBJS) build/main.o
 	$(CC) $^ -o $@
+
+## play - build and run the interactive SDL build
+play: build/db4a-sdl
+	./build/db4a-sdl "$(ROM)"
+
+build/db4a-sdl: $(COMMON_OBJS) build/sdl_main.o
+	$(CC) $^ -o $@ $(shell pkg-config --libs sdl2)
+
+build/sdl_main.o: src/sdl_main.c include/render.h include/input.h include/hal.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) $(shell pkg-config --cflags sdl2) -c $< -o $@
+
+build/hal_input.o: src/hal_input.c include/input.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/hal_vdp.o: src/hal_vdp.c include/vdp.h include/m68k.h
 	@mkdir -p build

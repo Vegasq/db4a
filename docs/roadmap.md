@@ -98,9 +98,10 @@ stays C11 plus SDL2.
 | M0 | Analysis foundation: ROM verified, code discovery, runtime + flag tests | **done** |
 | M1 | Shared semantics table emitting translator + interpreter; `dispatch.c`; ROM executes from reset | in progress |
 | M2 | VDP + SDL2 renderer; title screen matches reference emulator | |
+| M2.5 | **Z80 core + 68000/Z80 bus** — reclassified as a v1 blocker, see below | |
 | M3 | Modern input; menus navigable | |
 | M4 | **v1 — one mission playable end to end** | |
-| M5 | Audio: YM2612, PSG, Z80 sound CPU | |
+| M5 | Audio: YM2612 and PSG (Z80 itself moved to M2.5) | |
 | M6 | *(retired — was cross-platform build; Linux-only now)* | dropped |
 | M7 | Full campaign, all three houses | |
 | M8 | Phase 2 — optional modern enhancements behind flags | |
@@ -108,6 +109,35 @@ stays C11 plus SDL2.
 Differential testing underpins M2 onward and is built alongside M2, not
 deferred — it is the oracle the whole fidelity policy depends on. The reference
 is **Genesis-Plus-GX**, patched to log executed PCs; see `CLAUDE.md`.
+
+## The Z80 is a v1 blocker, not an audio feature
+
+Recorded 2026-08-21, after input did nothing.
+
+The ROM **never reads the controller data port at `$A10003`**. It touches the
+port control registers once at boot and then ignores them. What it does poll,
+heavily, is a handshake with the Z80:
+
+```
+0014C8  move.b  #$1, $a01b20.l    ; request byte into Z80 RAM
+0014D0  move.b  $a01b21.l, d0     ; poll for a reply
+```
+
+1108 polls in a 1500-frame run, alongside 2840 Z80 bus requests at `$A11100`.
+Forcing a non-zero reply makes things *worse*, not better — distinct blocks
+executed drop from 410 to 127 and the VDP configuration regresses to its
+early-boot layout, so the ROM expects a real protocol rather than any non-zero
+byte.
+
+**Established:** the controller port is never read; the ROM gates on a Z80
+handshake; no stub value improves on simply reporting an absent Z80.
+**Inferred, not proven:** that pad state reaches the 68000 through the Z80.
+
+Either way the consequence is the same and it changes the plan: audio was
+deferred to M5 on the reasoning that it is "large and largely independent".
+That reasoning was wrong about the Z80 specifically. The Z80 and its bus are on
+the critical path to gameplay and must land before v1. The sound *chips*
+(YM2612, PSG) can still be stubbed silent and stay in M5.
 
 ## Architecture decisions
 
@@ -118,5 +148,6 @@ is **Genesis-Plus-GX**, patched to log executed PCs; see `CLAUDE.md`.
 | 2026-08-21 | v1 = one mission end to end | title screen proves too little, full campaign signals too late |
 | 2026-08-21 | Linux x86_64 only | cuts CMake, cross-compilation and multi-platform CI |
 | 2026-08-21 | Audio deferred to M5 | large, independent; would delay every other signal |
+| 2026-08-21 | **Z80 core pulled forward to M2.5** | ROM gates gameplay on a Z80 handshake; controller port is never read |
 | 2026-08-21 | Single shared semantics definition emitting both backends | makes interpreter/recompiler divergence unrepresentable |
 | 2026-08-21 | Genesis-Plus-GX as reference oracle | simple to instrument; accuracy ample for this title |

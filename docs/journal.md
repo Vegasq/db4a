@@ -750,3 +750,52 @@ update cycle. That is the expected consequence of the approximate cycle model
 with animation phase and inconsistent with a structural fault, but it has not
 been proven. Sprites also remain entirely untested — the sprite table was empty
 in every frame captured.
+
+### SDL frontend and input — and a roadmap correction
+
+Added `src/hal_input.c` (3-button pad with TH multiplexing on bit 6, active-low
+buttons) and `src/sdl_main.c` (SDL2 window, keyboard and gamepad bindings held
+in a table so remapping is a data change, 50 Hz pacing). `make play` builds and
+runs it; the headless harness stays as the batch/diff tool and gained scripted
+input via `DB4A_PRESS="900:start"` so input can be tested without a display.
+
+**Input did nothing.** Identical 410 distinct blocks with and without a
+simulated Start press. Rather than guess, added a histogram of every hardware
+address touched:
+
+```
+R A11100 : 2840     Z80 bus request
+R A01B21 : 1408     Z80 RAM $1B21
+R C00004 :  120     VDP status
+R A10001 :    2     version register
+```
+
+`$A10003`, the controller data port, **is never read at all**. The ROM
+configures the port control registers once at boot and then ignores them. What
+it actually polls is a handshake with the Z80:
+
+```
+0014C8  move.b  #$1, $a01b20.l    ; request byte into Z80 RAM
+0014D0  move.b  $a01b21.l, d0     ; poll for a reply
+0014FA  move.b  #$0, $a01b20.l
+```
+
+Hypothesised the game was simply waiting for a non-zero reply and tested it by
+forcing one. **The hypothesis was wrong**: with a forced reply, distinct blocks
+fell from 410 to 127 and the VDP configuration regressed to its early-boot
+layout. The ROM expects a real protocol, not any non-zero byte. Removed the
+experiment rather than leaving a "fake the Z80" backdoor in the HAL — the
+finding belongs in the journal, not in shipped code.
+
+What is **established**: the controller port is never read; the ROM gates on a
+Z80 handshake; no stub value beats simply reporting an absent Z80. What is
+**inferred but not proven**: that pad state reaches the 68000 via the Z80.
+
+Either way the plan changes. Audio was deferred to M5 on the reasoning that it
+is "large and largely independent". That was wrong about the Z80 specifically —
+it is on the critical path to gameplay. Added milestone M2.5: Z80 core plus
+68000/Z80 bus arbitration, RAM and bank register, with the sound *chips* still
+stubbed and still in M5.
+
+This is the second roadmap assumption that measurement overturned, after the
+PAL region byte. Both were reasonable-sounding and both were wrong.

@@ -4,7 +4,9 @@
 #include "m68k.h"
 #include "hal.h"
 #include "vdp.h"
+#include "input.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 m68k_t CPU;
@@ -36,13 +38,33 @@ void hal_reset_ram(void) { memset(ram, 0, sizeof ram); }
  */
 #define VERSION_REG 0xE0
 
+/* Histogram of hardware addresses touched, so we can see what the ROM polls. */
+#define IOHIST 32
+static struct { uint32_t addr; unsigned long n; } io_hist[IOHIST];
+static void io_tally(uint32_t a, int write) {
+    uint32_t key = a | (write ? 0x1000000u : 0u);
+    for (int i = 0; i < IOHIST; i++) {
+        if (io_hist[i].n == 0) { io_hist[i].addr = key; io_hist[i].n = 1; return; }
+        if (io_hist[i].addr == key) { io_hist[i].n++; return; }
+    }
+}
+void hal_io_report(void) {
+    printf("\n--- hardware access histogram ---\n");
+    for (int i = 0; i < IOHIST && io_hist[i].n; i++)
+        printf("  %s %06X : %lu\n", (io_hist[i].addr & 0x1000000) ? "W" : "R",
+               io_hist[i].addr & 0xFFFFFF, io_hist[i].n);
+}
+
 static uint8_t io_read8(uint32_t a) {
     hal_io_reads++;
+    io_tally(a, 0);
     uint8_t v = 0;
     switch (a) {
     case 0xA10001: v = VERSION_REG; break;
     case 0xA11100:
     case 0xA11101: v = 0x00; break;            /* Z80 bus granted */
+    case 0xA10003: v = pad_read_data(0); break;
+    case 0xA10005: v = pad_read_data(1); break;
     case 0xC00004: v = (uint8_t)(vdp_read_status() >> 8); break;
     case 0xC00005: v = (uint8_t)(vdp_read_status() & 0xFF); break;
     case 0xC00006: v = (uint8_t)(vdp_read_status() >> 8); break;
@@ -81,6 +103,13 @@ void m68k_write8(uint32_t a, uint8_t v) {
         /* A byte write to a VDP port duplicates the byte into both halves. */
         m68k_write16(a & ~1u, (uint16_t)((v << 8) | v));
         return;
+    }
+    switch (a) {
+    case 0xA10003: pad_write_data(0, v); hal_io_writes++; io_tally(a,1); return;
+    case 0xA10005: pad_write_data(1, v); hal_io_writes++; return;
+    case 0xA10009: pad_write_ctrl(0, v); hal_io_writes++; io_tally(a,1); return;
+    case 0xA1000B: pad_write_ctrl(1, v); hal_io_writes++; return;
+    default: break;
     }
     if (a >= 0xA00000) { hal_io_writes++; return; }
 }

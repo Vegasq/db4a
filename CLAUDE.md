@@ -320,7 +320,9 @@ Standing order of work:
    reference emulator — the oracle the fidelity policy depends on.
 4. Modern input; menus navigable.
 5. **v1: one mission playable end to end.**
-6. Audio (YM2612, PSG, Z80) — deliberately after v1, may be stubbed silent.
+6. Audio chips (YM2612, PSG) — after v1, may be stubbed silent. The **Z80
+   itself is not deferrable**: the ROM gates gameplay on a Z80 handshake and
+   never reads the controller port directly. See `docs/roadmap.md`.
 7. Full campaign, all three houses.
 
 Ongoing, not blocking: extend static discovery (13 indirect sites remain) and

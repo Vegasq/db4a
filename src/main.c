@@ -3,8 +3,10 @@
 #include "hal.h"
 #include "vdp.h"
 #include "render.h"
+#include "input.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern unsigned long m68k_blocks_run;
 extern uint32_t m68k_last_unknown;
@@ -57,7 +59,34 @@ int main(int argc, char **argv) {
        without this nothing past initialisation ever executes. */
     uint32_t end = pc;
     unsigned frames = 0;
+    /* Scripted input, so the headless harness can drive the game past menus
+       without a display:  DB4A_PRESS="800:start,1000:c"  */
+    struct { unsigned at; int pad; } script[16];
+    unsigned nscript = 0;
+    { const char *sp = getenv("DB4A_PRESS");
+      char buf[256];
+      if (sp) {
+        snprintf(buf, sizeof buf, "%s", sp);
+        for (char *tok = strtok(buf, ","); tok && nscript < 16; tok = strtok(NULL, ",")) {
+            char name[32]; unsigned at;
+            if (sscanf(tok, "%u:%31s", &at, name) != 2) continue;
+            int b = -1;
+            if      (!strcmp(name,"start")) b = PAD_START;
+            else if (!strcmp(name,"a"))     b = PAD_A;
+            else if (!strcmp(name,"b"))     b = PAD_B;
+            else if (!strcmp(name,"c"))     b = PAD_C;
+            else if (!strcmp(name,"up"))    b = PAD_UP;
+            else if (!strcmp(name,"down"))  b = PAD_DOWN;
+            if (b >= 0) { script[nscript].at = at; script[nscript].pad = b; nscript++; }
+        }
+      } }
+
     for (frames = 0; frames < max_frames; frames++) {
+        /* Hold each scripted button for 8 frames from its trigger point. */
+        for (unsigned k = 0; k < nscript; k++) {
+            if (frames == script[k].at)       pad_set(script[k].pad, 1);
+            if (frames == script[k].at + 8)   pad_set(script[k].pad, 0);
+        }
         end = m68k_run_until(end, CPU.cycles + PAL_FRAME_CYCLES);
         if (m68k_last_unknown) break;
         end = m68k_interrupt(end, 6);          /* VBlank at end of frame */
@@ -90,6 +119,7 @@ int main(int argc, char **argv) {
     printf("A0-A7 %08X %08X %08X %08X %08X %08X %08X %08X\n",
            CPU.a[0],CPU.a[1],CPU.a[2],CPU.a[3],CPU.a[4],CPU.a[5],CPU.a[6],CPU.a[7]);
 
+    { extern void hal_io_report(void); hal_io_report(); }
     vdp_dump();
     render_frame();
     { const char *out = getenv("DB4A_PPM");
