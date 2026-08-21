@@ -332,3 +332,68 @@ Partial-width data register writes preserve the upper bits, also tested.
 then compiled and run by `make test`. Kept as a tracked generator rather than a
 throwaway — the same mistake caught earlier with source living in gitignored
 `build/`.
+
+### Instruction semantics and the recompiler backend
+
+`tools/semantics.py` now covers **100% of the corpus**, and `tools/recomp.py`
+turns the code map into compilable C.
+
+Built in three passes, measuring coverage after each:
+
+1. Data movement and arithmetic — 67.8%.
+2. Control flow — 92.9%. This needed a block model, not just expressions.
+   Settled on: **every basic block is a function returning the next PC**, driven
+   by a dispatch loop. No unbounded C stack growth, and an indirect transfer is
+   just a computed return value, so the `$FFFFE002` RAM dispatch needs no
+   special case at all.
+3. Shifts, bit ops, `movem`, mul/div, `Scc`, extended arithmetic — 100%.
+
+Shift and extended-arithmetic flag rules went into `include/m68k.h` as the
+single source of truth, with 12 new unit tests. Two rules encoded explicitly
+because they are easy to get wrong and silent when wrong:
+
+- **`ASL` sets V if the sign bit changed at any point during the shift**, not
+  merely if it differs at the end.
+- **`ADDX`/`SUBX` have a sticky Z**: only ever cleared, never set. This is what
+  makes multi-precision arithmetic work — a zero limb must not resurrect Z
+  after an earlier non-zero limb cleared it.
+
+Also encoded: MOVEM stores in **reverse** order in predecrement mode; bit ops
+are mod 32 on a register but mod 8 on memory; MOVE to/from SR/CCR/USP does not
+set condition codes from the value moved.
+
+### Coverage by mnemonic is not coverage
+
+Reaching "100%" by mnemonic proved only that a handler *existed*. Actually
+running the generator over all 31,525 instructions found **225 failures** in
+two categories the count could not see: status-register operands (~204), and
+single-register `movem`, which capstone renders as a bare register rather than
+a list (~21). Both fixed. Worth remembering as a general lesson — the useful
+metric was "does it emit", not "is it in the table".
+
+### Compiling the output
+
+First compile produced **11,488 errors**, all one bug: `Ctx.tmp()` restarted
+its counter per instruction, so temporaries collided inside a block. Fixed by
+giving each instruction its own brace scope, which also makes the generated
+code readable per-instruction.
+
+A second, subtler bug: `~(T)0` promotes to `int` for narrow types, so the
+`ASL`/`ASR` mask shifts were operating on `-1` — undefined behaviour that
+compiled silently at first. Reworked to mask in a known-unsigned domain.
+
+Result:
+
+```
+blocks emitted : 9265
+instructions   : 31525
+unimplemented  : 0
+203062 lines of C, 0 errors, 0 warnings
+```
+
+The generated code's entire dependency surface is **10 symbols**: six memory
+accessors, `set_sr`, two traps, and `CPU`. Nothing else leaks in, which is what
+makes swapping the stub HAL for a real one a contained change.
+
+`src/gen/blocks.c` is gitignored — it is reproducible output, and per ground
+rule 2 nothing derived is tracked.

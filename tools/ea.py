@@ -209,6 +209,10 @@ def load(op, sz, t):
         return "0x%Xu" % (op.v & mask)
     if isinstance(op, MEM):
         return "%s(%s)" % (RD[sz], t)
+    if isinstance(op, Special):
+        if op.name == 'sr':  return "get_sr()"
+        if op.name == 'ccr': return "(uint8_t)(get_sr() & 0xFF)"
+        if op.name == 'usp': return "CPU.usp"
     raise TypeError("cannot load from %r" % (op,))
 
 def store(op, sz, t, val):
@@ -228,6 +232,10 @@ def store(op, sz, t, val):
         return "CPU.a[%d] = %s;" % (op.n, val)
     if isinstance(op, MEM):
         return "%s(%s, %s);" % (WR[sz], t, val)
+    if isinstance(op, Special):
+        if op.name == 'sr':  return "set_sr((uint16_t)(%s));" % val
+        if op.name == 'ccr': return "set_ccr((uint8_t)(%s));" % val
+        if op.name == 'usp': return "CPU.usp = %s;" % val
     raise TypeError("cannot store to %r" % (op,))
 
 def post(op, sz):

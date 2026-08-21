@@ -46,6 +46,34 @@ int main(void){
     CPU.x=1;CPU.n=0;CPU.z=1;CPU.v=0;CPU.c=1;CPU.imask=7;CPU.super=1;
     CK("get_sr", get_sr()==0x2715);
 
+
+    /* ---- shifts and rotates ---- */
+    /* LSL.B 0x81 << 1 = 0x02, last bit out = 1 */
+    CPU.x=0; r=lsl8(0x81,1);
+    CK("lsl8 0x81<<1", r==0x02 && CPU.c==1 && CPU.x==1 && CPU.v==0);
+    /* shift count 0 clears C, leaves X alone */
+    CPU.x=1; CPU.c=1; r=lsl8(0x55,0);
+    CK("lsl8 count 0", r==0x55 && CPU.c==0 && CPU.x==1 && CPU.v==0);
+    /* LSR.B 0x01 >> 1 = 0, bit out = 1, Z set */
+    r=lsr8(0x01,1); CK("lsr8 0x01>>1", r==0 && CPU.c==1 && CPU.z==1);
+    /* ASR preserves sign */
+    r=asr8(0x80,1); CK("asr8 sign preserved", r==0xC0 && CPU.n==1 && CPU.v==0);
+    /* ASR.L of a negative value keeps filling with ones */
+    R=asr32(0x80000000u,4); CK("asr32 sign fill", R==0xF8000000u && CPU.n==1);
+    /* ASL sets V when the sign bit changes during the shift */
+    r=asl8(0x40,1); CK("asl8 V on sign change", r==0x80 && CPU.v==1 && CPU.n==1);
+    r=asl8(0x01,1); CK("asl8 no V", r==0x02 && CPU.v==0);
+    /* ROL.B 0x81 rotates the top bit into bit 0 */
+    r=rol8(0x81,1); CK("rol8 0x81", r==0x03 && CPU.c==1);
+    /* ROR.B 0x01 rotates bit 0 into the top */
+    r=ror8(0x01,1); CK("ror8 0x01", r==0x80 && CPU.c==1 && CPU.n==1);
+    /* ROXL rotates through X: X=1, 0x00 -> 0x01, new X = 0 */
+    CPU.x=1; r=roxl8(0x00,1); CK("roxl8 through X", r==0x01 && CPU.x==0 && CPU.c==0);
+    /* ROXR with count 0 copies X into C and changes nothing */
+    CPU.x=1; r=roxr8(0x5A,0); CK("roxr8 count 0", r==0x5A && CPU.c==1);
+    /* rotate by a full width is identity */
+    r=rol8(0xA5,8); CK("rol8 by 8 identity", r==0xA5);
+
     printf(fails? "\n%d FAILURES\n" : "\nall flag tests pass\n", fails);
     return fails!=0;
 }

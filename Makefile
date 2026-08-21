@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands vectors clean
+.PHONY: all verify-rom analyse test check-operands recomp vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -26,6 +26,20 @@ check-operands: build/codemap.json
 
 build/codemap.json:
 	$(MAKE) analyse
+
+## recomp - regenerate src/gen/blocks.c from the code map and compile it
+recomp: build/blocks.o
+
+src/gen/blocks.c: build/codemap.json tools/recomp.py tools/semantics.py tools/ea.py
+	python3 tools/recomp.py
+
+build/blocks.o: src/gen/blocks.c include/m68k.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Wno-unused-parameter -c $< -o $@
+
+build/hal_stub.o: src/hal_stub.c include/m68k.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
 
 ## vectors - print the 68000 exception vector table
 vectors: verify-rom
