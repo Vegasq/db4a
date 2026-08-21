@@ -3,8 +3,8 @@
 ## Ultimate goal
 
 A **native, self-contained executable** of *Dune: The Battle for Arrakis* that
-runs on Linux, Windows and macOS, is **behaviourally identical to the Mega
-Drive original**, and is playable with modern controls.
+runs on **Linux**, is **behaviourally identical to the Mega Drive original**,
+and is playable with modern controls.
 
 Modern enhancements come *after* that, behind opt-in flags — never at the cost
 of the faithful baseline.
@@ -45,7 +45,7 @@ v1 is done when all of the following hold:
 | 5 | Both win **and** lose conditions reachable | manual play |
 | 6 | Correct pacing — PAL 50 Hz, no drift | frame timing measured over 60 s |
 | 7 | No crash or hang across a full mission | soak run |
-| 8 | Builds and runs on Linux, Windows and macOS | CI on all three |
+| 8 | Builds and runs on Linux x86_64 from a clean tree | `make clean && make` |
 
 **Audio is explicitly *not* required for v1.** It may be stubbed silent. It is
 its own milestone (M5) because YM2612 + PSG + a Z80 core is a large, largely
@@ -73,19 +73,23 @@ is a runtime argument rather than baked in.
 
 ## Portability constraints
 
-Targets: Linux x86_64, Windows, macOS (including Apple Silicon / arm64).
+**Target: Linux x86_64 only.** Windows and macOS were considered and
+deliberately dropped on 2026-08-21 to cut scope. This keeps the existing
+`Makefile` viable — no CMake, no cross-compilation, no multi-platform CI.
 
-- **Byte order must be handled explicitly everywhere.** The ROM is big-endian;
-  every supported target (x86_64 and arm64 alike) is little-endian. Conversion
-  is therefore always required — never rely on host byte order, on any target.
-- **Do not assume unaligned access is free.** x86_64 tolerates it; arm64 is
-  stricter for some instruction forms. All ROM/RAM access goes through the
-  `m68k_read*` / `m68k_write*` helpers, which is the single place to get this
-  right.
-- **The current `Makefile` is Linux-only.** Cross-platform builds need CMake
-  before M6. Tracked as a task.
-- Language baseline: C11 plus SDL2. No compiler-specific extensions in
-  generated code.
+Two disciplines are kept anyway, because they are required on Linux regardless
+and cost nothing:
+
+- **Byte order must be handled explicitly.** This is not a portability nicety.
+  The ROM is big-endian and x86_64 is little-endian, so conversion is
+  *mandatory* on the only platform we target. Never rely on host byte order.
+- **All ROM/RAM access goes through the `m68k_read*` / `m68k_write*`
+  helpers.** Single choke point for byte order and alignment.
+
+Because those two hold, adding a platform later is a build-system problem
+rather than a correctness problem. Nothing else should assume Linux: no
+compiler-specific extensions in generated code, and the language baseline
+stays C11 plus SDL2.
 
 ## Milestones
 
@@ -97,7 +101,7 @@ Targets: Linux x86_64, Windows, macOS (including Apple Silicon / arm64).
 | M3 | Modern input; menus navigable | |
 | M4 | **v1 — one mission playable end to end** | |
 | M5 | Audio: YM2612, PSG, Z80 sound CPU | |
-| M6 | CMake cross-platform build; CI on Linux, Windows, macOS | |
+| M6 | *(retired — was cross-platform build; Linux-only now)* | dropped |
 | M7 | Full campaign, all three houses | |
 | M8 | Phase 2 — optional modern enhancements behind flags | |
 

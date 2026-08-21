@@ -1,12 +1,12 @@
 # db4a — native rebuild of *Dune: The Battle for Arrakis* (Mega Drive)
 
-**Goal:** a native, self-contained executable that runs on Linux, Windows and
-macOS, is behaviourally identical to the Mega Drive original, and is playable
-with modern controls.
+**Goal:** a native, self-contained executable that runs on Linux, is
+behaviourally identical to the Mega Drive original, and is playable with
+modern controls.
 
 **v1 is done when one mission is playable end to end** — boot through to a
-first mission that can be won or lost, on all three platforms. Audio is
-explicitly not required for v1.
+first mission that can be won or lost. Audio is explicitly not required for
+v1.
 
 Fidelity policy is **faithful first, modernise later**: phase 1 matches the
 cartridge exactly so that a reference emulator stays usable as a correctness
@@ -262,7 +262,7 @@ Standing order of work:
 4. Modern input; menus navigable.
 5. **v1: one mission playable end to end.**
 6. Audio (YM2612, PSG, Z80) — deliberately after v1, may be stubbed silent.
-7. CMake + CI for Linux, Windows and macOS.
+7. Full campaign, all three houses.
 
 Ongoing, not blocking: extend static discovery (13 indirect sites, 76 bad
 decodes) and instrument an emulator to log executed PCs to get past the ~10%

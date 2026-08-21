@@ -174,3 +174,27 @@ helpers as the single place to get it right.
 
 The Linux-only `Makefile` will not survive three platforms; CMake plus CI is
 now tracked as milestone M6.
+
+### Scope narrowed to Linux
+
+Later the same day the user cut the target list to **Linux x86_64 only**, to
+simplify. Consequences:
+
+- The existing `Makefile` survives. CMake, cross-compilation and multi-platform
+  CI are no longer needed; milestone M6 is retired rather than renumbered, so
+  existing milestone references stay stable.
+- v1 acceptance criterion 8 becomes `make clean && make` from a clean tree
+  instead of CI on three platforms.
+- The arm64 alignment concern is moot for now.
+
+**Two disciplines were deliberately kept** despite the narrower target, because
+they are required on Linux regardless and cost nothing:
+
+1. Explicit byte-order conversion. This is *not* a portability nicety — the ROM
+   is big-endian and x86_64 is little-endian, so conversion is mandatory on the
+   only platform we now target.
+2. All ROM/RAM access routed through the `m68k_read*` / `m68k_write*` helpers,
+   as a single choke point for byte order and alignment.
+
+Because those hold, re-adding a platform later is a build-system problem rather
+than a correctness problem — which is the cheap part to redo.
