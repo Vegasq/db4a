@@ -686,3 +686,67 @@ was in the measuring instrument. Verify the oracle before trusting its verdict.
 Remaining: the 0.57% hard mismatch is not yet explained, and exact comparison
 is limited by RGB565 quantisation — comparing at palette-index level would be
 sharper.
+
+### The colour ramp was wrong — a real bug the oracle found
+
+With the oracle fixed, comparison showed every non-black pixel disagreeing
+while the image structure matched exactly. Sampling the mismatched pairs gave a
+perfectly systematic per-level mapping:
+
+```
+mine:  0   36   73  109  146  182  219  255
+ref:   0   32   68  101  139  172  205  238
+```
+
+Reading GPGX's `MAKE_PIXEL` explained it. A 3-bit VDP colour component does
+**not** map linearly onto 0-255. The VDP shares one DAC range across shadow,
+normal and highlight modes, so normal mode uses only part of it: the component
+behaves as a 4-bit value of `(c << 1)` out of 15, and highlight adds 7 to reach
+full scale. Full intensity in normal mode is therefore **238, not 255**.
+
+Replaced the naive `c*255/7` ramp with `LVL(n) = (n*255+7)/15` and tabulated
+all three intensity modes. Exact agreement went 76.57% → 95.77%.
+
+This is precisely the class of bug that "looks right" hides. Both renders were
+plausible; only the oracle could tell them apart.
+
+### Two more bugs in the measuring instrument
+
+The remaining 4.23% split into two causes, neither of them the renderer:
+
+1. **~2625 pixels differed only in green, by exactly 4.** The comparison
+   quantiser scaled proportionally where packing into RGB565 truncates.
+   Quantising by `>>3`/`>>2` and expanding as `refhost.c` does removed all of
+   them.
+2. **The alignment sweep silently ran unquantised.** `--quantize` was passed as
+   the third positional argument, so it landed in `diff_path` and the flag was
+   never seen — the sweep reported raw numbers that looked like a flat plateau.
+   Flags are now position-independent.
+
+That is three separate defects in the oracle and its tooling versus one in the
+renderer. Worth remembering when a measurement disagrees with expectation.
+
+### Result
+
+```
+exact match : 71306 / 71680  (99.48%)
+near match  : 0
+mismatched  : 374            (0.52%)
+```
+
+The alignment sweep now shows a sharp transition (82.5% at ref frame 580 →
+99.45% at 590) rather than a flat plateau, confirming frame alignment is
+genuine and not an artifact.
+
+The residual 374 pixels are spread evenly across all 20 horizontal bands and 94
+rows, in pairs like `(0,0,0)` ↔ `(0,0,65)` — the starfield, single scattered
+pixels present in one render but not the other. It never reaches zero at any
+reference frame, which fits a sub-frame timing offset: the starfield animates
+every frame and our frame boundary lands at a slightly different point in the
+update cycle. That is the expected consequence of the approximate cycle model
+(no prefetch overlap, no bus contention), documented when it was written.
+
+**Not claimed:** that the last 0.52% is definitively benign. It is consistent
+with animation phase and inconsistent with a structural fault, but it has not
+been proven. Sprites also remain entirely untested — the sprite table was empty
+in every frame captured.

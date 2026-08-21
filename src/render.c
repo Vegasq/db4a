@@ -11,12 +11,33 @@
 
 uint8_t FB[FB_H][FB_W][3];
 
-/* 9-bit BGR -> 8-bit RGB. Each component is 3 bits, so scale by 255/7. */
-static void cram_rgb(uint16_t c, uint8_t out[3]) {
-    static const uint8_t lvl[8] = {0, 36, 73, 109, 146, 182, 219, 255};
+/* 9-bit BGR -> 8-bit RGB.
+ *
+ * A 3-bit component does NOT map linearly onto 0-255. The VDP shares one DAC
+ * range across shadow, normal and highlight modes, so normal mode occupies
+ * only the middle of the range: the component behaves as a 4-bit value of
+ * (c << 1) out of 15, and highlight adds 7 on top to reach full scale.
+ * Full intensity in normal mode is therefore 14/15 = 238, not 255.
+ *
+ * Using a naive c*255/7 ramp made every non-black pixel disagree with the
+ * reference emulator while the image structure matched exactly.
+ */
+#define LVL(n)  ((uint8_t)(((n) * 255 + 7) / 15))
+
+static const uint8_t LVL_SHADOW[8]    = { LVL(0), LVL(1), LVL(2),  LVL(3),
+                                          LVL(4), LVL(5), LVL(6),  LVL(7)  };
+static const uint8_t LVL_NORMAL[8]    = { LVL(0), LVL(2), LVL(4),  LVL(6),
+                                          LVL(8), LVL(10),LVL(12), LVL(14) };
+static const uint8_t LVL_HIGHLIGHT[8] = { LVL(7), LVL(8), LVL(9),  LVL(10),
+                                          LVL(11),LVL(12),LVL(13), LVL(15) };
+
+static void cram_rgb_mode(uint16_t c, uint8_t out[3], const uint8_t lvl[8]) {
     out[0] = lvl[(c >> 1) & 7];
     out[1] = lvl[(c >> 5) & 7];
     out[2] = lvl[(c >> 9) & 7];
+}
+static void cram_rgb(uint16_t c, uint8_t out[3]) {
+    cram_rgb_mode(c, out, LVL_NORMAL);
 }
 
 /* 4bpp 8x8 tile: 32 bytes, one nibble per pixel, high nibble leftmost. */

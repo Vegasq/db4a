@@ -23,9 +23,34 @@ def read_ppm(path):
     w, h, _ = vals
     return w, h, d[i:i + w*h*3]
 
-def main(a_path, b_path, diff_path=None):
+def q565(t):
+    """Round-trip a colour through RGB565, matching the oracle's lossy path.
+
+    The reference core emits RGB565, so its 8-bit values have already lost
+    precision (5 bits R/B, 6 bits G) while the renderer works from 9-bit CRAM
+    directly. Without matching that loss the comparison carries a noise floor
+    and cannot distinguish a real defect from format conversion.
+
+    Quantise by TRUNCATION (>>3, >>2) -- what packing into RGB565 actually
+    does -- then expand exactly as refhost.c does. Scaling proportionally
+    instead leaves the green channel off by 4 and manufactures thousands of
+    phantom mismatches.
+    """
+    r, g, b = t
+    r5, g6, b5 = r >> 3, g >> 2, b >> 3
+    return (r5 * 255 // 31, g6 * 255 // 63, b5 * 255 // 31)
+
+def main(argv):
+    # Flags may appear anywhere; everything else is positional.
+    quant = '--quantize' in argv
+    pos = [a for a in argv if not a.startswith('--')]
+    if len(pos) < 2:
+        raise SystemExit("usage: framediff.py A.ppm B.ppm [diff.ppm] [--quantize]")
+    a_path, b_path = pos[0], pos[1]
+    diff_path = pos[2] if len(pos) > 2 else None
     aw, ah, a = read_ppm(a_path)
     bw, bh, b = read_ppm(b_path)
+    if quant: print("(A quantised through RGB565 to match the oracle path)")
     print("A %s  %dx%d" % (a_path, aw, ah))
     print("B %s  %dx%d" % (b_path, bw, bh))
     if (aw, ah) != (bw, bh):
@@ -39,7 +64,9 @@ def main(a_path, b_path, diff_path=None):
     diff = bytearray(n * 3)
     for p in range(n):
         o = p * 3
-        pa, pb = a[o:o+3], b[o:o+3]
+        pa, pb = tuple(a[o:o+3]), tuple(b[o:o+3])
+        if quant:
+            pa = q565(pa)
         if pa == pb:
             exact += 1
             diff[o:o+3] = b'\x00\x00\x00'
@@ -61,4 +88,4 @@ def main(a_path, b_path, diff_path=None):
         print("diff map -> %s  (red = mismatch, olive = near)" % diff_path)
     return 0 if exact == n else 1
 
-sys.exit(main(*sys.argv[1:]))
+sys.exit(main(sys.argv[1:]))
