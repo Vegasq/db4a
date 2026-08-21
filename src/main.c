@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
     vdp_reset();
     { extern void hal_z80_init(void); hal_z80_init(); }
     { extern int z80_profiling; z80_profiling = 1; }
+    { extern int waiter_enable; waiter_enable = 1; }
 
     /* Reset: SSP from $000000, PC from $000004, supervisor, interrupts masked */
     CPU.a[7]   = m68k_read32(0);
@@ -144,6 +145,11 @@ int main(int argc, char **argv) {
         printf("\n"); }
       const char *zp = getenv("DB4A_Z80DUMP");
       if (zp) { hal_dump_z80(zp); printf("dumped Z80 RAM to %s\n", zp); } }
+    { extern unsigned long waiter_hits[64]; extern uint32_t waiter_addr[64];
+      extern unsigned waiter_n;
+      printf("\nvsync-wait callers (who is blocked):\n");
+      for (unsigned i = 0; i < waiter_n; i++)
+        printf("   return to %06X : %lu samples\n", waiter_addr[i], waiter_hits[i]); }
     pad_report();
     vdp_dump();
     render_frame();

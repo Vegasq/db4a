@@ -85,12 +85,29 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
 #define Z80_NUM 3546893ull
 #define Z80_DEN 7600489ull
 
+/* Who is waiting?  The vsync wait at $FD4 pushes D0 then spins at $FDA, so the
+   caller's return address sits at 4(A7). Sampling it identifies the sequencer
+   function that is blocked, which a PC profile alone cannot show. */
+unsigned long waiter_hits[64];
+uint32_t      waiter_addr[64];
+unsigned      waiter_n;
+int           waiter_enable;
+
+static void sample_waiter(uint32_t pc) {
+    if (!waiter_enable || pc != 0x000FDAu) return;
+    uint32_t ret = m68k_read32(CPU.a[7] + 4);
+    for (unsigned i = 0; i < waiter_n; i++)
+        if (waiter_addr[i] == ret) { waiter_hits[i]++; return; }
+    if (waiter_n < 64) { waiter_addr[waiter_n] = ret; waiter_hits[waiter_n] = 1; waiter_n++; }
+}
+
 uint32_t m68k_run_frame(uint32_t pc) {
     uint64_t deadline = CPU.cycles + PAL_FRAME_CYCLES;
     int z80_on = hal_z80_running();
     while (CPU.cycles < deadline) {
         uint64_t chunk = CPU.cycles + SLICE_CYCLES;
         if (chunk > deadline) chunk = deadline;
+        sample_waiter(pc);
         pc = m68k_run_until(pc, chunk);
         if (m68k_last_unknown) return pc;
         z80_on = hal_z80_running();

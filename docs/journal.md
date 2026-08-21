@@ -947,3 +947,66 @@ title-screen menu by frame 2600 with no input at all — the publisher screen
 self-advances on a timer, so Start was never the mechanism that would move it.
 
 The stall remains the frozen state pointer at `$FFFFE002 = 00017C32`.
+
+### Root cause found: word reads of the VDP data port
+
+The user reported from `make play` that the game fades to black, shows "PRESENT"
+over moving stars, and stops there. That detail corrected an assumption of mine:
+I had read "nametable A: 7 non-zero entries" as an essentially blank screen.
+"PRESENT" is seven characters — those 7 tiles *were* the word. The game was not
+frozen at all; the starfield animation in `0x17C32` was running correctly.
+
+Walking the stack from the vsync wait (sampling `4(A7)` at `$FDA`) identified
+who was blocked — three consecutive call sites at ~107k samples each:
+
+```
+01756C  move.w  #$666, (a7)     ; colour A
+017578  jsr     $4208.l         ; -> d0
+017580  jsr     $43f2.l         ; wait vsync x3
+017592  move.w  #$eee, (a7)     ; colour B
+01759E  jsr     $4208.l         ; -> d0
+0175A6  tst.w   d0
+0175A8  beq.b   $1756c          ; d0 == 0 -> loop forever
+```
+
+A palette flash loop, spinning until `$4208` reports the fade complete. And
+`$4208` decides that by reading the *current* CRAM value back from the VDP:
+
+```
+00422E  move.w  #$8f02, $c00004.l   ; auto-increment = 2
+004236  move.l  d1, $c00004.l       ; address + CRAM-READ code
+00423C  move.w  $c00000.l, d3       ; read CRAM back
+00424A  cmp.w   d3, d2              ; reached the target?
+```
+
+**The bug was in memory routing.** A 16-bit read of the VDP data port was being
+serviced as two `io_read8` calls, and `vdp_read_data()` auto-increments the
+address on every call. So one word read consumed *two* CRAM entries and spliced
+the high byte of one to the low byte of the next. The comparison could never
+match, the fade never completed, and the loop ran forever.
+
+The data port is a 16-bit register with a side effect; it must be a single
+access. Fixed in `m68k_read16`.
+
+```
+distinct blocks : 410 -> 632
+nametable A     : 7   -> 711 non-zero
+sprite table    : 0   -> 38 bytes      (sprites active for the first time)
+$FFFFE002       : frozen -> cleared    (the stop routine finally ran)
+pad reads       : 0   -> 4480
+```
+
+The title screen now renders at **99.98% exact match** against the reference —
+13 pixels of 71,680. Pressing Start advances the game further still.
+
+Three notes worth keeping:
+
+1. **Input was never broken.** It was measured as broken-looking (`pad reads=0`)
+   because the game never reached a state that polls a controller. Ruling it out
+   by measurement rather than assumption was right, but the measurement answered
+   a different question than the one that mattered.
+2. **The user's observation broke the deadlock.** "Fades to black, then PRESENT
+   over moving stars" contained the fact that animation was still running, which
+   contradicted my "frozen" reading and pointed at a loop rather than a hang.
+3. This is the third bug found in the *plumbing* rather than the generated code.
+   The recompiled 68000 has been correct throughout.

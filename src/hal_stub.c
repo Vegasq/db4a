@@ -77,6 +77,7 @@ static uint8_t io_read8(uint32_t a) {
     case 0xC00005: v = (uint8_t)(vdp_read_status() & 0xFF); break;
     case 0xC00006: v = (uint8_t)(vdp_read_status() >> 8); break;
     case 0xC00007: v = (uint8_t)(vdp_read_status() & 0xFF); break;
+    /* Byte access to the data port is rare; read the word once and pick a half. */
     case 0xC00000: case 0xC00002: v = (uint8_t)(vdp_read_data() >> 8); break;
     case 0xC00001: case 0xC00003: v = (uint8_t)(vdp_read_data() & 0xFF); break;
     default:       v = 0; break;
@@ -96,6 +97,14 @@ uint8_t m68k_read8(uint32_t a) {
 uint16_t m68k_read16(uint32_t a) {
     a &= 0xFFFFFF;
     if (a + 1 < rom_len) return (uint16_t)((rom[a] << 8) | rom[a + 1]);
+    /* The VDP data port is a 16-bit register with a side effect: every read
+       auto-increments the address. Servicing a word read as two byte reads
+       consumes TWO entries and splices halves of different ones together, so
+       it must be a single access. */
+    if ((a & 0xFFFFE0) == 0xC00000 && (a & 0x1F) < 4) {
+        hal_io_reads++;
+        return vdp_read_data();
+    }
     if (is_z80(a)) return (uint16_t)((hal_z80_read68k(a) << 8) | hal_z80_read68k(a + 1));
     if (a >= 0xFF0000)   return (uint16_t)((ram[a & 0xFFFF] << 8) | ram[(a + 1) & 0xFFFF]);
     if (a >= 0xA00000)   return (uint16_t)((io_read8(a) << 8) | io_read8(a + 1));
