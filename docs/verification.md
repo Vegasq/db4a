@@ -36,13 +36,35 @@ honest. Detecting traps from the transaction log is more reliable than
 inferring them from the final register state, because a trap taken while
 already in supervisor mode leaves the S bit unchanged.
 
-Bugs this layer found immediately, none of which the game-level tests caught:
+Current state, full suite (127 instruction files, 60 vectors each):
+
+    make check-cpu  ->  4586/4710 passed
+
+Bugs this layer found, none of which game-level testing caught:
 
 | Bug | Symptom without this layer |
 |-----|----------------------------|
 | `LINK` displacement not sign-extended | stack walked out of RAM, crash thousands of blocks later |
 | `LINK A7` pushed the post-decrement SP | silently wrong by 4 |
+| `UNLK A7` applied `SP += 4` on top of the popped value | silently wrong by 4 |
 | memory-form shifts never applied `(An)+` | pointer drift |
+| `NOT`/`NEG` memory forms never applied `(An)+` | pointer drift |
+| `BCHG`/`BSET`/`BCLR`/`BTST` never applied `(An)+` | pointer drift |
+| `CMP` with a memory destination never applied `(An)+` | pointer drift |
+| `MOVEM (An)+` clobbered `An` when `An` was in its own list | wrong pointer after load |
+
+Still failing, left visible rather than filtered: `DIVS`, `DIVU`, `MOVEfromSR`,
+`MOVEM.l`, `MOVEM.w`, `MOVEtoCCR`, `ROXR.b`, `SUB.b`.
+
+Unimplemented entirely, and skipped at 100%: `ABCD`, `SBCD`, `NBCD`, `MOVEP`,
+`TAS`, `NEGX.b`, and the `ORI`/`ANDI`/`EORI` to-CCR forms. None appear in this
+ROM's instruction histogram, so they are out of scope until something needs
+them — but the skip counts make that visible rather than assumed.
+
+**Harness bugs this layer exposed in itself**, which is why it reports skips and
+counts separately: control-flow instructions `return` a target PC and cannot be
+inlined into a `void` test body, and hardcoding the instruction length gave
+`BSR`/`JSR` the wrong return address. Both looked like emulator failures first.
 
 ## Layer 2 — machine invariants  (always on)
 

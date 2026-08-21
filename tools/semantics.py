@@ -171,10 +171,13 @@ def i_cmp(mn, sz, ops, ctx):
     s = _read(src, sz, ctx, out)
     if isinstance(dst, (ea.DReg, ea.AReg)):
         d = ea.load(dst, sz, None)
-    else:
-        t = _addr(dst, sz, ctx, out)
-        d = ea.load(dst, sz, t)
-    out.append("cmp%d(%s, %s);" % (BITS[sz], d, s))
+        out.append("cmp%d(%s, %s);" % (BITS[sz], d, s))
+        return out
+    t = _addr(dst, sz, ctx, out)
+    dv = ctx.tmp("c")
+    out.append("%s %s = %s;" % (ea.CAST[sz], dv, ea.load(dst, sz, t)))
+    out += ea.post(dst, sz)
+    out.append("cmp%d(%s, %s);" % (BITS[sz], dv, s))
     return out
 
 def i_cmpa(mn, sz, ops, ctx):
@@ -228,6 +231,7 @@ def i_not(mn, sz, ops, ctx):
     out.append("%s %s = (%s)~%s;" % (ea.CAST[sz], r, ea.CAST[sz], ea.load(op, sz, t)))
     out.append("flags_logic%d(%s);" % (BITS[sz], r))
     out.append(ea.store(op, sz, t, r))
+    out += ea.post(op, sz)
     return out
 
 def i_neg(mn, sz, ops, ctx):
@@ -242,6 +246,7 @@ def i_neg(mn, sz, ops, ctx):
     r = ctx.tmp("r")
     out.append("%s %s = sub%d(0, %s);" % (ea.CAST[sz], r, BITS[sz], ea.load(op, sz, t)))
     out.append(ea.store(op, sz, t, r))
+    out += ea.post(op, sz)
     return out
 
 def i_ext(mn, sz, ops, ctx):
@@ -293,7 +298,15 @@ def i_link(mn, sz, ops, ctx):
             "CPU.a[7] += %d;" % d]
 
 def i_unlk(mn, sz, ops, ctx):
+    """UNLK An -- An to SP, pop An, then SP += 4.
+
+    UNLK A7 is the mirror of the LINK A7 case: An and SP are the same register,
+    so the popped value is the final SP and the +4 must not be applied on top
+    of it.
+    """
     an = ops[0]
+    if an.n == 7:
+        return ["CPU.a[7] = m68k_read32(CPU.a[7]);"]
     return ["CPU.a[7] = CPU.a[%d];" % an.n,
             "CPU.a[%d] = m68k_read32(CPU.a[7]);" % an.n,
             "CPU.a[7] += 4;"]
@@ -354,6 +367,8 @@ def _bitop(kind):
             out.append(store("(%s & (%s)~((%s)1u << %s))" % (v, ea.CAST[osz], ea.CAST[osz], bit)))
         elif kind == 'chg':
             out.append(store("(%s ^ (%s)1u << %s)" % (v, ea.CAST[osz], bit)))
+        if mem:
+            out += ea.post(dst, osz)
         return out
     return f
 

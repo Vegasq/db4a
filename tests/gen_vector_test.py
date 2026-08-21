@@ -49,18 +49,28 @@ static void bad(const char *name, const char *what, uint32_t got, uint32_t want)
     } while (0)
 '''
 
-def emit_test(fn_name, t, insn_addr, mnemonic, op_str):
+def emit_test(fn_name, t, insn_addr, insn_size, mnemonic, op_str):
     """C for one vector, or None if we cannot generate code for it."""
     try:
         ops = ea.parse(op_str)
-        stmts = semantics.emit(mnemonic, ops, semantics.Ctx(insn_addr, 2, insn_addr + 2))
+        # The real instruction length matters: BSR/JSR push the address of the
+        # NEXT instruction, so a hardcoded size gives a wrong return address.
+        stmts = semantics.emit(mnemonic, ops,
+                               semantics.Ctx(insn_addr, insn_size, insn_addr + insn_size))
     except Exception:
         return None
 
     i, f = t['initial'], t['final']
     sup = (i['sr'] >> 13) & 1
-    out = ["static void %s(void) {" % fn_name,
+    body = ["static uint32_t %s_body(void) {" % fn_name]
+    body += ["  " + st for st in stmts]
+    body.append("  return 0;   /* fallthrough for non-terminal instructions */")
+    body.append("}")
+
+    out = body + [
+           "static void %s(void) {" % fn_name,
            '  const char *N = "%s";' % t['name'].replace('"', "'"),
+           "  uint32_t next_pc; (void)next_pc;",
            "  this_fail = 0;"]
     # initial state
     for r in range(8):
@@ -74,10 +84,7 @@ def emit_test(fn_name, t, insn_addr, mnemonic, op_str):
     for addr, val in sorted(i['ram'].items()):
         out.append("  MEM[0x%Xu] = 0x%02Xu;" % (addr & 0xFFFFFF, val))
     # the instruction itself
-    out.append("  { /* %s %s */" % (mnemonic, op_str))
-    for st in stmts:
-        out.append("    " + st)
-    out.append("  }")
+    out.append("  next_pc = %s_body();" % fn_name)
     # compare
     for r in range(8):
         out.append('  CKR(N, "d%d", CPU.d[%d], 0x%Xu);' % (r, r, f['d%d' % r]))
@@ -129,7 +136,7 @@ def main():
                 skipped_trap[group] = skipped_trap.get(group, 0) + 1
                 continue
             fn = "t_%s_%d" % (group.replace('.', '_').replace('-', '_'), k)
-            body = emit_test(fn, t, addr, ins.mnemonic, ins.op_str)
+            body = emit_test(fn, t, addr, ins.size, ins.mnemonic, ins.op_str)
             if body is None:
                 skipped[group] = skipped.get(group, 0) + 1
                 continue

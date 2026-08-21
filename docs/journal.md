@@ -1179,3 +1179,46 @@ damage was done. The first validation attempt was itself wrong — run at 600
 frames with no input, where the corruption has not yet accumulated — and
 reported "all clean". Testing the tripwire under the scenario that actually
 crashed is what proved it.
+
+## Layer 1 across the full instruction set
+
+Fetched all 127 vector files (132 MB, gitignored) and ran the whole suite.
+
+```
+make check-cpu  ->  4586/4710 passed
+```
+
+Five more real semantics bugs, all of the same family — read-modify-write
+handlers that never applied `(An)+` postincrement: `NOT`, `NEG`, the four bit
+operations, and `CMP` with a memory destination. Plus `UNLK A7`, the exact
+mirror of the `LINK A7` bug: An and SP are the same register, so the popped
+value is the final SP and `SP += 4` must not be applied on top of it.
+
+Every one of these is invisible at game level until a pointer drifts far enough
+to corrupt something, at which point the symptom is thousands of blocks from
+the cause. That is the entire argument for this layer.
+
+**The harness found two bugs in itself first**, both of which initially looked
+like emulator failures:
+
+1. Control-flow instructions `return` a target PC, because in the real
+   recompiler every block is a `uint32_t` function. Inlining them into a `void`
+   test body produced 291 compile errors. Restructured so each vector's
+   instruction becomes its own block function and the test calls it — which
+   also makes the harness mirror the shipping architecture rather than
+   approximate it.
+2. The instruction length was hardcoded to 2, so `BSR`/`JSR` pushed a wrong
+   return address. Now taken from capstone.
+
+Also worth recording: `make vectors` silently collided with the pre-existing
+target that prints the exception vector table, so the suite never ran in the
+commit that introduced it. Caught only because the commit's own verification
+output showed an exception table. Renamed to `make check-cpu`.
+
+No regressions: title screen still 99.98%, house-select unchanged, all other
+suites pass, invariants clean.
+
+Remaining failures are eight classes (`DIVS`, `DIVU`, `MOVEfromSR`, `MOVEM.l`,
+`MOVEM.w`, `MOVEtoCCR`, `ROXR.b`, `SUB.b`) and ten instructions that are not
+implemented at all. None of the unimplemented ones appear in this ROM's
+histogram, but the skip counts keep that visible instead of assumed.
