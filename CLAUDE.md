@@ -1,7 +1,18 @@
 # db4a — native rebuild of *Dune: The Battle for Arrakis* (Mega Drive)
 
-Goal: decompile the Genesis ROM and recompile it into a native binary for
-modern systems, with modern controls.
+**Goal:** a native, self-contained executable that runs on Linux, Windows and
+macOS, is behaviourally identical to the Mega Drive original, and is playable
+with modern controls.
+
+**v1 is done when one mission is playable end to end** — boot through to a
+first mission that can be won or lost, on all three platforms. Audio is
+explicitly not required for v1.
+
+Fidelity policy is **faithful first, modernise later**: phase 1 matches the
+cartridge exactly so that a reference emulator stays usable as a correctness
+oracle; optional enhancements come later behind flags.
+
+Full goal, acceptance criteria, non-goals and milestones: **`docs/roadmap.md`**.
 
 **Approach: static recompilation.** 68000 basic blocks are translated to
 generated C running against a CPU state struct, linked with an SDL2 hardware
@@ -203,6 +214,7 @@ tools/trace.py       recursive-descent code discovery (main analysis tool)
 tools/jumptab.py     jump-table format detection and resolution
 tools/rommap.py      coarse entropy banding (classification NOT trustworthy)
 tests/test_flags.c   68000 flag semantics unit tests
+docs/roadmap.md      goal, definition of done, non-goals, milestones
 docs/rom.md          base ROM provenance and header dump
 docs/journal.md      chronological record of work and findings
 build/               generated, gitignored, fully reproducible
@@ -232,21 +244,29 @@ resulting numbers in the commit body, so a regression in coverage is visible in
 
 ## Current state and next steps
 
-Task list is tracked in-session. Standing order of work:
+**M0 (analysis foundation) is done.** ROM verified, code discovery and
+jump-table recovery reproducible via `make`, runtime and flag helpers written
+and unit-tested. See `docs/roadmap.md` for the full milestone table.
 
-1. Extend static discovery — 13 indirect sites remain, plus 76 bad decodes
-   where flow runs off function ends into inline data.
-2. Instrument BlastEm or Genesis-Plus-GX to log executed PCs, then merge those
-   traces into the code map to get past the ~10% static plateau.
-3. **68k→C translation backend** *(in progress — the runtime it targets is
-   written and tested; the translator itself is not yet started)*.
-4. `dispatch.c`: PC→function with interpreter fallback.
-5. VDP + SDL2 renderer — the largest single piece of remaining work.
-6. Audio: YM2612, PSG, Z80 sound CPU. Can be stubbed silent initially.
-7. Modern input, incl. driving the cursor with the mouse instead of emulating
-   d-pad movement — the biggest playability win for an RTS.
-8. Differential testing against a reference emulator, in lockstep from reset,
-   comparing CPU state and framebuffer hashes to find the first divergence.
+**M1 is in progress.** The runtime the translator targets (`include/m68k.h`)
+is written and tested; the translator itself is not yet started.
+
+Standing order of work:
+
+1. **68k→C translation backend** *(in progress)* — ~40 instruction forms
+   reaches 99% of discovered code.
+2. `dispatch.c`: PC→function with interpreter fallback, so the `$FFFFE002`
+   RAM dispatch resolves at runtime.
+3. VDP + SDL2 renderer, built together with differential testing against a
+   reference emulator — the oracle the fidelity policy depends on.
+4. Modern input; menus navigable.
+5. **v1: one mission playable end to end.**
+6. Audio (YM2612, PSG, Z80) — deliberately after v1, may be stubbed silent.
+7. CMake + CI for Linux, Windows and macOS.
+
+Ongoing, not blocking: extend static discovery (13 indirect sites, 76 bad
+decodes) and instrument an emulator to log executed PCs to get past the ~10%
+static plateau.
 
 **Open question, not yet decided:** the HAL is roughly 70% of remaining work
 and is identical whether blocks are recompiled or interpreted. Dropping in a

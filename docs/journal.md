@@ -116,3 +116,61 @@ dispatch, VDP, audio, input, differential testing.
 Raised but undecided: dropping in Musashi as the interpreter fallback would
 produce a running build far sooner and give a correctness oracle, avoiding
 simultaneous translator and VDP debugging.
+
+---
+
+## 2026-08-21 — Session 2: documentation and goal definition
+
+### Reproducibility pass
+
+Added `CLAUDE.md` and a `Makefile` with `verify-rom`, `vectors`, `analyse`,
+`test` and `clean`. Verified end to end from `make clean` that every number
+quoted in the docs regenerates exactly, and that the working tree stays clean
+afterwards.
+
+Moved `tests/test_flags.c` out of `build/` — it was real source sitting in a
+gitignored directory and would have been lost. Confirmed with
+`git add -A --dry-run` before the first commit that no ROM or build artefact
+could be staged.
+
+Committed the session-1 work as six granular commits, with reproduction
+commands and resulting numbers in the commit bodies so a coverage regression
+shows up in `git log` rather than only in a working tree.
+
+### The goal was never actually written down
+
+On review, the only goal statement in the whole repository was a single line —
+"decompile the ROM and recompile it into a native binary". The *approach* was
+documented thoroughly; the *goal* had no definition of done, no success
+criteria, no target platforms and no milestones. Nothing said when the project
+is finished or how to tell a working build from a broken one.
+
+Resolved by asking rather than guessing, since the answers materially change
+the work:
+
+- **Fidelity: faithful first, modernise later.** The reasoning that mattered:
+  a faithful build can be diffed frame-by-frame against a reference emulator,
+  which makes the emulator a correctness oracle. Allowing deliberate divergence
+  forfeits that oracle and turns every bug into a judgement call.
+- **v1: one mission playable end to end.** The title screen proves too little;
+  the full campaign gives no signal for too long.
+- **Platforms: Linux x86_64, Windows, macOS** (including Apple Silicon).
+
+Written up in `docs/roadmap.md` with eight acceptance criteria, explicit
+non-goals, and milestones M0–M8. Audio was deliberately excluded from v1 and
+made its own milestone, since YM2612 + PSG + Z80 is large and largely
+independent, and blocking playability on it would delay every other signal.
+
+### Correction
+
+While framing the platform question I claimed arm64 has "different endianness
+handling" from x86_64. That is wrong — both are little-endian. The big-endian
+ROM data needs explicit byte-swapping on *every* target equally; what actually
+differs is alignment strictness and toolchain. `docs/roadmap.md` states it
+correctly, and routes all ROM/RAM access through the `m68k_read*`/`m68k_write*`
+helpers as the single place to get it right.
+
+### Consequence
+
+The Linux-only `Makefile` will not survive three platforms; CMake plus CI is
+now tracked as milestone M6.
