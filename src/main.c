@@ -67,6 +67,7 @@ int main(int argc, char **argv) {
        without a display:  DB4A_PRESS="800:start,1000:c"  */
     struct { unsigned at; int pad; } script[16];
     unsigned nscript = 0;
+    unsigned hold = getenv("DB4A_HOLD") ? (unsigned)strtoul(getenv("DB4A_HOLD"), NULL, 0) : 8;
     { const char *sp = getenv("DB4A_PRESS");
       char buf[256];
       if (sp) {
@@ -86,10 +87,11 @@ int main(int argc, char **argv) {
       } }
 
     for (frames = 0; frames < max_frames; frames++) {
-        /* Hold each scripted button for 8 frames from its trigger point. */
+        /* Hold length matters: a menu that advances on each press can consume
+           one long hold twice. DB4A_HOLD tunes it. */
         for (unsigned k = 0; k < nscript; k++) {
-            if (frames == script[k].at)       pad_set(script[k].pad, 1);
-            if (frames == script[k].at + 8)   pad_set(script[k].pad, 0);
+            if (frames == script[k].at)          pad_set(script[k].pad, 1);
+            if (frames == script[k].at + hold)   pad_set(script[k].pad, 0);
         }
         end = m68k_run_frame(end);
         if (m68k_last_unknown) break;

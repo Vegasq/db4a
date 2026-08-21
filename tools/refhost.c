@@ -78,9 +78,43 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch) {
 }
 static void audio_cb(int16_t l, int16_t r) { (void)l; (void)r; }
 static size_t audio_batch_cb(const int16_t *d, size_t f) { (void)d; return f; }
+/* Scripted input, same "frame:button" syntax as the native build's
+   DB4A_PRESS, so both sides can be driven identically. Comparing anything
+   past the title screen is meaningless unless the reference receives the
+   same button presses at the same frames. */
+#define MAXSCRIPT 32
+static struct { unsigned at; unsigned id; } script[MAXSCRIPT];
+static unsigned nscript, cur_frame;
+static const unsigned HOLD = 8;
+
+static void parse_script(const char *sp) {
+    if (!sp) return;
+    char buf[512];
+    snprintf(buf, sizeof buf, "%s", sp);
+    for (char *tok = strtok(buf, ","); tok && nscript < MAXSCRIPT; tok = strtok(NULL, ",")) {
+        char name[32]; unsigned at;
+        if (sscanf(tok, "%u:%31s", &at, name) != 2) continue;
+        int id = -1;
+        if      (!strcmp(name, "start")) id = RETRO_DEVICE_ID_JOYPAD_START;
+        else if (!strcmp(name, "a"))     id = RETRO_DEVICE_ID_JOYPAD_Y;
+        else if (!strcmp(name, "b"))     id = RETRO_DEVICE_ID_JOYPAD_B;
+        else if (!strcmp(name, "c"))     id = RETRO_DEVICE_ID_JOYPAD_A;
+        else if (!strcmp(name, "up"))    id = RETRO_DEVICE_ID_JOYPAD_UP;
+        else if (!strcmp(name, "down"))  id = RETRO_DEVICE_ID_JOYPAD_DOWN;
+        else if (!strcmp(name, "left"))  id = RETRO_DEVICE_ID_JOYPAD_LEFT;
+        else if (!strcmp(name, "right")) id = RETRO_DEVICE_ID_JOYPAD_RIGHT;
+        if (id >= 0) { script[nscript].at = at; script[nscript].id = (unsigned)id; nscript++; }
+    }
+}
+
 static void input_poll_cb(void) {}
-static int16_t input_state_cb(unsigned p, unsigned d, unsigned i, unsigned id) {
-    (void)p; (void)d; (void)i; (void)id; return 0;
+static int16_t input_state_cb(unsigned port, unsigned dev, unsigned idx, unsigned id) {
+    (void)dev; (void)idx;
+    if (port != 0) return 0;
+    for (unsigned i = 0; i < nscript; i++)
+        if (script[i].id == id && cur_frame >= script[i].at && cur_frame < script[i].at + HOLD)
+            return 1;
+    return 0;
 }
 
 int main(int argc, char **argv) {
@@ -140,7 +174,9 @@ int main(int argc, char **argv) {
     printf("reference core: %ux%u, %.2f fps\n",
            av.geometry.base_width, av.geometry.base_height, av.timing.fps);
 
-    for (unsigned i = 0; i < frames; i++) retro_run();
+    parse_script(getenv("DB4A_PRESS"));
+    if (nscript) printf("input script: %u events\n", nscript);
+    for (unsigned i = 0; i < frames; i++) { cur_frame = i; retro_run(); }
     printf("ran %u frames, last frame %ux%u, pixel format %s\n", frames, FBW, FBH,
            PIXFMT == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" :
            PIXFMT == RETRO_PIXEL_FORMAT_RGB565   ? "RGB565"   : "0RGB1555");

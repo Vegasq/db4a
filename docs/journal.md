@@ -1010,3 +1010,40 @@ Three notes worth keeping:
    contradicted my "frozen" reading and pointed at a loop rather than a hang.
 3. This is the third bug found in the *plumbing* rather than the generated code.
    The recompiled 68000 has been correct throughout.
+
+### Past the title screen: house-select does not render
+
+Added scripted input to `tools/refhost.c` (same `DB4A_PRESS` syntax) so both
+sides can be driven identically — comparing anything past the title screen is
+meaningless otherwise. Also added `DB4A_HOLD` to tune press length and
+`DB4A_LOG_DMA` to trace DMA.
+
+With Start pressed at frame 2400 the reference reaches the **Select your
+House** screen. The native build goes black immediately (frame 2420 onward) and
+stays black, sitting in an input-wait loop at `$4716` — so the game logic
+advanced, but the screen never loaded. 76% frame agreement, against 99.98% on
+the title screen.
+
+Three hypotheses tested and **all three refuted**:
+
+1. *Double-consumed input* — a long Start hold being taken twice. Refuted:
+   `DB4A_HOLD` of 1, 2, 4 and 8 frames all give byte-identical results (684
+   blocks, VRAM zeroed). Press length is not a factor.
+2. *A late spurious VRAM fill* — VRAM ends up 0 of 65536 bytes non-zero, and
+   FILL #4 fires after 144390 writes with nothing written afterwards. Refuted
+   as spurious: logging arm-vs-fire separately shows every ARM immediately
+   followed by its FILL, correctly paired, `reg23=80` (mode 2), `code=21`. All
+   four fills are legitimate full-VRAM clears, and fills #1-3 are the same
+   shape as the ones the working title screen performs.
+3. *Stale `dma_fill_pending`* — implied by (2), also refuted by the pairing.
+
+What is established: the game clears VRAM, then enters an input wait **without
+reloading graphics**, while the reference loads house-select at the same point.
+That is a divergence in execution, not in rendering.
+
+**Root cause not found.** Three plausible-sounding hypotheses died on contact
+with measurement here, which is the signal to stop inferring from disassembly.
+The execution-level differential oracle — run both against Genesis-Plus-GX and
+find the first block where state diverges — has been deferred repeatedly and is
+now clearly the cheapest remaining route. Frame comparison has taken us as far
+as it can.

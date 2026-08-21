@@ -14,8 +14,16 @@
 #include "m68k.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+
+static int dma_log = -1;
+static int dma_logging(void) {
+    if (dma_log < 0) dma_log = getenv("DB4A_LOG_DMA") ? 1 : 0;
+    return dma_log;
+}
 
 vdp_t VDP;
+unsigned long vdp_fills;
 
 /* Code field values, after assembling both control words. */
 #define CD_VRAM_READ   0x00
@@ -57,8 +65,14 @@ void vdp_write_control(uint16_t v) {
         /* A VRAM-fill DMA waits for the fill value to arrive on the data
            port; the other kinds run immediately. */
         unsigned mode = (VDP.reg[23] >> 6) & 3;
-        if (mode == 2) VDP.dma_fill_pending = 1;
-        else           vdp_dma_run();
+        if (mode == 2) {
+            if (dma_logging())
+                fprintf(stderr, "[dma] ARM fill: reg23=%02X addr=%04X code=%02X (vram writes so far %lu)\n",
+                        VDP.reg[23], VDP.addr, VDP.code, VDP.vram_writes);
+            VDP.dma_fill_pending = 1;
+        } else {
+            vdp_dma_run();
+        }
     }
 }
 
@@ -97,6 +111,10 @@ void vdp_write_data(uint16_t v) {
         VDP.dma_fill_pending = 0;
         uint16_t len = (uint16_t)((VDP.reg[20] << 8) | VDP.reg[19]);
         if (!len) len = 0xFFFF;
+        vdp_fills++;
+        if (dma_logging())
+            fprintf(stderr, "[dma] FILL #%lu len=%u addr=%04X val=%04X inc=%u (after %lu vram writes)\n",
+                    vdp_fills, len, VDP.addr, v, vdp_autoinc(), VDP.vram_writes);
         for (uint16_t i = 0; i < len; i++) {
             write_vram_byte(VDP.addr, (uint8_t)(v >> 8));
             VDP.addr = (VDP.addr + vdp_autoinc()) & 0xFFFF;
@@ -132,6 +150,10 @@ static void vdp_dma_run(void) {
     unsigned mode = (VDP.reg[23] >> 6) & 3;
     uint32_t len = (uint32_t)((VDP.reg[20] << 8) | VDP.reg[19]);
     if (!len) len = 0x10000;
+    if (dma_logging() && VDP.dma_transfers < 40)
+        fprintf(stderr, "[dma] #%lu mode=%u len=%u code=%02X addr=%04X src=%06X\n",
+                VDP.dma_transfers, mode, len, VDP.code, VDP.addr,
+                (unsigned)(((VDP.reg[23] & 0x7F) << 17) | (VDP.reg[22] << 9) | (VDP.reg[21] << 1)));
     uint32_t src = (uint32_t)(((VDP.reg[23] & 0x7F) << 17)
                             | (VDP.reg[22] << 9) | (VDP.reg[21] << 1));
     if (mode == 3) {                       /* VRAM -> VRAM copy */
