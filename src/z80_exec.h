@@ -179,6 +179,7 @@ unsigned z80_step(void) {
 
     if (Z80.halted) { Z80.cycles += 4; return 4; }
 
+    if (z80_profiling && Z80.pc < 0x2000) z80_pc_hits[Z80.pc]++;
     uint8_t op = fetch();
     Z80.r = (uint8_t)((Z80.r & 0x80) | ((Z80.r + 1) & 0x7F));
 

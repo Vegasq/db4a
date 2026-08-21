@@ -862,3 +862,60 @@ guessing.
 
 The Z80 core has also not been validated against anything. ZEXDOC/ZEXALL would
 need CP/M scaffolding; the differential oracle is the cheaper route.
+
+### Scheduling fix, and a correction about the handshake
+
+Profiling the Z80 (`z80_pc_hits`) showed it alive and healthy: 4.3M
+instructions across 675 distinct PCs, sitting in a tight loop around
+`0x0041-0x0049`, and **it did write to `$1B2x`**. So the driver was running,
+not crashed.
+
+The real defect was my scheduling. The 68000 ran a whole 152,009-cycle frame
+before the Z80 got any time at all, so a poll loop inside one frame could never
+be answered within that frame. `m68k_run_frame()` now interleaves the two in
+500-cycle slices, keeping the Z80's clock aligned even while the 68000 holds
+the bus. Z80 writes to `$1B2x` went from 4 to 20 over the same run.
+
+**Correction to the previous entry.** I described the `$1B20`/`$1B21` handshake
+as gating the game and said the reply "never arrives". Reading the whole
+routine shows the opposite:
+
+```
+0014D0  move.b  $a01b21.l, d0
+0014DE  tst.b   d0
+0014E0  beq.b   $14ea        ; reply == 0 -> SUCCESS, return
+0014E2  moveq   #$44, d0     ; else delay and retry forever
+```
+
+It succeeds when the reply is **zero**, which is exactly what it reads. The
+handshake completes and never blocked anything. That also explains the earlier
+experiment cleanly: forcing a non-zero reply dropped the run from 410 blocks to
+127 because it makes this loop retry indefinitely. I had the polarity backwards
+and drew a conclusion from a fragment instead of reading the whole routine.
+
+### The actual blocker
+
+```
+frame  600 : $FFFFE002 = 00017C32
+frame 1800 : $FFFFE002 = 00017C32
+distinct blocks: 410 at 1800, 2600 and 3400 frames -- identical
+```
+
+The state-machine pointer is **frozen on one handler** from frame 600 onward,
+94.7% of execution is the wait-for-vsync loop, and nametable A holds 7 non-zero
+entries — a blank screen. The build reaches the publisher screen, fades out,
+and never loads the title screen the reference shows by frame 2600.
+
+`0x17C32` itself looks like an ordinary attract animation (increments of
+`0x800` against a `0x30000` limit, flags in `$FFD70A/0B`), so the fault is
+upstream of it: something that should advance the state never does.
+
+**Root cause not found.** Candidates not yet distinguished: a VDP status bit
+the ROM waits on, a Z80 core bug producing a wrong value somewhere, or an
+unimplemented hardware read. Guessing further from disassembly is what produced
+the handshake error above.
+
+The right instrument already exists. The differential oracle should be extended
+from frame comparison to **execution comparison** — run both against
+Genesis-Plus-GX and find the first block where state diverges. That is what it
+was built for, and it is the honest next step rather than more inference.

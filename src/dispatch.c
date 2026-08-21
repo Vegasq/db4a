@@ -6,6 +6,7 @@
  * silently wrong. */
 #include "m68k.h"
 #include "hal.h"
+#include "z80.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -67,6 +68,40 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         m68k_cur_block = pc;
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
+    }
+    return pc;
+}
+
+/* Run one PAL frame, interleaving the 68000 and Z80 in small slices.
+ *
+ * Frame-granular scheduling is not good enough: the ROM writes a command into
+ * Z80 RAM and then polls for the reply in a tight loop. If the Z80 only gets
+ * to run once the 68000's whole frame is done, that poll spins for the entire
+ * frame and the handshake can never complete inside it. Slicing keeps the two
+ * processors in step at roughly the granularity real hardware provides.
+ */
+#define SLICE_CYCLES 500
+/* Z80 3546893 Hz vs 68000 7600489 Hz on PAL. */
+#define Z80_NUM 3546893ull
+#define Z80_DEN 7600489ull
+
+uint32_t m68k_run_frame(uint32_t pc) {
+    uint64_t deadline = CPU.cycles + PAL_FRAME_CYCLES;
+    int z80_on = hal_z80_running();
+    while (CPU.cycles < deadline) {
+        uint64_t chunk = CPU.cycles + SLICE_CYCLES;
+        if (chunk > deadline) chunk = deadline;
+        pc = m68k_run_until(pc, chunk);
+        if (m68k_last_unknown) return pc;
+        z80_on = hal_z80_running();
+        if (z80_on) {
+            uint64_t target = (CPU.cycles * Z80_NUM) / Z80_DEN;
+            if (Z80.cycles < target) z80_run(target);
+        } else {
+            /* Bus held by the 68000: the Z80 is stopped, so keep its clock
+               aligned rather than letting it owe a huge catch-up later. */
+            Z80.cycles = (CPU.cycles * Z80_NUM) / Z80_DEN;
+        }
     }
     return pc;
 }

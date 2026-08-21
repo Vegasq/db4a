@@ -19,6 +19,10 @@
 
 z80_t Z80;
 
+/* Optional execution profile, for finding where the driver actually sits. */
+unsigned long z80_pc_hits[0x2000];
+int z80_profiling;
+
 static const uint8_t PARITY[256] = {
 #define P2(n) n, n^1, n^1, n
 #define P4(n) P2(n), P2(n^1), P2(n^1), P2(n)

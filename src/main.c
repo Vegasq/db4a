@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
     hal_reset_ram();
     vdp_reset();
     { extern void hal_z80_init(void); hal_z80_init(); }
+    { extern int z80_profiling; z80_profiling = 1; }
 
     /* Reset: SSP from $000000, PC from $000004, supervisor, interrupts masked */
     CPU.a[7]   = m68k_read32(0);
@@ -89,16 +90,9 @@ int main(int argc, char **argv) {
             if (frames == script[k].at)       pad_set(script[k].pad, 1);
             if (frames == script[k].at + 8)   pad_set(script[k].pad, 0);
         }
-        end = m68k_run_until(end, CPU.cycles + PAL_FRAME_CYCLES);
+        end = m68k_run_frame(end);
         if (m68k_last_unknown) break;
-        /* The Z80 runs at 3546893 Hz against the 68000's 7600489 on PAL.
-           Keep it on the same wall clock rather than a free-running count. */
-        { extern int hal_z80_running(void);
-          if (hal_z80_running()) {
-              uint64_t target = (uint64_t)((double)CPU.cycles * (3546893.0 / 7600489.0));
-              if (Z80.cycles < target) z80_run(target);
-              z80_irq();
-          } }
+        if (hal_z80_running()) z80_irq();
         end = m68k_interrupt(end, 6);          /* VBlank at end of frame */
     }
     printf("frames simulated  : %u  (%.2f s of game time)\n",
@@ -136,6 +130,18 @@ int main(int argc, char **argv) {
       printf("Z80 state         : pc=%04X sp=%04X cycles=%llu %s\n",
              Z80.pc, Z80.sp, (unsigned long long)Z80.cycles,
              hal_z80_running() ? "RUNNING" : "halted/bus-held");
+      { extern unsigned long z80_pc_hits[0x2000], z80_writes_1b2x;
+        unsigned live = 0; unsigned long tot = 0;
+        for (unsigned i = 0; i < 0x2000; i++) { if (z80_pc_hits[i]) live++; tot += z80_pc_hits[i]; }
+        printf("Z80 distinct PCs  : %u   (total %lu instructions)\n", live, tot);
+        printf("Z80 writes to 1B2x: %lu\n", z80_writes_1b2x);
+        printf("Z80 hottest PCs   :");
+        for (int k = 0; k < 8; k++) {
+          unsigned best = 0; for (unsigned i = 0; i < 0x2000; i++)
+            if (z80_pc_hits[i] > z80_pc_hits[best]) best = i;
+          if (!z80_pc_hits[best]) break;
+          printf(" %04X(%lu)", best, z80_pc_hits[best]); z80_pc_hits[best] = 0; }
+        printf("\n"); }
       const char *zp = getenv("DB4A_Z80DUMP");
       if (zp) { hal_dump_z80(zp); printf("dumped Z80 RAM to %s\n", zp); } }
     vdp_dump();

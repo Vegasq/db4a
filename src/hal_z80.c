@@ -66,8 +66,12 @@ uint8_t z80_read(uint16_t a) {
     return m68k_read8(phys);
 }
 
+unsigned long z80_writes_1b2x;
 void z80_write(uint16_t a, uint8_t v) {
-    if (a < 0x4000) { z80ram[a & 0x1FFF] = v; return; }
+    if (a < 0x4000) {
+        if ((a & 0x1FF0) == 0x1B20) z80_writes_1b2x++;
+        z80ram[a & 0x1FFF] = v; return;
+    }
     if (a < 0x6000) return;                          /* YM2612 -- silent for now */
     if (a < 0x6100) {                                /* bank register */
         bank = (uint16_t)(((bank >> 1) | ((v & 1) << 8)) & 0x1FF);
