@@ -127,6 +127,7 @@ int main(int argc, char **argv) {
     }
 
     printf("ran %u frames, %lu blocks\n", frames, m68k_blocks_run);
+    pad_report();
     SDL_DestroyTexture(tex); SDL_DestroyRenderer(ren); SDL_DestroyWindow(win);
     SDL_Quit();
     return 0;

@@ -144,6 +144,7 @@ int main(int argc, char **argv) {
         printf("\n"); }
       const char *zp = getenv("DB4A_Z80DUMP");
       if (zp) { hal_dump_z80(zp); printf("dumped Z80 RAM to %s\n", zp); } }
+    pad_report();
     vdp_dump();
     render_frame();
     { const char *out = getenv("DB4A_PPM");

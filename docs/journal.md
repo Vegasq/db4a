@@ -919,3 +919,31 @@ The right instrument already exists. The differential oracle should be extended
 from frame comparison to **execution comparison** — run both against
 Genesis-Plus-GX and find the first block where state diverges. That is what it
 was built for, and it is the honest next step rather than more inference.
+
+### Input ruled out, definitively
+
+User report from `make play`: the game runs and displays, but Start does
+nothing and it never leaves the publisher screen. Added pad tracing
+(`DB4A_LOG_PAD`) counting every injected press and every read the game makes,
+specifically to separate "the game ignores input" from "the game never asks".
+
+```
+pad reads=0   ctrl-writes=2   data-writes=0
+
+[pad] port0 CTRL <- 40
+[pad] port1 CTRL <- 40
+[pad] Start DOWN
+[pad] Start up
+```
+
+The ROM configures both port control registers at boot (TH as output) and then
+**never reads a data port**. Not once in 1500 frames. Key presses reach
+`pad_set` correctly, so the SDL → pad chain works end to end; the game simply
+never polls.
+
+This confirms the earlier hardware histogram rather than resting on it, and
+rules input out as a cause. It also matches the reference, which reaches the
+title-screen menu by frame 2600 with no input at all — the publisher screen
+self-advances on a timer, so Start was never the mechanism that would move it.
+
+The stall remains the frozen state pointer at `$FFFFE002 = 00017C32`.

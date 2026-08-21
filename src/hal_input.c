@@ -13,24 +13,48 @@
  */
 #include "input.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+/* Input tracing. DB4A_LOG_PAD=1 reports every key press we inject and every
+   read the game performs, so "the game ignores input" and "the game never
+   asks for input" can be told apart. */
+static int log_pad = -1;
+static int logging(void) {
+    if (log_pad < 0) log_pad = getenv("DB4A_LOG_PAD") ? 1 : 0;
+    return log_pad;
+}
+unsigned long pad_reads, pad_ctrl_writes, pad_data_writes;
+static const char *BNAME[PAD_COUNT] = {"Up","Down","Left","Right","A","B","C","Start"};
 
 static uint8_t held[PAD_COUNT];
 static uint8_t ctrl[2];      /* direction bits, 1 = output */
 static uint8_t th[2] = {1, 1};
 
 void pad_set(int b, int pressed) {
-    if (b >= 0 && b < PAD_COUNT) held[b] = pressed ? 1 : 0;
+    if (b < 0 || b >= PAD_COUNT) return;
+    if (logging() && held[b] != (pressed ? 1 : 0))
+        fprintf(stderr, "[pad] %-5s %s\n", BNAME[b], pressed ? "DOWN" : "up");
+    held[b] = pressed ? 1 : 0;
 }
 
-void pad_write_ctrl(int port, uint8_t v) { if (port < 2) ctrl[port] = v; }
+void pad_write_ctrl(int port, uint8_t v) {
+    pad_ctrl_writes++;
+    if (logging()) fprintf(stderr, "[pad] port%d CTRL <- %02X\n", port, v);
+    if (port < 2) ctrl[port] = v;
+}
 
 void pad_write_data(int port, uint8_t v) {
+    pad_data_writes++;
+    if (logging()) fprintf(stderr, "[pad] port%d DATA <- %02X (TH=%d)\n",
+                           port, v, (v >> 6) & 1);
     if (port >= 2) return;
     /* TH only changes when the console has configured it as an output. */
     if (ctrl[port] & 0x40) th[port] = (v >> 6) & 1;
 }
 
 uint8_t pad_read_data(int port) {
+    pad_reads++;
     if (port != 0) return 0x7F;            /* no pad in port 2 */
     uint8_t b;
     if (th[0]) {
@@ -48,5 +72,12 @@ uint8_t pad_read_data(int port) {
                       (held[PAD_A]     ? 0 : 1) << 4 |
                       (held[PAD_START] ? 0 : 1) << 5);
     }
+    if (logging() && pad_reads < 40)
+        fprintf(stderr, "[pad] port%d READ -> %02X (TH=%d)\n", port, b, th[0]);
     return b;
+}
+
+void pad_report(void) {
+    printf("pad reads=%lu ctrl-writes=%lu data-writes=%lu\n",
+           pad_reads, pad_ctrl_writes, pad_data_writes);
 }
