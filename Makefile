@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands recomp run play vectors clean
+.PHONY: all verify-rom analyse test check-operands check-cpu recomp run play vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -20,11 +20,11 @@ analyse: verify-rom
 	@mkdir -p build
 	python3 tools/trace.py "$(ROM)"
 
-## vectors - run the recompiler against the SingleStepTests m68000 vectors
-##           (needs ref/m68k-tests; see docs/verification.md)
+## check-cpu - run the recompiler against the SingleStepTests m68000 vectors
+##             (needs ref/m68k-tests; see docs/verification.md)
 VECDIR ?= ref/m68k-tests/v1
 VECN   ?= 250
-vectors: build/test_vec
+check-cpu: build/test_vec
 	./build/test_vec
 
 build/test_vec.c: tests/gen_vector_test.py tools/m68ktest.py tools/semantics.py tools/ea.py

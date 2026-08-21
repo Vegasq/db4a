@@ -9,7 +9,7 @@ ad-hoc analysis code rather than in the emulator.
 
 The answer is layered verification, ordered by how much it lets you *eliminate*.
 
-## Layer 1 — CPU instruction vectors  (`make vectors`)
+## Layer 1 — CPU instruction vectors  (`make check-cpu`)
 
 Ground truth at the instruction level, with no game, VDP, Z80 or timing
 involved. A failure names an exact opcode and an exact register.
@@ -21,7 +21,7 @@ from MAME's microcoded core.
     cd ref && git clone --filter=blob:none --no-checkout --depth 1 \
         https://github.com/SingleStepTests/m68000.git m68k-tests
     cd m68k-tests && git checkout HEAD -- v1/LINK.json.bin  # or any subset
-    cd ../.. && make vectors
+    cd ../.. && make check-cpu
 
 `ref/` is gitignored; the vectors are not vendored. Because db4a is a static
 recompiler, each vector's instruction is generated exactly as the real build
