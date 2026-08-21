@@ -20,6 +20,20 @@ analyse: verify-rom
 	@mkdir -p build
 	python3 tools/trace.py "$(ROM)"
 
+## vectors - run the recompiler against the SingleStepTests m68000 vectors
+##           (needs ref/m68k-tests; see docs/verification.md)
+VECDIR ?= ref/m68k-tests/v1
+VECN   ?= 250
+vectors: build/test_vec
+	./build/test_vec
+
+build/test_vec.c: tests/gen_vector_test.py tools/m68ktest.py tools/semantics.py tools/ea.py
+	@test -d $(VECDIR) || { echo "missing $(VECDIR) -- see docs/verification.md"; exit 1; }
+	python3 tests/gen_vector_test.py $@ $(VECDIR) $(VECN)
+
+build/test_vec: build/test_vec.c include/m68k.h
+	$(CC) $(CFLAGS) $< -o $@
+
 ## check-operands - assert every operand in the corpus parses (needs analyse)
 check-operands: build/codemap.json
 	python3 tests/check_operands.py

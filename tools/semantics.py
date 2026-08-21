@@ -282,8 +282,13 @@ def i_link(mn, sz, ops, ctx):
     d = disp.v & 0xFFFF
     if d & 0x8000:
         d -= 0x10000
-    return ["CPU.a[7] -= 4;",
-            "m68k_write32(CPU.a[7], CPU.a[%d]);" % an.n,
+    # LINK A7 is a special case: the value pushed is the ORIGINAL An, captured
+    # before SP is decremented. Reading An after the decrement pushes a value
+    # 4 too low, which only shows up when An happens to be A7.
+    t = ctx.tmp("lk")
+    return ["uint32_t %s = CPU.a[%d];" % (t, an.n),
+            "CPU.a[7] -= 4;",
+            "m68k_write32(CPU.a[7], %s);" % t,
             "CPU.a[%d] = CPU.a[7];" % an.n,
             "CPU.a[7] += %d;" % d]
 
@@ -318,6 +323,7 @@ def _shift(name):
         out.append("%s %s = %s%d(%s, %s);"
                    % (ea.CAST[sz], r, name, BITS[sz], ea.load(dst, sz, t), cnt))
         out.append(ea.store(dst, sz, t, r))
+        out += ea.post(dst, sz)      # (An)+ must still increment
         return out
     return f
 
@@ -388,9 +394,18 @@ def i_movem(mn, sz, ops, ctx):
     regs, src = b.regs, a                             # memory -> registers
     if isinstance(src, ea.PostInc):
         an = src.an
-        for r in _movem_order(regs):
-            out.append("%s = %s;" % (_reg_c(r), _movem_load(sz, "CPU.a[%d]" % an)))
-            out.append("CPU.a[%d] += %d;" % (an, step))
+        order = _movem_order(regs)
+        # Walk a temporary cursor rather than An itself: if An appears in the
+        # register list it is loaded from memory, and that loaded value must
+        # survive. Incrementing An after loading it would destroy it.
+        cur = ctx.tmp("mv")
+        out.append("uint32_t %s = CPU.a[%d];" % (cur, an))
+        loads_an = ("a%d" % an) in order
+        for r in order:
+            out.append("%s = %s;" % (_reg_c(r), _movem_load(sz, cur)))
+            out.append("%s += %d;" % (cur, step))
+        if not loads_an:
+            out.append("CPU.a[%d] = %s;" % (an, cur))
         return out
     t = _addr(src, sz, ctx, out)
     for i, r in enumerate(_movem_order(regs)):
