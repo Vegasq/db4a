@@ -19,6 +19,11 @@ generated C running against a CPU state struct, linked with an SDL2 hardware
 abstraction layer (VDP, YM2612, input) and a `dispatch.c` that maps PC to
 function with an interpreter fallback.
 
+**Instruction semantics are defined exactly once**, as data, and both the
+recompiled blocks and the fallback interpreter are emitted from that single
+definition. See "Shared instruction semantics" below — this is the load-bearing
+architectural decision and code should not work around it.
+
 This was chosen over (a) manual matching decompilation to readable C, which is
 realistically person-years for a 1 MiB ROM, and (b) extracting assets and
 writing a new engine. The deciding factor is documented under
@@ -184,6 +189,52 @@ preceding the dispatch. Without a guard we stop at the first implausible entry.
 
 ---
 
+## Shared instruction semantics
+
+Decided 2026-08-21. `tools/semantics.py` is the **single source of truth** for
+what each 68000 instruction form does. Two backends consume it:
+
+```
+tools/semantics.py          one definition per instruction form
+        |
+        +--emit--> src/gen/blocks.c    recompiled basic blocks
+        +--emit--> src/interp.c        fallback interpreter
+                        |
+                   include/m68k.h      shared, unit-tested flag helpers
+```
+
+The fallback interpreter is not optional: the main state machine dispatches
+through a function pointer at `$FFFFE002`, so execution can reach a PC that no
+static pass predicted. Something must handle that at runtime.
+
+**Why one definition rather than two implementations.** If the interpreter and
+the recompiled blocks each carried their own copy of 68000 semantics, they
+could disagree — and that disagreement would surface during differential
+testing as a frame mismatch indistinguishable from a real bug. We would be
+debugging our own two implementations against each other instead of against the
+hardware. Generating both from one definition makes that class of bug
+unrepresentable. The recompiler needs these semantics regardless, so expressing
+them as data costs little beyond the initial design.
+
+Consequences for contributors:
+
+- Never fix a semantics bug in generated `src/gen/` or in `src/interp.c`. Both
+  are build outputs. Fix `tools/semantics.py` and regenerate.
+- Flag behaviour belongs in `include/m68k.h`, tested by `tests/test_flags.c`.
+- If interpreted and recompiled execution ever diverge, that is a generator
+  bug by construction, not a semantics disagreement.
+
+## Reference oracle
+
+**Genesis-Plus-GX**, patched to log executed PCs. Chosen over BlastEm for
+being simple to instrument in clean portable C, with accuracy that is ample for
+a commercial title of this era. BlastEm is held in reserve for any genuine
+hardware-behaviour dispute the simpler core cannot settle.
+
+It serves two purposes: coverage tracing (logging PCs to get past the ~10%
+static plateau) and, from M2 onward, frame-hash diffing as the correctness
+oracle underpinning the faithful-first fidelity policy.
+
 ## Tooling gotchas
 
 These cost real debugging time. Do not rediscover them.
@@ -209,6 +260,7 @@ These cost real debugging time. Do not rediscover them.
 CLAUDE.md            this file
 Makefile             reproducible analysis + test targets
 include/m68k.h       CPU state, memory interface, flag helpers
+tools/semantics.py   SINGLE SOURCE OF TRUTH for instruction semantics
 tools/vectors.py     exception vector table dump
 tools/trace.py       recursive-descent code discovery (main analysis tool)
 tools/jumptab.py     jump-table format detection and resolution

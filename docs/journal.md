@@ -198,3 +198,37 @@ they are required on Linux regardless and cost nothing:
 
 Because those hold, re-adding a platform later is a build-system problem rather
 than a correctness problem — which is the cheap part to redo.
+
+### Two architecture decisions settled
+
+**Interpreter fallback: one shared semantics definition, two backends.**
+`tools/semantics.py` becomes the single source of truth for what each 68000
+instruction form does; both the recompiled blocks and the fallback interpreter
+are emitted from it.
+
+The fallback is not optional — the `$FFFFE002` dispatch means execution can
+reach a PC no static pass predicted, and something has to handle that at
+runtime. The question was only how to build it. Considered and rejected:
+dropping in Musashi (fastest to a running build, but a second independent
+implementation of 68000 semantics), and hand-writing an interpreter (no
+external dependency, but semantics written twice and synced by hand).
+
+The deciding argument: if interpreted and recompiled code each carried their
+own semantics, a disagreement between them would surface during differential
+testing as a frame mismatch **indistinguishable from a real bug**. We would
+end up debugging our own two implementations against each other instead of
+against the hardware. Generating both from one definition makes that class of
+bug unrepresentable. Since the recompiler needs the semantics anyway,
+expressing them as data costs little beyond the initial design.
+
+The cost accepted: slower to a first running build than Musashi would have
+been, and correspondingly less early de-risking of the VDP work.
+
+**Reference oracle: Genesis-Plus-GX.** Clean portable C and a CPU core that is
+simple to patch for PC logging, with accuracy ample for a commercial title of
+this era. BlastEm is held in reserve for genuine hardware-behaviour disputes
+the simpler core cannot settle. It serves both coverage tracing and, from M2,
+frame-hash diffing.
+
+Recorded as an architecture-decision table in `docs/roadmap.md` so the
+reasoning survives past the point where anyone remembers the discussion.

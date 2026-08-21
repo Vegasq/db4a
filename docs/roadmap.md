@@ -96,7 +96,7 @@ stays C11 plus SDL2.
 | ID | Milestone | Status |
 |----|-----------|--------|
 | M0 | Analysis foundation: ROM verified, code discovery, runtime + flag tests | **done** |
-| M1 | 68k→C translator, `dispatch.c`, interpreter fallback; ROM executes from reset | in progress |
+| M1 | Shared semantics table emitting translator + interpreter; `dispatch.c`; ROM executes from reset | in progress |
 | M2 | VDP + SDL2 renderer; title screen matches reference emulator | |
 | M3 | Modern input; menus navigable | |
 | M4 | **v1 — one mission playable end to end** | |
@@ -105,6 +105,18 @@ stays C11 plus SDL2.
 | M7 | Full campaign, all three houses | |
 | M8 | Phase 2 — optional modern enhancements behind flags | |
 
-Differential testing against a reference emulator underpins M2 onward and is
-built alongside M2, not deferred — it is the oracle the whole fidelity policy
-depends on.
+Differential testing underpins M2 onward and is built alongside M2, not
+deferred — it is the oracle the whole fidelity policy depends on. The reference
+is **Genesis-Plus-GX**, patched to log executed PCs; see `CLAUDE.md`.
+
+## Architecture decisions
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-08-21 | Static recompilation over manual decompilation | manual is person-years for 1 MiB |
+| 2026-08-21 | Faithful first, modernise later | keeps the reference emulator usable as a correctness oracle |
+| 2026-08-21 | v1 = one mission end to end | title screen proves too little, full campaign signals too late |
+| 2026-08-21 | Linux x86_64 only | cuts CMake, cross-compilation and multi-platform CI |
+| 2026-08-21 | Audio deferred to M5 | large, independent; would delay every other signal |
+| 2026-08-21 | Single shared semantics definition emitting both backends | makes interpreter/recompiler divergence unrepresentable |
+| 2026-08-21 | Genesis-Plus-GX as reference oracle | simple to instrument; accuracy ample for this title |
