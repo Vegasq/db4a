@@ -110,6 +110,41 @@ def main(path):
         if v < ROM_END:
             t.trace(v)
 
+    # The game's state machine dispatches through a function pointer in RAM
+    # ($FFFFE002), and several handlers are installed with a literal address:
+    #     move.l #$24724, $e002.w
+    # Those immediates are code entry points, but nothing branches to them, so
+    # recursive descent alone never sees them -- they surface only when the
+    # game reaches that state at runtime and the dispatcher jumps into a block
+    # that does not exist. Seeding them statically closes that gap.
+    dispatch_seeds = 0
+    for a in sorted(t.insns):
+        sz, mn, op = t.insns[a]
+        if not mn.startswith('move'):
+            continue
+        parts = [x.strip() for x in op.split(',')]
+        if len(parts) != 2 or not parts[1].endswith('.w'):
+            continue
+        # destination must be the state pointer (or its immediate neighbours,
+        # which some handlers write as a pair)
+        m = re.match(r'^\$([0-9a-f]+)\.w$', parts[1])
+        if not m:
+            continue
+        dest = int(m.group(1), 16)
+        if dest & 0x8000:
+            dest = 0xFF0000 | (dest & 0xFFFF)
+        if dest != 0xFFE002:
+            continue
+        mi = re.match(r'^#\$?([0-9a-f]+)$', parts[0])
+        if not mi:
+            continue
+        tgt = int(mi.group(1), 16)
+        if 0 < tgt < ROM_END and not (tgt & 1) and tgt not in t.insns:
+            t.trace(tgt)
+            dispatch_seeds += 1
+    if dispatch_seeds:
+        print("state-pointer handlers seeded: %d" % dispatch_seeds)
+
     # Entry points found by actually running the recompiled build. The game
     # dispatches through RAM function pointers, so these are PCs no static
     # pass could predict; feeding them back is how coverage grows past the

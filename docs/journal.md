@@ -1442,3 +1442,56 @@ last 13 differing pixels had been outstanding since the colour-ramp work.
 Remaining: ROXR.b (capstone's fault, the harness feeds it a bad decode),
 MOVEM.l/w (the `(An)+` with An in its own list case) and SUB.b. House-select is
 unchanged at 981 blocks, so none of this was that fault.
+
+## State-pointer handlers are statically discoverable after all
+
+User report from `make play`: pressing B on house selection showed a
+split-second of the world map, then `BAD PC 00024724`. The crash dump ended:
+
+```
+1: 001812      move.l $e002.w, d0     ; read the state pointer
+0: 001818      movea.l d0, a0 ; jsr (a0)
+A0 = D0 = 00024724
+```
+
+The game installed a new state handler and jumped into a block that did not
+exist. But this one **was** discoverable: `$2603E` contains
+`move.l #$24724, $e002.w` — the address is a literal in the ROM.
+
+The tracer follows branches and calls, and nothing branches to these handlers,
+so recursive descent never saw them. They surfaced only when play reached that
+state. Added a pass that treats an immediate written to `$FFFFE002` as an entry
+point, which is precise: that pointer *is* the dispatch mechanism, so anything
+stored to it is by definition code.
+
+```
+instructions   : 31702 -> 33137
+entry points   :   768 ->   796
+jump tables    :    48 ->    50
+```
+
+All five literal handlers now decode: `$4500`, `$608E`, `$6D0C`, `$24724`,
+`$24812`.
+
+Replaying the user's path headlessly (Start at the title, B at house select)
+no longer crashes, and the world map renders — advisor portrait, the Arrakis
+territory map in the three house colours, briefing text:
+
+```
+distinct blocks : 981 -> 1287
+VRAM            : 15.3% -> 39.6% non-zero
+nametable A     : 68 -> 2094 entries
+sprite table    : 40 -> 263 bytes
+```
+
+No regression: title screen still 100.00% exact, invariants clean, three test
+suites green, vectors 4666/4710.
+
+Two things worth recording. **Interactive play found a state four sessions of
+scripted testing never reached** — the scripts only ever pressed Start.
+And this was a static-analysis gap masquerading as a runtime-dispatch problem:
+the bootstrap loop would have caught it by replaying, but only after someone
+reached that screen, whereas the ROM had the answer in an immediate all along.
+
+House-select is still 981 blocks and 68 nametable entries, so it remains its
+own separate fault.
