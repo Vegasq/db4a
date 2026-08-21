@@ -14,6 +14,14 @@ m68k_t CPU;
 static const uint8_t *rom;
 static size_t rom_len;
 static uint8_t ram[0x10000];        /* $FF0000-$FFFFFF, mirrored */
+uint8_t hal_z80_read68k(uint32_t a);
+void    hal_z80_write68k(uint32_t a, uint8_t v);
+
+static int is_z80(uint32_t a) {
+    return (a & 0xFF0000) == 0xA00000
+        || (a & 0xFFFF00) == 0xA11100
+        || (a & 0xFFFF00) == 0xA11200;
+}
 
 unsigned long hal_io_reads, hal_io_writes;
 extern uint32_t m68k_cur_block;
@@ -58,11 +66,11 @@ void hal_io_report(void) {
 static uint8_t io_read8(uint32_t a) {
     hal_io_reads++;
     io_tally(a, 0);
+    if (is_z80(a)) return hal_z80_read68k(a);
     uint8_t v = 0;
     switch (a) {
     case 0xA10001: v = VERSION_REG; break;
-    case 0xA11100:
-    case 0xA11101: v = 0x00; break;            /* Z80 bus granted */
+
     case 0xA10003: v = pad_read_data(0); break;
     case 0xA10005: v = pad_read_data(1); break;
     case 0xC00004: v = (uint8_t)(vdp_read_status() >> 8); break;
@@ -88,6 +96,7 @@ uint8_t m68k_read8(uint32_t a) {
 uint16_t m68k_read16(uint32_t a) {
     a &= 0xFFFFFF;
     if (a + 1 < rom_len) return (uint16_t)((rom[a] << 8) | rom[a + 1]);
+    if (is_z80(a)) return (uint16_t)((hal_z80_read68k(a) << 8) | hal_z80_read68k(a + 1));
     if (a >= 0xFF0000)   return (uint16_t)((ram[a & 0xFFFF] << 8) | ram[(a + 1) & 0xFFFF]);
     if (a >= 0xA00000)   return (uint16_t)((io_read8(a) << 8) | io_read8(a + 1));
     return 0;
@@ -104,6 +113,7 @@ void m68k_write8(uint32_t a, uint8_t v) {
         m68k_write16(a & ~1u, (uint16_t)((v << 8) | v));
         return;
     }
+    if (is_z80(a)) { hal_z80_write68k(a, v); return; }
     switch (a) {
     case 0xA10003: pad_write_data(0, v); hal_io_writes++; io_tally(a,1); return;
     case 0xA10005: pad_write_data(1, v); hal_io_writes++; return;
@@ -117,6 +127,13 @@ void m68k_write16(uint32_t a, uint16_t v) {
     a &= 0xFFFFFF;
     if (a >= 0xFF0000) { ram[a & 0xFFFF] = (uint8_t)(v >> 8);
                          ram[(a + 1) & 0xFFFF] = (uint8_t)v; return; }
+    /* BUSREQ and RESET are written as words (move.w #$0100,$A11100), so they
+       must be routed here as well as in the byte path. */
+    if (is_z80(a)) {
+        hal_z80_write68k(a,     (uint8_t)(v >> 8));
+        hal_z80_write68k(a + 1, (uint8_t)v);
+        return;
+    }
     if ((a & 0xFFFFE0) == 0xC00000) {
         hal_io_writes++;
         uint32_t p = a & 0x1F;

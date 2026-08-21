@@ -4,6 +4,7 @@
 #include "vdp.h"
 #include "render.h"
 #include "input.h"
+#include "z80.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,7 @@ int main(int argc, char **argv) {
     hal_set_rom(rom, (size_t)n);
     hal_reset_ram();
     vdp_reset();
+    { extern void hal_z80_init(void); hal_z80_init(); }
 
     /* Reset: SSP from $000000, PC from $000004, supervisor, interrupts masked */
     CPU.a[7]   = m68k_read32(0);
@@ -89,6 +91,14 @@ int main(int argc, char **argv) {
         }
         end = m68k_run_until(end, CPU.cycles + PAL_FRAME_CYCLES);
         if (m68k_last_unknown) break;
+        /* The Z80 runs at 3546893 Hz against the 68000's 7600489 on PAL.
+           Keep it on the same wall clock rather than a free-running count. */
+        { extern int hal_z80_running(void);
+          if (hal_z80_running()) {
+              uint64_t target = (uint64_t)((double)CPU.cycles * (3546893.0 / 7600489.0));
+              if (Z80.cycles < target) z80_run(target);
+              z80_irq();
+          } }
         end = m68k_interrupt(end, 6);          /* VBlank at end of frame */
     }
     printf("frames simulated  : %u  (%.2f s of game time)\n",
@@ -120,6 +130,14 @@ int main(int argc, char **argv) {
            CPU.a[0],CPU.a[1],CPU.a[2],CPU.a[3],CPU.a[4],CPU.a[5],CPU.a[6],CPU.a[7]);
 
     { extern void hal_io_report(void); hal_io_report(); }
+    { extern unsigned long hal_z80_writes; extern int hal_z80_running(void);
+      extern void hal_dump_z80(const char *);
+      printf("Z80 RAM writes    : %lu\n", hal_z80_writes);
+      printf("Z80 state         : pc=%04X sp=%04X cycles=%llu %s\n",
+             Z80.pc, Z80.sp, (unsigned long long)Z80.cycles,
+             hal_z80_running() ? "RUNNING" : "halted/bus-held");
+      const char *zp = getenv("DB4A_Z80DUMP");
+      if (zp) { hal_dump_z80(zp); printf("dumped Z80 RAM to %s\n", zp); } }
     vdp_dump();
     render_frame();
     { const char *out = getenv("DB4A_PPM");

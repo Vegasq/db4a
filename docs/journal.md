@@ -799,3 +799,66 @@ stubbed and still in M5.
 
 This is the second roadmap assumption that measurement overturned, after the
 PAL region byte. Both were reasonable-sounding and both were wrong.
+
+### Z80 core
+
+Applied the methodology that made the 68000 tractable: **measure before
+implementing**. The Z80 program is uploaded into Z80 RAM by the 68000 at
+runtime, so capturing it (`DB4A_Z80DUMP`) and surveying it statically
+(`tools/z80scan.py`, recursive descent from $0000) sized the work exactly:
+
+```
+reachable instructions : 2504
+bytes covered          : 5655 of 8192 (69.0%)
+distinct opcodes used  : 133 of 256
+prefixes               : DD 296, FD 211, CB 179, ED 29
+```
+
+Unlike the 68000 — where 15 mnemonics covered 80% — this is **not** top-heavy:
+the top 24 opcodes reach only 72%. And DD/FD are the two most common opcodes,
+so IX/IY are a first-class path, not an optional extra. A partial core would
+have been a long tail of crashes.
+
+That argued for structured decoding over a 256-way switch. Every opcode splits
+as `x x y y y z z z` (`x=op>>6, y=(op>>3)&7, z=op&7`), which mirrors the
+instruction set's actual layout, so one branch per `(x,z)` pair covers whole
+families. `src/z80.c` plus `src/z80_exec.h` implement base, CB, ED and DD/FD
+pages including the block transfer/search instructions.
+
+Caught while writing: the index-register write-back was a stub, so `INC IX`,
+`ADD IX,rp`, `POP IX` and `EX (SP),IX` would have silently discarded their
+results. Fixed by having the context hold a pointer to the live register.
+
+### Bus arbitration, and a byte-vs-word trap
+
+`src/hal_z80.c` implements Z80 RAM, BUSREQ/RESET, and the Z80's banked window
+into the 68000 bus.
+
+First attempt regressed the 68000 from 410 distinct blocks to **8**, hanging at
+`0x24A` — `btst d0,(a1) / bne` against `$A11100`, the bus-grant poll. Cause:
+`move.w #$0100, $A11100` decomposes into `0x01` at the even address and `0x00`
+at the odd one, and the handler matched the whole 256-byte range, so the second
+byte immediately revoked the request the first had made. Only the even byte
+carries the control bit. Word writes also had to be routed at all — initially
+only the byte path delegated to the Z80, so the ROM's word-sized bus writes
+were silently discarded.
+
+### State
+
+```
+Z80 state : pc=0038 sp=1B1C cycles=106416950 RUNNING
+```
+
+106M cycles is ~30 s at 3.55 MHz, so the core executes the real driver
+continuously without wandering into garbage — a good sign for a from-scratch
+implementation, though not proof of correctness.
+
+**Not yet working:** the handshake byte at `$1B21` stays `00`, so the 68000's
+poll is still unanswered and the game does not progress (still 410 blocks,
+sprite table still empty). Likely candidates: the driver waits on YM2612 timer
+status, which is currently stubbed to 0, or the protocol needs command values
+the 68000 has not sent. Not yet diagnosed — asserting a cause here would be
+guessing.
+
+The Z80 core has also not been validated against anything. ZEXDOC/ZEXALL would
+need CP/M scaffolding; the differential oracle is the cheaper route.
