@@ -186,3 +186,10 @@ build/test_sem: build/test_sem.c include/m68k.h
 
 clean:
 	rm -rf build
+
+## keytest - standalone SDL keyboard probe: what does SDL see for a given key?
+keytest: build/keytest
+	./build/keytest
+
+build/keytest: tools/keytest.c
+	cc -O1 -Wall -Wextra -o $@ $< $(shell sdl2-config --cflags --libs)
