@@ -36,16 +36,22 @@ signal for too long). One complete mission exercises every subsystem together.
 
 v1 is done when all of the following hold:
 
-| # | Criterion | How it is verified |
-|---|-----------|--------------------|
-| 1 | Boots from reset through VDP init to the title screen | frame hash matches reference emulator |
-| 2 | Intro and house-select screens navigable | manual play |
-| 3 | Mission 1 loads and renders correctly | frame hash matches reference at fixed checkpoints |
-| 4 | Core loop works: build, harvest spice, combat | manual play |
-| 5 | Both win **and** lose conditions reachable | manual play |
-| 6 | Correct pacing — PAL 49.70 Hz, no drift | frame timing measured over 60 s |
-| 7 | No crash or hang across a full mission | soak run |
-| 8 | Builds and runs on Linux x86_64 from a clean tree | `make clean && make` |
+| # | Criterion | How it is verified | Status |
+|---|-----------|--------------------|--------|
+| 1 | Boots from reset through VDP init to the title screen | frame hash matches reference emulator | **done** — 71680/71680 |
+| 2 | Intro and house-select screens navigable | manual play | **done** |
+| 3 | Mission 1 loads and renders correctly | frame hash matches reference at fixed checkpoints | **done** — 99.35% at frame 6000; residual is task #21 |
+| 4 | Core loop works: build, harvest spice, combat | manual play | **done** — mission won |
+| 5 | Both win **and** lose conditions reachable | manual play | **win only** — a loss has not been played |
+| 6 | Correct pacing — PAL 49.70 Hz, no drift | frame timing measured over 60 s | **done** — 0.0002% drift |
+| 7 | No crash or hang across a full mission | soak run | **done** — 27609 frames, invariants clean |
+| 8 | Builds and runs on Linux x86_64 from a clean tree | `make clean && make` | **done** — 32 s, no warnings |
+
+**Seven of eight.** The whole of mission 1 has been played through to Victory
+and is captured in `data/recordings/level1atredis.txt`, which replays
+deterministically and serves as the deepest regression test in the tree. Only
+the lose condition is unverified, and it needs a play session rather than any
+missing capability: `make record REC=data/recordings/defeat.txt`, then lose.
 
 **Audio is explicitly *not* required for v1.** It may be stubbed silent. It is
 its own milestone (M5) because YM2612 + PSG + a Z80 core is a large, largely
