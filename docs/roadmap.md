@@ -117,7 +117,22 @@ stays C11 plus SDL2.
 | M5 | **Audio — YM2612, PSG, Z80 sound bus** — chips implemented and audible; fidelity work outstanding, see task #22 | **mostly done** |
 | M6 | *(retired — was cross-platform build; Linux-only now)* | dropped |
 | M7 | Full campaign, all three houses | **done for the campaign's structure** — see below |
-| M8 | Phase 2 — optional modern enhancements behind flags | |
+| M8 | Phase 2 — optional modern enhancements behind flags | **done** — save states, pause, fast-forward, remappable input |
+
+### M8 — what was added
+
+Everything here is frontend-only. The emulated machine runs identical frames
+whether these are used or not, which is what keeps the faithful-first policy
+intact.
+
+| Enhancement | Notes |
+|-------------|-------|
+| Save states | F5 / F9, `DB4A_STATE` sets the path. Whole machine, verified byte-identical by `make check-state`. The cartridge has no SRAM, so without these a mission must be played in one sitting. |
+| Pause | P |
+| Fast-forward | hold `` ` `` or F; skips frame pacing and drops audio rather than queueing minutes of it |
+| Remappable input | `DB4A_KEYS="a=q,b=w"`, gamepad supported, several alternates per button |
+| Input recording | `make record` / `make replay`, which is also how regression tests are made |
+| Audio gain | `DB4A_GAIN` |
 
 ### M7 — what "full campaign" was taken to mean
 

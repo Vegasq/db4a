@@ -177,6 +177,7 @@ int main(int argc, char **argv) {
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
     printf("          remap with DB4A_KEYS=\"a=q,b=w,c=e\"\n");
     printf("          F5 saves a state, F9 loads it (DB4A_STATE sets the path)\n");
+    printf("          P pauses, ` or F fast-forwards while held\n");
     printf("          DB4A_LOG_PAD=1 names every key SDL reports\n");
 
     /* DB4A_RECORD=<file> captures play; DB4A_REPLAY=<file> plays it back. */
@@ -190,6 +191,7 @@ int main(int argc, char **argv) {
     int running = 1;
     unsigned frames = 0;
     uint8_t key_state[PAD_COUNT] = {0};   /* what the keyboard asked for last frame */
+    int paused = 0;
     static uint8_t held_scan[SDL_NUM_SCANCODES];   /* for the DB4A_LOG_PAD dump */
     Uint64 t0 = SDL_GetTicks64();
     while (running) {
@@ -205,6 +207,13 @@ int main(int argc, char **argv) {
                    while the key was still held. Polling cannot see repeat at
                    all. Events are still used for quit and for diagnostics. */
                 if (e.key.keysym.sym == SDLK_ESCAPE) running = 0;
+                if (e.type == SDL_KEYDOWN && !e.key.repeat) {
+                    if (e.key.keysym.sym == SDLK_p) {
+                        paused = !paused;
+                        printf(paused ? "paused\n" : "resumed\n");
+                        if (audio) SDL_ClearQueuedAudio(audio);
+                    }
+                }
                 /* Save states. The cartridge has no SRAM, so without these a
                    mission has to be played in one sitting. Emulation is
                    unaffected either way -- this is convenience, not fidelity. */
@@ -285,6 +294,14 @@ int main(int argc, char **argv) {
                 }
         }
 
+        /* Fast-forward while held: skip the frame delay and drop audio rather
+           than queue minutes of it. Purely a frontend convenience -- the
+           emulation runs exactly the same frames either way. */
+        const Uint8 *ks_ff = SDL_GetKeyboardState(NULL);
+        int fast = ks_ff[SDL_SCANCODE_GRAVE] || ks_ff[SDL_SCANCODE_F];
+
+        if (paused) { SDL_Delay(16); continue; }
+
         if (replaying) inputlog_replay_frame(frames);
         pc = system_frame(pc);
         if (m68k_last_unknown) {
@@ -320,7 +337,7 @@ int main(int argc, char **argv) {
                 mix[i * 2]     = (int16_t)l;
                 mix[i * 2 + 1] = (int16_t)r;
             }
-            if (frames_out)
+            if (frames_out && !fast)
                 SDL_QueueAudio(audio, mix, (Uint32)(frames_out * 2 * sizeof mix[0]));
             if (getenv("DB4A_LOG_AUDIO")) {
                 static unsigned long tot, calls;
@@ -345,7 +362,7 @@ int main(int argc, char **argv) {
 
         /* Pace to PAL rate when vsync is not doing it for us. */
         /* PAL is 49.7015 Hz, not 50: pacing at 50 runs the game 0.6% fast. */
-        Uint64 target = t0 + (Uint64)(frames * 1000.0 / PAL_HZ);
+        Uint64 target = fast ? 0 : t0 + (Uint64)(frames * 1000.0 / PAL_HZ);
         Uint64 now = SDL_GetTicks64();
         if (now < target) SDL_Delay((Uint32)(target - now));
     }
