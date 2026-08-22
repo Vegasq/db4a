@@ -235,6 +235,28 @@ It serves two purposes: coverage tracing (logging PCs to get past the ~10%
 static plateau) and, from M2 onward, frame-hash diffing as the correctness
 oracle underpinning the faithful-first fidelity policy.
 
+## Input
+
+Keyboard defaults: arrows = D-pad, **Q/W/E** = A/B/C, Enter = Start, Esc = quit.
+Z/X/C, Space/Alt/Shift and Tab are also bound as alternates.
+
+Pad state is **polled once per frame**, never derived from key events:
+auto-repeat emits a KEYUP/KEYDOWN pair per repeat and the repeat flag marks
+only the KEYDOWN, so an event-driven binding releases the button mid-hold.
+
+Remap without rebuilding:
+
+```bash
+DB4A_KEYS="a=q,b=w,c=r" make play    # naming a button drops its defaults
+DB4A_LOG_PAD=1 make play             # presses + reads taken while held
+DB4A_LOG_PAD=all make play           # also the TH strobe (very noisy)
+make keytest                         # standalone SDL probe, db4a not involved
+```
+
+On the development machine SDL never reports E, Z or C as held, while Q, W and
+X work. This is outside db4a -- `PAD_C` itself is verified correct -- and is
+tracked as task #18.
+
 ## Tooling gotchas
 
 These cost real debugging time. Do not rediscover them.

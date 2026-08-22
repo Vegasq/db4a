@@ -1999,3 +1999,36 @@ Two details that would otherwise bite:
 
 While replaying, live keyboard input is ignored, so a replay cannot be
 accidentally perturbed.
+
+## 2026-08-22 — input: auto-repeat, and three keys that never arrive
+
+Three separate problems wearing the same costume ("button X does not work"),
+worth separating because only two were ours.
+
+**Auto-repeat (real bug, fixed).** Pressing A logged `DOWN` then immediately
+`up` while the key was still held. Auto-repeat emits a KEYUP/KEYDOWN pair per
+repeat and the repeat flag marks only the KEYDOWN, so filtering on
+`e.key.repeat` dropped the re-press but honoured the release, latching the
+button off for the rest of the hold. Whether a key was affected came down to
+whether it was held past the repeat delay, which is why it looked key-specific.
+Pad state is now polled from `SDL_GetKeyboardState` once per frame; a key that
+goes up and back down inside one frame reads as held, which is correct.
+
+**Poll matching (real bug, fixed).** The first polled version checked only two
+scancodes -- the US-layout position and `SDL_GetScancodeFromKey` -- while the
+event path had matched on the layout-aware keysym. Keys that had matched by
+symbol stopped matching entirely. The poll now walks the keys that are actually
+down and asks SDL what symbol each produces.
+
+**E, Z and C never reach SDL (not ours, deferred).** SDL reports Q, W, X, Enter
+and the arrows as held and never reports E, Z or C at all. Not the PAD_C
+plumbing: driving PAD_C headlessly gives `TH=1 -> 5F` (bit 5 clear) and
+`TH=0 -> 33`, both correct. A/B/C therefore default to Q/W/E, and `DB4A_KEYS`
+remaps any button at runtime so a key the machine will not deliver never needs
+a rebuild to work around. See task #18.
+
+The lesson worth keeping: three "the button does not work" reports had three
+different causes, and the useful signal each time came from the user's
+description of the TIMING ("prints DOWN and UP with no delay"), not from the
+symptom. The pad log now reports reads while a button is held, and names every
+key SDL sees, so the next one of these starts from evidence.
