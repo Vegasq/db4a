@@ -107,7 +107,7 @@ stays C11 plus SDL2.
 | M2.5 | **Z80 core + 68000/Z80 bus** — reclassified as a v1 blocker, see below | |
 | M3 | Modern input; menus navigable | |
 | M4 | **v1 — one mission playable end to end** | |
-| M5 | Audio: YM2612 and PSG (Z80 itself moved to M2.5) | |
+| M5 | **Audio — YM2612, PSG, Z80 sound bus** — chips implemented and audible; fidelity work outstanding, see task #22 | **mostly done** |
 | M6 | *(retired — was cross-platform build; Linux-only now)* | dropped |
 | M7 | Full campaign, all three houses | |
 | M8 | Phase 2 — optional modern enhancements behind flags | |
