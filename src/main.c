@@ -61,7 +61,10 @@ int main(int argc, char **argv) {
     m68k_profile_enable();
     { extern int hal_log_sr, hal_log_io;
       hal_log_sr = getenv("DB4A_LOG_SR") != NULL;
-      hal_log_io = getenv("DB4A_LOG_IO") != NULL; }
+      hal_log_io = getenv("DB4A_LOG_IO") != NULL;
+      extern unsigned long pad_log_from;
+      if (getenv("DB4A_LOG_PAD_FROM"))
+          pad_log_from = strtoul(getenv("DB4A_LOG_PAD_FROM"), NULL, 0); }
 
     /* Run in frame-sized slices, firing VBlank between them. The ROM boots
        into an idle loop and does all its work from the level 6 handler, so
@@ -70,27 +73,52 @@ int main(int argc, char **argv) {
     unsigned frames = 0;
     /* Scripted input, so the headless harness can drive the game past menus
        without a display:  DB4A_PRESS="800:start,1000:c"  */
-    struct { unsigned at; int pad; } script[16];
+    /* Sized for real scenarios: the gameplay sweep is 82 inputs and its script
+       string is ~700 bytes. The previous 16 entries / 256 byte buffer
+       truncated both SILENTLY, so every press past the 16th was dropped and
+       in-game input looked broken when it had simply never been parsed. */
+    enum { MAX_SCRIPT = 256 };
+    struct { unsigned at; int pad; } script[MAX_SCRIPT];
     unsigned nscript = 0;
     unsigned hold = getenv("DB4A_HOLD") ? (unsigned)strtoul(getenv("DB4A_HOLD"), NULL, 0) : 8;
     { const char *sp = getenv("DB4A_PRESS");
-      char buf[256];
+      char buf[8192];
       if (sp) {
+        if (strlen(sp) >= sizeof buf)
+            fprintf(stderr, "DB4A_PRESS truncated: %zu bytes, buffer %zu\n",
+                    strlen(sp), sizeof buf);
         snprintf(buf, sizeof buf, "%s", sp);
-        for (char *tok = strtok(buf, ","); tok && nscript < 16; tok = strtok(NULL, ",")) {
+        for (char *tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {
+            if (nscript >= MAX_SCRIPT) {
+                fprintf(stderr, "DB4A_PRESS truncated at %u entries\n", nscript);
+                break;
+            }
             char name[32]; unsigned at;
             if (sscanf(tok, "%u:%31s", &at, name) != 2) continue;
+            /* Table-driven so a missing name is impossible to overlook.
+               left and right were absent from the previous if-chain and were
+               dropped SILENTLY, so every horizontal input ever scripted was
+               discarded -- including the gameplay sweep. */
+            static const struct { const char *name; int pad; } NAMES[] = {
+                { "up", PAD_UP }, { "down", PAD_DOWN },
+                { "left", PAD_LEFT }, { "right", PAD_RIGHT },
+                { "a", PAD_A }, { "b", PAD_B }, { "c", PAD_C },
+                { "start", PAD_START },
+            };
             int b = -1;
-            if      (!strcmp(name,"start")) b = PAD_START;
-            else if (!strcmp(name,"a"))     b = PAD_A;
-            else if (!strcmp(name,"b"))     b = PAD_B;
-            else if (!strcmp(name,"c"))     b = PAD_C;
-            else if (!strcmp(name,"up"))    b = PAD_UP;
-            else if (!strcmp(name,"down"))  b = PAD_DOWN;
-            if (b >= 0) { script[nscript].at = at; script[nscript].pad = b; nscript++; }
+            for (unsigned n = 0; n < sizeof NAMES / sizeof NAMES[0]; n++)
+                if (!strcmp(name, NAMES[n].name)) { b = NAMES[n].pad; break; }
+            if (b < 0) {
+                fprintf(stderr, "DB4A_PRESS: unknown button '%s' -- ignored\n", name);
+                continue;
+            }
+            script[nscript].at = at; script[nscript].pad = b; nscript++;
         }
       } }
 
+    if (nscript)
+        fprintf(stderr, "parsed %u input events; last at frame %u\n",
+                nscript, script[nscript-1].at);
     for (frames = 0; frames < max_frames; frames++) {
         /* Hold length matters: a menu that advances on each press can consume
            one long hold twice. DB4A_HOLD tunes it. */

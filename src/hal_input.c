@@ -25,6 +25,9 @@ static int logging(void) {
     return log_pad;
 }
 unsigned long pad_reads, pad_ctrl_writes, pad_data_writes;
+/* Log a window of reads rather than the first few: the interesting ones happen
+   deep into gameplay, tens of thousands of reads in. */
+unsigned long pad_log_from = 0;
 static const char *BNAME[PAD_COUNT] = {"Up","Down","Left","Right","A","B","C","Start"};
 
 static uint8_t held[PAD_COUNT];
@@ -72,7 +75,7 @@ uint8_t pad_read_data(int port) {
                       (held[PAD_A]     ? 0 : 1) << 4 |
                       (held[PAD_START] ? 0 : 1) << 5);
     }
-    if (logging() && pad_reads < 40)
+    if (logging() && pad_reads > pad_log_from && pad_reads < pad_log_from + 24)
         fprintf(stderr, "[pad] port%d READ -> %02X (TH=%d)\n", port, b, th[0]);
     return b;
 }

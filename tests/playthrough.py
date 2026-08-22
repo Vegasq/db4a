@@ -79,6 +79,36 @@ SCENARIOS = {
         ('wait', 300),  ('shot', '05-house-select-settled'),
     ],
 
+    # Reach the mission and stop, so the in-game screen can be inspected and
+    # compared against the reference before any gameplay inputs are scripted.
+    "mission": (
+        [('wait', 2400),
+         ('press', 'start'), ('wait', 250),
+         ('press', 'b'),     ('wait', 250)]
+        + mash('b', 90, 18)                    # through the advisor briefing
+        + [('wait', 200), ('shot', '01-arrive'),
+           ('wait', 200), ('shot', '02-settled'),
+           ('wait', 400), ('shot', '03-idle')]
+    ),
+
+    # Exploration aid: reach the mission, then step the cursor one press at a
+    # time with a capture after each, so the mapping from input to on-screen
+    # movement can be read off rather than guessed.
+    "cursor": (
+        [('wait', 2400),
+         ('press', 'start'), ('wait', 250),
+         ('press', 'b'),     ('wait', 250)]
+        + mash('b', 90, 18)
+        + [('wait', 300), ('shot', '00-start')]
+        + [('press', 'right'), ('wait', 40), ('shot', '01-right')]
+        + [('press', 'right'), ('wait', 40), ('shot', '02-right')]
+        + [('press', 'down'),  ('wait', 40), ('shot', '03-down')]
+        + [('press', 'down'),  ('wait', 40), ('shot', '04-down')]
+        + [('press', 'a'),     ('wait', 60), ('shot', '05-press-a')]
+        + [('press', 'b'),     ('wait', 60), ('shot', '06-press-b')]
+        + [('press', 'c'),     ('wait', 60), ('shot', '07-press-c')]
+    ),
+
     # Just the opening, as a fast regression check.
     "intro": [
         ('wait', 300),  ('shot', '01-logo'),
