@@ -257,6 +257,40 @@ On the development machine SDL never reports E, Z or C as held, while Q, W and
 X work. This is outside db4a -- `PAD_C` itself is verified correct -- and is
 tracked as task #18.
 
+## Audio
+
+Both sound chips are implemented. **Dune drives everything through the YM2612**:
+it writes the PSG 38 times at init to mute all four channels and never again, so
+PSG output is exactly zero for a whole mission. Do not mistake that for a bug.
+
+```
+src/psg.c      SN76489: 3 tone + 1 noise, tested in tests/test_psg.c
+src/ym2612.c   OPN2: 6 FM channels, DAC, timers, LFO, tested in tests/test_ym.c
+```
+
+**The sound chips must advance BEFORE the Z80 runs each slice**, not at the end
+of a frame. The driver spins on the YM2612 Timer A overflow flag; if the timers
+only move at a frame boundary it polls a flag that cannot change, and gets one
+timer event per frame instead of ~10000. See `m68k_run_frame`.
+
+**Z80 instruction TIMING is load-bearing, not just its results.** The driver is
+CPU-bound on the Z80, so a cycle count that is a few T-states heavy slows the
+music directly. zexdoc validates results only; `tests/test_z80_timing.c` covers
+T-states. A CB-prefix error of 4 cycles was worth a third of the tempo.
+
+Capturing and comparing audio, neither of which needs a sound device:
+
+```bash
+DB4A_WAV=ours.wav ./build/db4a "$ROM" 3000              # ours, stereo 44100
+DB4A_WAV=ref.wav ./build/refhost "$CORE" "$ROM" 3000 o  # the reference's
+./build/db4a "$ROM" 3000                                # per-chip counters
+DB4A_LOG_AUDIO=1 make play                              # frames queued per video frame
+DB4A_GAIN=8 make play                                   # louder
+```
+
+Remaining fidelity work is task #22 (low priority): in-game audio is still
+wrong and SSG-EG is parsed but ignored.
+
 ## Tooling gotchas
 
 These cost real debugging time. Do not rediscover them.
@@ -274,6 +308,13 @@ These cost real debugging time. Do not rediscover them.
   bytes being decoded are data. `jumptab.is_impossible()` uses this as a
   validity oracle, and `probe_valid()` vets every guard-less jump-table entry
   with it. This is what eliminated all 76 bad decodes.
+- **`retro_get_memory_data` returns 68K RAM byte-swapped within each 16-bit
+  word.** Un-swap before diffing against ours, or 18.9% of bytes differ when the
+  real figure is 1.4%. Same trap as `od -t x2` below.
+- **`DB4A_REPLAY` used to extend every run to cover the recording**, so runs
+  asked for different lengths all simulated the same thing and returned
+  identical numbers. It now honours an explicit frame count; `make replay` omits
+  one deliberately.
 - **`od -t x2` byte-swaps on x86.** Big-endian ROM data comes out reversed.
   Use `od -A x -t x1`.
 - **`tools/rommap.py` classification is unreliable.** Its CODE/DATA split is a
