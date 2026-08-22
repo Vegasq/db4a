@@ -150,6 +150,35 @@ reference. The widescreen path must never be the default, and
 
 ---
 
+## Trying it before it is finished
+
+Steps 1 and 2 are implemented as a spike so the feel can be judged before the
+rest is built. The world widens and stays centred; the UI moves with it and so
+sits short of the right edge — pinning it there is step 3.
+
+```bash
+make explore                 # 320, resumed mid-mission at frame 6000
+make explore WIDE=400        # the same, widescreen
+make explore WIDE=448 STATE=data/states/mission1-f6000.state
+```
+
+`make explore` resumes from a save state rather than replaying from boot, so
+you arrive in the mission with live control. The state is regenerated from the
+recorded playthrough if missing, so it is reproducible rather than an opaque
+binary.
+
+Wide screenshots without a window:
+
+```bash
+DB4A_WIDE=400 DB4A_LOAD=data/states/mission1-f6000.state \
+    DB4A_SHOTS=6060 DB4A_PPM=build/w ./build/db4a "$ROM" 100
+```
+
+Worth looking for specifically: stale or repeated tiles at the extreme edges
+while scrolling, sprites appearing or vanishing at the new boundaries, and
+whether the wider view makes the cursor's inability to reach the new area feel
+wrong.
+
 ## Plan
 
 1. `fb_width` as a runtime value; `FB_W` becomes the maximum. Verify 320 output
