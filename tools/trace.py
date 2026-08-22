@@ -106,6 +106,71 @@ class Tracer:
                     break
                 pc += ins.size
 
+
+RE_AREG_DISPATCH = re.compile(r'^\((a[0-7]), ([ad][0-7])\.[wl]\)$')
+RE_LEA_PC        = re.compile(r'^\$([0-9a-f]+)\(pc\), (a[0-7])$')
+
+
+def areg_offset_tables(d, insns, md):
+    """Recover handlers from `jsr/jmp (aN, dM.w)` where aN came from a lea.
+
+    A script interpreter in this ROM dispatches like this:
+
+        lea.l  $4192e(pc), a0      ; table base
+        move.w (a0, d0.w), d0      ; d0 = a 16-bit offset out of the table
+        jsr    (a0, d0.w)          ; call base + offset
+
+    The transfer goes through an address register, so it does not match the
+    `jmp tbl(pc,dN.w)` form jumptab.py handles, and recursive descent reaches
+    none of the handlers. That is what left PC 041970 undiscovered.
+
+    Entry count comes from the table itself and needs no range guard: the
+    entries are offsets from the base, so the table cannot extend past its own
+    first handler. Reading until the cursor reaches base + (smallest positive
+    offset) stops exactly at the end -- in the table above entry 1 is 0x0036,
+    and 27 entries is 0x36 bytes.
+
+    Returns {target: table base}.
+    """
+    found = {}
+    order = sorted(insns)
+    for i, a in enumerate(order):
+        _, mn, op = insns[a]
+        if mn.split('.')[0] not in ('jsr', 'jmp'):
+            continue
+        m = RE_AREG_DISPATCH.match(op.strip())
+        if not m:
+            continue
+        areg = m.group(1)
+        base = None
+        for j in range(i - 1, max(-1, i - 14), -1):
+            _, pmn, pop = insns[order[j]]
+            if pmn.split('.')[0] != 'lea':
+                continue
+            lm = RE_LEA_PC.match(pop.strip())
+            if lm and lm.group(2) == areg:
+                base = int(lm.group(1), 16)
+                break
+        if base is None or base + 2 > len(d):
+            continue
+        limit = None
+        for k in range(0, 512):
+            ea_ = base + k * 2
+            if (limit is not None and ea_ >= limit) or ea_ + 2 > len(d):
+                break
+            off = struct.unpack_from('>H', d, ea_)[0]
+            if off == 0:                      # opcode 0 terminates the stream
+                continue
+            if off & 1:
+                break
+            tgt = base + off
+            if tgt >= len(d):
+                break
+            limit = tgt if limit is None else min(limit, tgt)
+            found.setdefault(tgt, base)
+    return found
+
+
 _PTR_RUNS = {}
 
 
@@ -325,6 +390,10 @@ def main(path):
                 if tg not in t.insns:
                     added += 1
                 t.add(tg, site, True)
+        for tg, tbl in areg_offset_tables(d, t.insns, t.md).items():
+            if tg not in t.insns:
+                added += 1
+                t.add(tg, tbl, True)
         for tg, tbl in ({} if os.environ.get('NO_PTR') else pointer_tables(d, t.insns, t.md)).items():
             if tg not in t.insns:
                 added += 1
