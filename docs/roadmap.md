@@ -45,7 +45,7 @@ v1 is done when all of the following hold:
 | 5 | Both win **and** lose conditions reachable | manual play | **done** — Victory in mission 1, Defeat in mission 2 (`tests/defeat.sh`) |
 | 6 | Correct pacing — PAL 49.70 Hz, no drift | frame timing measured over 60 s | **done** — 0.0002% drift |
 | 7 | No crash or hang across a full mission | soak run | **done** — 27609 frames, invariants clean |
-| 8 | Builds and runs on Linux x86_64 from a clean tree | `make clean && make` | **done** — 32 s, no warnings |
+| 8 | Builds and runs on Linux x86_64 from a clean tree | `make clean && make` | **done** — 35 s, no warnings |
 
 **v1 is complete — all eight criteria met.**
 
@@ -110,7 +110,7 @@ stays C11 plus SDL2.
 |----|-----------|--------|
 | M0 | Analysis foundation: ROM verified, code discovery, runtime + flag tests | **done** |
 | M1 | Shared semantics table emitting translator + interpreter; `dispatch.c`; ROM executes from reset | **done** (interpreter fallback not needed, see task #4) |
-| M2 | VDP + SDL2 renderer; title screen matches reference emulator | **done** — menus 100.00%, gameplay 99.35% |
+| M2 | VDP + SDL2 renderer; title screen matches reference emulator | **done** — menus 100.00%, gameplay 99.20% |
 | M2.5 | **Z80 core + 68000/Z80 bus** — reclassified as a v1 blocker, see below | **done** — zexdoc and T-state timing both covered |
 | M3 | Modern input; menus navigable | **done** — keyboard, gamepad, runtime remap, record/replay |
 | M4 | **v1 — one mission playable end to end** | **done** — all eight criteria |
