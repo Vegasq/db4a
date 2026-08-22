@@ -98,6 +98,68 @@ def locality_ok(targets, cand, slack=0x2000):
     lo, hi = min(targets), max(targets)
     return (lo - slack) <= cand <= (hi + slack)
 
+RE_ANDI = re.compile(r'^#\$([0-9a-f]+), ([ad][0-7])$')
+
+def enumerate_offsets(insns, order, site, reg):
+    """Work out exactly which offsets a `jmp tbl(pc,dN.w)` can produce.
+
+    Some dispatches bound the index with a mask rather than a compare, and
+    scale it with a rotate rather than a shift:
+
+        andi.w #$c000, d0      2 bits set -> 4 possible values
+        rol.w  #$3, d0         -> offsets 0, 2, 4, 6
+        jmp    $2e30e(pc, d0.w)
+
+    Guessing a stride from the first word at the table base fails here: the
+    first arm is `rts`, so the table is not recognisable as a branch table at
+    all. Instead enumerate every value the mask allows and push it through the
+    scaling, which yields the reachable offsets directly and needs no guess.
+
+    Returns a sorted list of offsets, or None if the pattern is not present.
+    """
+    import bisect
+    i = bisect.bisect_left(order, site)
+    mask = None
+    ops = []
+    for a in reversed(order[max(0, i - 10):i]):
+        sz, mn, op = insns[a]
+        base = mn.split('.')[0]
+        parts = [x.strip() for x in op.split(',')]
+        if base == 'andi' and len(parts) == 2 and parts[1] == reg:
+            m = RE_ANDI.match(op.strip())
+            if m:
+                mask = int(m.group(1), 16)
+                break
+        if base in ('rol', 'ror', 'lsl', 'lsr', 'asl', 'asr') and parts[-1] == reg:
+            m = re.match(r'^#\$?([0-9a-f]+)$', parts[0])
+            if m:
+                ops.append((base, int(m.group(1), 16)))
+        elif base == 'add' and len(parts) == 2 and parts[0] == reg and parts[1] == reg:
+            ops.append(('lsl', 1))
+    if mask is None or not (0 < mask <= 0xFFFF):
+        return None
+
+    bits = [b for b in range(16) if mask & (1 << b)]
+    if len(bits) > 8:                      # too many combinations to be a table
+        return None
+
+    offsets = set()
+    for combo in range(1 << len(bits)):
+        v = 0
+        for k, b in enumerate(bits):
+            if combo & (1 << k):
+                v |= 1 << b
+        for base, cnt in reversed(ops):    # applied in program order
+            cnt &= 63
+            if base == 'lsl':   v = (v << cnt) & 0xFFFF
+            elif base == 'lsr': v = (v & 0xFFFF) >> cnt
+            elif base == 'rol': v = ((v << cnt) | (v >> (16 - cnt))) & 0xFFFF if cnt % 16 else v
+            elif base == 'ror': v = ((v >> cnt) | (v << (16 - cnt))) & 0xFFFF if cnt % 16 else v
+            elif base == 'asl': v = (v << cnt) & 0xFFFF
+            elif base == 'asr': v = v >> cnt
+        offsets.add(v)
+    return sorted(offsets)
+
 def resolve(d, insns, order, site, op_str, md=None):
     """Return (table_addr, kind, [targets]) for one dispatch site, or None."""
     m = RE_DISPATCH.match(op_str.strip())
@@ -135,4 +197,16 @@ def resolve(d, insns, order, site, op_str, md=None):
     slots = []
     if kind in ("BRA_B", "BRA_W"):
         slots = [tbl + i * stride for i in range(len(targets))]
+    else:
+        # Not a recognisable branch table. If the index is mask-bounded, the
+        # reachable offsets can be enumerated exactly, and each is a slot the
+        # dispatch jumps directly into.
+        m = RE_DISPATCH.match(op_str.strip())
+        if m:
+            offs = enumerate_offsets(insns, order, site, m.group(2))
+            if offs is not None and len(offs) <= 64:
+                cand = [tbl + o for o in offs]
+                if md is not None:
+                    cand = [c for c in cand if probe_valid(md, d, c)]
+                slots = cand
     return (tbl, kind, targets, bound, slots)

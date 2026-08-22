@@ -25,6 +25,35 @@ def mash(button, gap, count):
 
 ALL_BUTTONS = ['up', 'down', 'left', 'right', 'a', 'b', 'c', 'start']
 
+def build_item(menu_moves, build_wait, place_downs, tag):
+    """Order one structure from the Construction Yard and place it.
+
+    The interface, established empirically:
+      a                       select the Construction Yard
+      down [+ right ...]      move onto the wanted item in the build list
+      a                       order it (credits drop)
+      <wait>                  construction runs
+      down, a                 enter placement mode, centred on the yard
+      down x N                walk the site clear of the yard -- two is the
+                              working distance, one leaves placement mode and
+                              three puts the site out of range (overlay red)
+      a                       confirm; refuses the site rather than doing
+                              nothing when it is invalid
+    """
+    steps = [('press', 'a'), ('wait', 90)]
+    for mv in menu_moves:
+        steps += [('press', mv), ('wait', 50)]
+    steps += [('press', 'a'), ('wait', 120), ('shot', tag + '-ordered')]
+    steps += [('wait', build_wait), ('shot', tag + '-built')]
+    steps += [('press', 'down'), ('wait', 50),
+              ('press', 'a'),    ('wait', 200)]
+    steps += mash('down', 45, place_downs)
+    steps += [('wait', 120),
+              ('press', 'a'), ('wait', 300), ('shot', tag + '-placed')]
+    return steps
+
+
+
 def sweep(buttons, gap, rounds=1):
     """Press each button in turn, `rounds` times over.
 
@@ -122,25 +151,19 @@ SCENARIOS = {
     # Placement starts centred on the Construction Yard, which is not a valid
     # site -- the cursor has to be walked clear of the existing building before
     # the placement is confirmed.
+    # Build the opening three structures: concrete slab, power station,
+    # refinery. Menu position selects the item -- down for the slab, down+right
+    # for the power station, down+right+right for the refinery.
     "slab": (
         [('wait', 2400),
          ('press', 'start'), ('wait', 250),
          ('press', 'b'),     ('wait', 250)]
         + mash('b', 90, 18)
-        + [('wait', 300),      ('shot', '00-arrive')]
-        + [('press', 'a'),     ('wait', 90),  ('shot', '01-yard-selected')]
-        + [('press', 'down'),  ('wait', 50)]
-        + [('press', 'a'),     ('wait', 120), ('shot', '02-slab-ordered')]
-        + [('wait', 900),      ('shot', '03-building')]
-        + [('press', 'down'),  ('wait', 50)]
-        + [('press', 'a'),     ('wait', 200), ('shot', '04-placement-mode')]
-        # Two presses is the working distance: enough to clear the yard,
-        # close enough to stay adjacent. Three puts the site out of range and
-        # the overlay turns red (invalid); one leaves placement mode entirely.
-        + mash('down', 45, 2)
-        + [('wait', 120),      ('shot', '05-cursor-moved')]
-        + [('press', 'a'),     ('wait', 300), ('shot', '06-placed')]
-        + [('wait', 500),      ('shot', '07-settled')]
+        + [('wait', 300), ('shot', '00-arrive')]
+        + build_item(['down'],                    900,  2, '01-slab')
+        + build_item(['down', 'right'],          1400,  2, '02-power')
+        + build_item(['down', 'right', 'right'], 1800,  2, '03-refinery')
+        + [('wait', 600), ('shot', '04-final')]
     ),
 
     # Just the opening, as a fast regression check.
