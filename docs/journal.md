@@ -1677,3 +1677,36 @@ tracked. These seeds sit awkwardly against that: reproducing them costs a
 Moved to `data/seeds.txt` and tracked, with the reasoning in the file header.
 `build/seeds.txt` remains the scratch file a running build appends to; the
 tracer reads both.
+
+### Jump-table slots are entry points, not just their targets
+
+Three crashes reported from play at `$6E78`, `$6E80`, `$6E88` — eight bytes
+apart, which looked like an 8-byte stride the resolver did not know. **That
+reading was wrong.** The dispatch is:
+
+```
+006E6E  andi.w  #$f, d0        ; index 0-15
+006E72  lsl.w   #$2, d0        ; x4
+006E74  jmp     $6e78(pc, d0.w)
+006E78  6000 003E  bra.w ...   ; 16 slots, 4 bytes each
+```
+
+Stride 4, `BRA_W` — a format already handled, and the table had in fact
+resolved perfectly, with all 16 correct targets recorded.
+
+The bug was subtler. `jmp $6e78(pc, d0.w)` jumps **into the table**: it lands
+on a `bra.w` slot which then branches onward. The slots are themselves
+executable addresses, but only the branch *targets* were being seeded. The
+first slot survived by fallthrough, so arm 0 worked and every other arm died —
+which is exactly the pattern the reports showed, one new address per attempt.
+
+Fixed by seeding each slot of a `BRA_B`/`BRA_W` table alongside its targets.
+This is general, not specific to that site: **82 slots across 11 dispatches**
+were previously unreachable, so a whole family of latent crashes went with it.
+
+Verified: title screen 71680/71680 exact, three suites green, 35624
+instructions parse, scripted route completes without crashing.
+
+Task 17 (infer stride from the scaling instruction) was filed on the wrong
+diagnosis and is no longer the issue here, though deriving the bound from
+`andi.w #$f` rather than only `cmpi` would still be an improvement.

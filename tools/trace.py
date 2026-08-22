@@ -235,8 +235,12 @@ def main(path):
             r = jumptab.resolve(d, t.insns, order, site, s.split(None,1)[1], md=t.md)
             if not r:
                 continue
-            tbl, kind, targets, bound = r
-            tables[site] = (tbl, kind, targets, bound)
+            tbl, kind, targets, bound, slots = r
+            tables[site] = (tbl, kind, targets, bound, slots)
+            for tg in slots:
+                if tg not in t.insns:
+                    added += 1
+                t.add(tg, site, True)
             for tg in targets:
                 if tg not in t.insns:
                     added += 1
@@ -263,7 +267,7 @@ def main(path):
     if t.bad:
         badset = set(t.bad)
         blame = {}
-        for a,(tbl,kind,tgts,bound) in tables.items():
+        for a,(tbl,kind,tgts,bound,slots) in tables.items():
             for tg in tgts:
                 # a target is suspect if it failed to decode OR decoded into
                 # something that is not real 68000 code
@@ -272,7 +276,7 @@ def main(path):
         if blame:
             print("  tables producing suspect targets:")
             for a,v in sorted(blame.items()):
-                tbl,kind,tgts,bound = tables[a]
+                tbl,kind,tgts,bound,slots = tables[a]
                 print("    site %06X tbl %06X %-6s bound=%s entries=%d -> %d suspect"
                       % (a,tbl,kind,bound,len(tgts),len(v)))
         else:
@@ -283,7 +287,8 @@ def main(path):
         "starts":   sorted("%06X"%a for a in t.starts),
         "indirect": [["%06X"%a, s] for a, s in sorted(unres)],
         "tables":   {("%06X"%a): {"table":"%06X"%v[0], "kind":v[1], "bound":v[3],
-                                  "targets":["%06X"%x for x in v[2]]}
+                                  "targets":["%06X"%x for x in v[2]],
+                                  "slots":["%06X"%x for x in v[4]]}
                      for a, v in sorted(tables.items())},
         "xrefs":    {("%06X"%a): sorted("%06X"%s for s in v) for a, v in sorted(t.xrefs.items())},
     }, open(OUT,"w"), indent=1)

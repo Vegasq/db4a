@@ -125,4 +125,14 @@ def resolve(d, insns, order, site, op_str, md=None):
             if md is not None and not probe_valid(md, d, t):
                 break
         targets.append(t)
-    return (tbl, kind, targets, bound)
+
+    # For a table of branch instructions the CPU jumps INTO the table: the
+    # dispatch lands on the slot, which then branches onward. So each slot
+    # address is itself an entry point, not just the address it branches to.
+    # Seeding only the branch targets leaves the slots undecoded, and
+    # execution dies on the second and later arms -- the first one survives
+    # only because it happens to be reached by fallthrough.
+    slots = []
+    if kind in ("BRA_B", "BRA_W"):
+        slots = [tbl + i * stride for i in range(len(targets))]
+    return (tbl, kind, targets, bound, slots)
