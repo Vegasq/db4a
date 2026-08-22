@@ -21,16 +21,31 @@ extern uint32_t m68k_last_unknown;
 
 /* Default bindings. Kept as a table so remapping is a data change, not a code
    change -- the arrow keys and Z/X/C are only defaults. */
-typedef struct { SDL_Keycode key; int pad; const char *name; } binding_t;
+/* Matched on the layout-dependent keycode OR the physical scancode. A keycode
+   alone is what the CURRENT layout produces, so on a non-US layout the letter
+   keys move and a binding silently stops working -- Z/X/C are exactly the keys
+   that shift on QWERTZ and AZERTY. Accepting either means the key labelled Z
+   works and so does the key in the US-layout Z position. */
+typedef struct {
+    SDL_Keycode  key;
+    SDL_Scancode scan;
+    int          pad;
+    const char  *name;
+} binding_t;
 static binding_t BINDINGS[] = {
-    { SDLK_UP,     PAD_UP,    "Up"    },
-    { SDLK_DOWN,   PAD_DOWN,  "Down"  },
-    { SDLK_LEFT,   PAD_LEFT,  "Left"  },
-    { SDLK_RIGHT,  PAD_RIGHT, "Right" },
-    { SDLK_z,      PAD_A,     "A"     },
-    { SDLK_x,      PAD_B,     "B"     },
-    { SDLK_c,      PAD_C,     "C"     },
-    { SDLK_RETURN, PAD_START, "Start" },
+    { SDLK_UP,     SDL_SCANCODE_UP,     PAD_UP,    "Up"    },
+    { SDLK_DOWN,   SDL_SCANCODE_DOWN,   PAD_DOWN,  "Down"  },
+    { SDLK_LEFT,   SDL_SCANCODE_LEFT,   PAD_LEFT,  "Left"  },
+    { SDLK_RIGHT,  SDL_SCANCODE_RIGHT,  PAD_RIGHT, "Right" },
+    { SDLK_z,      SDL_SCANCODE_Z,      PAD_A,     "A"     },
+    { SDLK_x,      SDL_SCANCODE_X,      PAD_B,     "B"     },
+    { SDLK_c,      SDL_SCANCODE_C,      PAD_C,     "C"     },
+    { SDLK_RETURN, SDL_SCANCODE_RETURN, PAD_START, "Start" },
+    /* Alternates, so there is always a reachable key for the action buttons
+       whatever the layout does to Z/X/C. */
+    { SDLK_SPACE,  SDL_SCANCODE_SPACE,  PAD_A,     "A"     },
+    { SDLK_LALT,   SDL_SCANCODE_LALT,   PAD_B,     "B"     },
+    { SDLK_LSHIFT, SDL_SCANCODE_LSHIFT, PAD_C,     "C"     },
 };
 #define NBINDINGS ((int)(sizeof BINDINGS / sizeof BINDINGS[0]))
 
@@ -83,6 +98,8 @@ int main(int argc, char **argv) {
     uint32_t pc = system_reset(rom, romlen);
 
     printf("controls: arrows = D-pad, Z/X/C = A/B/C, Enter = Start, Esc = quit\n");
+    printf("          alternates: Space = A, Alt = B, Shift = C\n");
+    printf("          (set DB4A_LOG_PAD=1 to name any key that is not bound)\n");
 
     /* DB4A_RECORD=<file> captures play; DB4A_REPLAY=<file> plays it back. */
     const char *recpath = getenv("DB4A_RECORD");
@@ -103,11 +120,18 @@ int main(int argc, char **argv) {
                 int down = (e.type == SDL_KEYDOWN);
                 if (e.key.keysym.sym == SDLK_ESCAPE) running = 0;
                 if (e.key.repeat) continue;   /* auto-repeat is not a new press */
+                int matched = 0;
                 for (int i = 0; i < NBINDINGS; i++)
-                    if (BINDINGS[i].key == e.key.keysym.sym && !replaying) {
+                    if ((BINDINGS[i].key  == e.key.keysym.sym ||
+                         BINDINGS[i].scan == e.key.keysym.scancode) && !replaying) {
+                        matched = 1;
                         pad_set(BINDINGS[i].pad, down);
                         inputlog_record(frames, BINDINGS[i].pad, down);
                     }
+                if (!matched && down && getenv("DB4A_LOG_PAD"))
+                    fprintf(stderr, "[key] unmapped: sym=%s scancode=%s\n",
+                            SDL_GetKeyName(e.key.keysym.sym),
+                            SDL_GetScancodeName(e.key.keysym.scancode));
             } else if (e.type == SDL_CONTROLLERBUTTONDOWN || e.type == SDL_CONTROLLERBUTTONUP) {
                 int down = (e.type == SDL_CONTROLLERBUTTONDOWN);
                 for (int i = 0; i < NGC; i++)
