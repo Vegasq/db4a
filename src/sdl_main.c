@@ -191,7 +191,6 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
     { const char *g = cfg("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
     if (getenv("DB4A_MOUSE")) {
         mouse_enable(1);
-        SDL_ShowCursor(SDL_ENABLE);
         printf("mouse control: on -- left=A, right=B, middle=C\n");
     }
 
@@ -357,6 +356,22 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
            wins: menus the steering does not recognise -- the construction yard
            build list, for one -- are navigated with the d-pad, and suppressing
            it whenever mouse mode was on made those unusable. */
+        /* Hide the system pointer exactly while the game is drawing its own,
+           so there is never a second cursor on screen. Menus and cutscenes have
+           no game cursor, so the pointer comes back there -- otherwise the
+           window looks broken when the mouse does nothing. SDL only hides it
+           over our window, so the desktop is unaffected. */
+        if (mouse_enabled()) {
+            static int keep = -1;
+            if (keep < 0) keep = getenv("DB4A_SYSCURSOR") ? 1 : 0;
+            int want_hidden = !keep && mouse_steering_active();
+            static int hidden = -1;
+            if (want_hidden != hidden) {
+                hidden = want_hidden;
+                SDL_ShowCursor(hidden ? SDL_DISABLE : SDL_ENABLE);
+            }
+        }
+
         if (mouse_enabled() && !replaying) {
             const Uint8 *kd = SDL_GetKeyboardState(NULL);
             int kbd_dir = 0;

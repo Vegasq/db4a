@@ -53,6 +53,26 @@ first.** Returning early without doing so leaves whatever was pressed held down.
 `make check-mouse` drives a scripted route to the mission with steering active
 and fails if the game does not arrive.
 
+## The system pointer
+
+Two cursors on screen at once — the OS pointer and the game's, several pixels
+behind it — reads as a bug even though both are working. So the system pointer
+is hidden, but *only* while `mouse_steering_active()` is true: mouse mode is on
+**and** the scene is one the game draws a cursor in.
+
+Hiding it unconditionally is worse than leaving it alone. Menus, briefings and
+cutscenes have no game cursor, so a blanket hide leaves those screens with no
+pointer at all while the mouse still moves it invisibly — the window looks
+frozen or broken. Tying visibility to the same predicate that gates steering
+means there is always exactly one cursor: the game's during play, the system's
+everywhere else.
+
+SDL hides the pointer only over our own window, so the desktop is unaffected
+and alt-tabbing away gives the pointer back for free.
+
+`DB4A_SYSCURSOR=1` keeps the system pointer visible throughout, which is useful
+when checking how far the game's cursor is lagging the real one.
+
 ## Behaviour
 
 A d-pad press moves the cursor about 7 pixels, so the pointer cannot be matched
