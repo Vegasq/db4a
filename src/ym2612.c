@@ -390,6 +390,12 @@ void ym_write(unsigned port, uint8_t v) {
         case 0x25: Y.ta_period = (uint16_t)((Y.ta_period & 0x3FC) | (v & 3)); break;
         case 0x26: Y.tb_period = v; break;
         case 0x27:
+            if (getenv("DB4A_TIMERLOG")) {
+                static unsigned long n;
+                if (n++ < 30)
+                    fprintf(stderr, "[t] 27 <- %02X  loadA=%d enA=%d rstA=%d (period %u)\n",
+                            v, v & 1, (v >> 2) & 1, (v >> 4) & 1, Y.ta_period);
+            }
             Y.timer_ctrl = v;
             if (v & 0x10) Y.ta_flag = 0;          /* reset the overflow flags */
             if (v & 0x20) Y.tb_flag = 0;

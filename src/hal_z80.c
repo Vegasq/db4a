@@ -33,6 +33,7 @@ void hal_z80_init(void) {
 }
 
 int  hal_z80_running(void) { return !bus_granted && !z80_reset_held; }
+const uint8_t *hal_z80_ram(void) { return z80ram; }
 void hal_dump_z80(const char *path);
 
 /* --- 68000 side --- */

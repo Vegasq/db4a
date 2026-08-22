@@ -58,7 +58,7 @@ record: build/db4a-sdl
 ##          usage: make replay REC=data/recordings/slab.txt SHOTS=6000,9000
 SHOTS ?=
 replay: build/db4a
-	DB4A_REPLAY=$(REC) DB4A_SHOTS=$(SHOTS) DB4A_PPM=build/replay ./build/db4a "$(ROM)" 200
+	DB4A_REPLAY=$(REC) DB4A_SHOTS=$(SHOTS) DB4A_PPM=build/replay ./build/db4a "$(ROM)"
 
 ## playthrough - drive the game through a scripted route, capturing each screen
 ##               usage: make playthrough SCENARIO=house

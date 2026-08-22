@@ -206,6 +206,21 @@ uint32_t m68k_run_frame(uint32_t pc) {
         INV_CHECK(INV_PC_RANGE, IS_ROM_ADDR(pc),       "PC left ROM",            pc,       CPU.a[7]);
         pc = m68k_run_until(pc, chunk);
         if (m68k_last_unknown) return pc;
+        /* Advance the sound chips BEFORE the Z80 runs, so it polls a current
+         * chip rather than a frozen one.
+         *
+         * These used to be called once at the end of the frame. The Dune sound
+         * driver paces itself by writing 0x15 to YM2612 register 0x27 -- start
+         * Timer A, enable its flag, clear it -- and then spinning on
+         * `bit 0,(hl)` until the overflow appears. With the timers only
+         * advancing at a frame boundary that flag could not change while the
+         * Z80 was running, so the driver burned its entire slice in the spin
+         * loop and received one timer event per frame instead of the ~10000 it
+         * expects. That is what made the music crawl and then stop entirely.
+         */
+        psg_run(CPU.cycles);
+        ym_run(CPU.cycles);
+
         z80_on = hal_z80_running();
         if (z80_on) {
             uint64_t target = (CPU.cycles * Z80_NUM) / Z80_DEN;

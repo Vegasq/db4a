@@ -159,8 +159,17 @@ int main(int argc, char **argv) {
           for (unsigned k = 0; k < nshots; k++)
               if (shot_at[k] + 60 > need) need = shot_at[k] + 60;
           if (max_frames < need) {
-              max_frames = need;
-              printf("extending run to %u frames to cover the recording\n", need);
+              /* Only extend when no explicit length was asked for. Extending
+                 regardless made every "run N frames" measurement silently
+                 simulate the whole recording, so a series of runs at different
+                 lengths all returned identical numbers. */
+              if (argc > 2) {
+                  printf("recording runs to frame %u; keeping the requested %u\n",
+                         inputlog_replay_last_frame(), max_frames);
+              } else {
+                  max_frames = need;
+                  printf("extending run to %u frames to cover the recording\n", need);
+              }
           }
       } }
 
