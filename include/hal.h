@@ -18,6 +18,8 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline);
 uint32_t m68k_run_frame(uint32_t pc);
 int hal_z80_running(void);
 extern uint32_t m68k_last_unknown;
+const uint8_t *hal_ram_ptr(size_t *len);
 
 #define PAL_FRAME_CYCLES 152009u
+#define PAL_LINES        313u   /* total scanlines, 224 of them visible */
 #endif

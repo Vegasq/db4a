@@ -155,6 +155,20 @@ int main(int argc, char **argv) {
                 render_frame();
                 if (render_write_ppm(path) == 0)
                     printf("  [frame %5u] captured %s\n", frames, path);
+                /* Work RAM alongside the frame, matching refhost's
+                   DB4A_RAMDUMP, so a screen difference can be attributed to
+                   the renderer or to game logic instead of guessed at. */
+                if (getenv("DB4A_RAMDUMP")) {
+                    size_t rlen = 0;
+                    const uint8_t *rp = hal_ram_ptr(&rlen);
+                    snprintf(path, sizeof path, "%s.%u.ram", shot_prefix, frames);
+                    FILE *rf = fopen(path, "wb");
+                    if (rf) {
+                        fwrite(rp, 1, rlen, rf);
+                        fclose(rf);
+                        printf("  [frame %5u] wrote %s (%zu bytes)\n", frames, path, rlen);
+                    }
+                }
             }
         }
     }

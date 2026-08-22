@@ -185,6 +185,8 @@ int main(int argc, char **argv) {
     void (*retro_set_audio_sample_batch)(retro_audio_sample_batch_t);
     void (*retro_set_input_poll)(retro_input_poll_t);
     void (*retro_set_input_state)(retro_input_state_t);
+    void  *(*retro_get_memory_data)(unsigned);
+    size_t (*retro_get_memory_size)(unsigned);
     void (*retro_init)(void);
     bool (*retro_load_game)(const struct retro_game_info *);
     void (*retro_run)(void);
@@ -200,6 +202,8 @@ int main(int argc, char **argv) {
     LOAD(retro_load_game,              "retro_load_game");
     LOAD(retro_run,                    "retro_run");
     LOAD(retro_get_system_av_info,     "retro_get_system_av_info");
+    LOAD(retro_get_memory_data,        "retro_get_memory_data");
+    LOAD(retro_get_memory_size,        "retro_get_memory_size");
 
     retro_set_environment(env_cb);
     retro_set_video_refresh(video_cb);
@@ -231,10 +235,53 @@ int main(int argc, char **argv) {
         parse_script(getenv("DB4A_PRESS"));
         if (nscript) printf("input script: %u events\n", nscript);
     }
+    /* DB4A_SHOTS="100,200" dumps those frames to <out>.<frame>.ppm during the
+       run, matching the native harness. Without it only the final frame is
+       written. Capturing several frames from ONE run matters: each run costs a
+       full re-simulation, so comparing a span of reference frames against one
+       of ours was otherwise prohibitively slow. */
+    unsigned shots[64], nshots = 0;
+    const char *sp = getenv("DB4A_SHOTS");
+    if (sp) {
+        char sb[256]; snprintf(sb, sizeof sb, "%s", sp);
+        for (char *t = strtok(sb, ","); t && nshots < 64; t = strtok(NULL, ","))
+            shots[nshots++] = (unsigned)strtoul(t, NULL, 0);
+    }
     for (unsigned i = 0; i < frames; i++) {
         cur_frame = i;
         if (nrep) replay_frame(i);
         retro_run();
+        for (unsigned k = 0; k < nshots; k++)
+            if (shots[k] == i && have_frame && argc > 4) {
+                char path[512];
+                snprintf(path, sizeof path, "%s.%u.ppm", argv[4], i);
+                FILE *o = fopen(path, "wb");
+                if (o) {
+                    fprintf(o, "P6\n%u %u\n255\n", FBW, FBH);
+                    for (unsigned y = 0; y < FBH; y++) fwrite(FB[y], 1, FBW * 3, o);
+                    fclose(o);
+                    printf("  [frame %u] wrote %s\n", i, path);
+                }
+                /* 68K work RAM alongside the frame. Comparing RAM tells a
+                   rendering difference apart from a game-logic one, which
+                   pixels alone cannot: if the two sides agree on RAM but
+                   disagree on screen it is ours to fix in the renderer, and
+                   if RAM already differs the divergence happened earlier. */
+                if (getenv("DB4A_RAMDUMP")) {
+                    void *rd = retro_get_memory_data(RETRO_MEMORY_SYSTEM_RAM);
+                    size_t rs = retro_get_memory_size(RETRO_MEMORY_SYSTEM_RAM);
+                    if (rd && rs) {
+                        char rp[512];
+                        snprintf(rp, sizeof rp, "%s.%u.ram", argv[4], i);
+                        FILE *r = fopen(rp, "wb");
+                        if (r) {
+                            fwrite(rd, 1, rs, r);
+                            fclose(r);
+                            printf("  [frame %u] wrote %s (%zu bytes)\n", i, rp, rs);
+                        }
+                    }
+                }
+            }
     }
     printf("ran %u frames, last frame %ux%u, pixel format %s\n", frames, FBW, FBH,
            PIXFMT == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" :

@@ -138,6 +138,36 @@ static int16_t vscroll_for(unsigned col, int plane_b) {
     return (int16_t)VDP.vsram[idx % VSRAM_SIZE];
 }
 
+/* One entry per visible scanline. hscroll is stored already resolved, since
+   its table lives in VRAM and that VRAM can be overwritten later in the frame;
+   vsram is copied wholesale because per-2-cell mode indexes up to 40 entries.
+   reg11 comes along so the scroll MODE is read as it was at that line too. */
+static struct {
+    int16_t  hs_a, hs_b;
+    uint16_t vsram[VSRAM_SIZE];
+    uint8_t  reg11;
+} LATCH[FB_H];
+static unsigned latched;          /* how many lines this frame have been latched */
+
+void render_frame_begin(void) { latched = 0; }
+
+void render_line_latch(unsigned line) {
+    if (line >= FB_H) return;
+    LATCH[line].hs_a  = hscroll_for(line, 0);
+    LATCH[line].hs_b  = hscroll_for(line, 1);
+    LATCH[line].reg11 = VDP.reg[11];
+    memcpy(LATCH[line].vsram, VDP.vsram, sizeof LATCH[line].vsram);
+    if (line + 1 > latched) latched = line + 1;
+}
+
+/* vscroll for a column, out of a latched line rather than live VSRAM. */
+static int16_t vscroll_latched(unsigned line, unsigned col, int plane_b) {
+    unsigned mode = (LATCH[line].reg11 >> 2) & 1;
+    unsigned idx = mode ? ((col >> 4) * 2u) : 0u;
+    idx += plane_b ? 1u : 0u;
+    return (int16_t)LATCH[line].vsram[idx % VSRAM_SIZE];
+}
+
 void render_frame(void) {
     uint32_t nt_a = (uint32_t)(VDP.reg[2] & 0x38) << 10;
     uint32_t nt_b = (uint32_t)(VDP.reg[4] & 0x07) << 13;
@@ -152,11 +182,16 @@ void render_frame(void) {
     }
 
     for (int y = 0; y < FB_H; y++) {
-        int16_t hs_a = hscroll_for((unsigned)y, 0);
-        int16_t hs_b = hscroll_for((unsigned)y, 1);
+        /* Fall back to live state for any line that was never latched -- a
+           frame rendered outside the normal loop, or before the first latch. */
+        int have = ((unsigned)y < latched);
+        int16_t hs_a = have ? LATCH[y].hs_a : hscroll_for((unsigned)y, 0);
+        int16_t hs_b = have ? LATCH[y].hs_b : hscroll_for((unsigned)y, 1);
         for (int x = 0; x < FB_W; x++) {
-            int16_t vs_a = vscroll_for((unsigned)x, 0);
-            int16_t vs_b = vscroll_for((unsigned)x, 1);
+            int16_t vs_a = have ? vscroll_latched((unsigned)y, (unsigned)x, 0)
+                                : vscroll_for((unsigned)x, 0);
+            int16_t vs_b = have ? vscroll_latched((unsigned)y, (unsigned)x, 1)
+                                : vscroll_for((unsigned)x, 1);
             int pa, pb;
             unsigned ca, cb;
             /* Inside the window region the window replaces plane A entirely,

@@ -8,6 +8,7 @@
 #include "hal.h"
 #include "z80.h"
 #include "invariant.h"
+#include "render.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -167,11 +168,31 @@ static void sample_waiter(uint32_t pc) {
 }
 
 uint32_t m68k_run_frame(uint32_t pc) {
-    uint64_t deadline = CPU.cycles + PAL_FRAME_CYCLES;
+    const uint64_t start = CPU.cycles;
+    uint64_t deadline = start + PAL_FRAME_CYCLES;
     int z80_on = hal_z80_running();
+    /* Cycle 0 of a frame is the start of active display and the VBlank
+       interrupt is raised once this returns, so line L begins at
+       L * PAL_FRAME_CYCLES / PAL_LINES cycles in. Scroll state is latched
+       there because the game rewrites vertical scroll DURING the frame and a
+       real VDP draws each line with the value in effect at that line. */
+    unsigned line = 0;
+    render_frame_begin();
     while (CPU.cycles < deadline) {
+        while (line < PAL_LINES) {
+            uint64_t at = start + (uint64_t)line * PAL_FRAME_CYCLES / PAL_LINES;
+            if (at > CPU.cycles) break;
+            render_line_latch(line);
+            line++;
+        }
         uint64_t chunk = CPU.cycles + SLICE_CYCLES;
+        /* Stop at the next line boundary so a latch is never overshot. */
+        if (line < PAL_LINES) {
+            uint64_t next = start + (uint64_t)line * PAL_FRAME_CYCLES / PAL_LINES;
+            if (next < chunk) chunk = next;
+        }
         if (chunk > deadline) chunk = deadline;
+        if (chunk <= CPU.cycles) chunk = CPU.cycles + 1;   /* always advance */
         sample_waiter(pc);
         /* Checked per slice rather than per block: a corrupted SP or PC stays
            corrupted, so slice granularity still catches it within 500 cycles
@@ -191,6 +212,10 @@ uint32_t m68k_run_frame(uint32_t pc) {
             Z80.cycles = (CPU.cycles * Z80_NUM) / Z80_DEN;
         }
     }
+    /* A frame cut short (unknown PC, or a slice that ran long) can leave later
+       lines unlatched; fill them so the renderer never mixes latched and live
+       state within one frame. */
+    while (line < PAL_LINES) { render_line_latch(line); line++; }
     return pc;
 }
 
