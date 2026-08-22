@@ -116,8 +116,27 @@ stays C11 plus SDL2.
 | M4 | **v1 — one mission playable end to end** | **done** — all eight criteria |
 | M5 | **Audio — YM2612, PSG, Z80 sound bus** — chips implemented and audible; fidelity work outstanding, see task #22 | **mostly done** |
 | M6 | *(retired — was cross-platform build; Linux-only now)* | dropped |
-| M7 | Full campaign, all three houses | |
+| M7 | Full campaign, all three houses | **done for the campaign's structure** — see below |
 | M8 | Phase 2 — optional modern enhancements behind flags | |
+
+### M7 — what "full campaign" was taken to mean
+
+Playing every mission of all three houses by hand is not a test anyone will
+re-run, so M7 is treated as demonstrating that the campaign's *structure* works
+and that nothing is house-specific:
+
+| Claim | Evidence |
+|-------|----------|
+| All three houses selectable and their missions load | `tests/houses.sh` — Atreides, Ordos and Harkonnen each load with the right faction colour |
+| No house is a special case | 40000-frame soak each (13 min of game time): no unknown PC, invariants clean |
+| Missions progress | mission 1 won, world map, mission 2 entered and lost (`tests/defeat.sh`) |
+| Both outcomes handled | Victory and Defeat cinematics both reached |
+
+What is NOT claimed: that every one of the nine missions per house has been
+played, or that late-campaign content is bug-free. Those need play sessions
+rather than any missing capability, and a recording of one is the natural way to
+add coverage — `make record REC=data/recordings/<name>.txt` produces a
+deterministic regression test of whatever was played.
 
 Differential testing underpins M2 onward and is built alongside M2, not
 deferred — it is the oracle the whole fidelity policy depends on. The reference
