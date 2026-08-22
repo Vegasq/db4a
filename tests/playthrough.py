@@ -117,6 +117,11 @@ SCENARIOS = {
     # Build a concrete slab, per the sequence described from real play:
     # select the Construction Yard with A, then down+A to start the slab,
     # wait for it to build, then down+A to place it.
+    # Build a concrete slab and place it on open ground.
+    #
+    # Placement starts centred on the Construction Yard, which is not a valid
+    # site -- the cursor has to be walked clear of the existing building before
+    # the placement is confirmed.
     "slab": (
         [('wait', 2400),
          ('press', 'start'), ('wait', 250),
@@ -129,8 +134,13 @@ SCENARIOS = {
         + [('wait', 900),      ('shot', '03-building')]
         + [('press', 'down'),  ('wait', 50)]
         + [('press', 'a'),     ('wait', 200), ('shot', '04-placement-mode')]
-        + [('press', 'b'),     ('wait', 200), ('shot', '05-after-confirm')]
-        + [('wait', 400),      ('shot', '06-settled')]
+        # Two presses is the working distance: enough to clear the yard,
+        # close enough to stay adjacent. Three puts the site out of range and
+        # the overlay turns red (invalid); one leaves placement mode entirely.
+        + mash('down', 45, 2)
+        + [('wait', 120),      ('shot', '05-cursor-moved')]
+        + [('press', 'a'),     ('wait', 300), ('shot', '06-placed')]
+        + [('wait', 500),      ('shot', '07-settled')]
     ),
 
     # Just the opening, as a fast regression check.

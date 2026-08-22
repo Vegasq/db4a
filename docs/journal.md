@@ -1880,3 +1880,40 @@ measuring a made-up region and either look at the frame or run
 `compare_screen.sh`. The lesson is the one already written down after the
 RGB565 episode: use the instrument that is calibrated, do not invent a new one
 per question.
+
+### Placing the slab
+
+The first attempt ordered the slab correctly but never placed it: placement
+starts centred on the Construction Yard, which is not a valid site.
+
+Walking the cursor down clear of the yard is required, and the distance
+matters:
+
+| downs | result |
+|-------|--------|
+| 1 | leaves placement mode; the confirm reopens the build menu |
+| 2 | **valid site adjacent to the yard — slab placed** |
+| 3 | site out of range, overlay turns red, confirm refused |
+
+That also corrected an earlier misreading. In the single-press sweep I had
+recorded `a` as "does nothing" in placement mode, because the overlay stayed
+on screen. It was not doing nothing — it was **refusing an invalid site**.
+`a` is the confirm throughout.
+
+Final state, verified against the reference: both place an identical 2x2
+concrete block adjacent to the Construction Yard, credits 976 in both.
+
+```
+01-yard-selected  99.57%
+02-slab-ordered   99.71%
+04-placement-mode 99.61%
+05-cursor-moved   99.53%
+07-settled        96.17%
+```
+
+The last frame's larger gap is a selection border still drawn around the yard
+in the reference plus sprites a frame or two out of phase — not a placement
+difference. The slab itself is pixel-identical.
+
+`make playthrough SCENARIO=slab` now drives an entire gameplay action —
+select, order, build, position, place — and captures every stage.
