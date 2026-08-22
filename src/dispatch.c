@@ -151,8 +151,6 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
  */
 #define SLICE_CYCLES 500
 /* Z80 3546893 Hz vs 68000 7600489 Hz on PAL. */
-#define Z80_NUM 3546893ull
-#define Z80_DEN 7600489ull
 
 /* Who is waiting?  The vsync wait at $FD4 pushes D0 then spins at $FDA, so the
    caller's return address sits at 4(A7). Sampling it identifies the sequencer

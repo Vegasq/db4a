@@ -62,7 +62,18 @@ void hal_z80_write68k(uint32_t a, uint8_t v) {
 /* --- Z80 side --- */
 uint8_t z80_read(uint16_t a) {
     if (a < 0x4000) return z80ram[a & 0x1FFF];
-    if (a < 0x6000) return ym_read_status();        /* YM2612 status */
+    if (a < 0x6000) {
+        /* Bring the chip up to the Z80's own position in time before answering.
+         *
+         * The sound driver spins on the Timer A overflow flag, so the answer to
+         * this read IS the tempo. Advancing the chip only on the emulator's
+         * slice boundary quantises every timer period to the slice, and at a
+         * ~485 cycle slice against a 720 cycle timer that is up to 67% jitter
+         * -- audible as uneven pacing. Converting the Z80's clock back to
+         * 68000 cycles and advancing to exactly there removes it. */
+        ym_run((uint64_t)Z80.cycles * Z80_DEN / Z80_NUM);
+        return ym_read_status();
+    }
     if (a < 0x8000) return 0;
     /* Banked window into the 68000 bus. */
     uint32_t phys = ((uint32_t)bank << 15) | (a & 0x7FFF);

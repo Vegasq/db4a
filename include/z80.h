@@ -30,6 +30,10 @@ extern z80_t Z80;
 void     z80_reset(void);
 unsigned z80_step(void);              /* execute one instruction, return cycles */
 void     z80_run(uint64_t until);     /* run until Z80.cycles >= until */
+
+/* Z80 and 68000 clocks: master/15 and master/7. */
+#define Z80_NUM 3546893ull
+#define Z80_DEN 7600489ull
 void     z80_irq(void);               /* raise INT (the VDP drives this at VBlank) */
 
 /* Bus, implemented in hal_z80.c */
