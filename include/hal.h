@@ -19,6 +19,7 @@ uint32_t m68k_run_frame(uint32_t pc);
 int hal_z80_running(void);
 extern uint32_t m68k_last_unknown;
 const uint8_t *hal_ram_ptr(size_t *len);
+uint8_t *hal_ram_mut(size_t *len);   /* checker only, see hal_stub.c */
 
 /* 68000 cycles in one PAL frame.
  *
