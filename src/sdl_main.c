@@ -11,6 +11,7 @@
 #include "ym2612.h"
 #include "savestate.h"
 #include "mouse.h"
+#include "cursor.h"
 
 /* The FM mix peaks well below full scale; lift it to a usable level.
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
@@ -191,6 +192,9 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
     if (getenv("DB4A_MOUSE")) {
         mouse_enable(1);
         printf("mouse control: on -- left=A, right=B, middle=C\n");
+        printf("               the cursor goes where you point; the outer %d px\n",
+               cursor_scroll_band());
+        printf("               scroll the map (DB4A_MOUSE_EDGE, DB4A_SCROLL_MAX)\n");
     }
 
     apply_key_overrides();
