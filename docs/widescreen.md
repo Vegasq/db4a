@@ -200,6 +200,35 @@ while scrolling, sprites appearing or vanishing at the new boundaries, and
 whether the wider view makes the cursor's inability to reach the new area feel
 wrong.
 
+## Telling gameplay apart from everything else
+
+The first attempt inferred the scene from what was on screen — a high-priority
+sprite in the sidebar region — which worked for gameplay and menus but produced
+oddities elsewhere, because cutscenes and briefings are not obliged to respect
+that rule.
+
+The game answers the question directly. Its main loop dispatches through a
+function pointer at `$FFFFE002`, so **that pointer is the scene identifier**.
+Traced across a full playthrough and confirmed identical on all three houses:
+
+| `$FFFFE002` | Scene | Widescreen |
+|---|---|---|
+| `006D0C` | gameplay | **yes** |
+| `00608E` | gameplay, placing a building | **yes** |
+| `00B540` | gameplay | **yes** |
+| `017C32` | publisher logos | no |
+| `024724` | mentat / world map | no |
+| `024812` | house select | no |
+| `004500` | transitions | no |
+| `000000` | cutscenes, including Victory and Defeat | no |
+
+Outside gameplay the view stays at its original 320 and is centred, with the
+surplus left as black bars. Verified frame by frame: logos, mentat, Victory and
+the world map all pillarbox; gameplay and building placement go full width.
+
+`DB4A_WIDE_SCENES=6d0c,608e,b540` overrides the set, for a mission or house
+that turns out to use a handler not listed here.
+
 ## Result: it works, but only while the camera is still
 
 Implemented and flag-gated. Gameplay anchors the HUD flush right with its

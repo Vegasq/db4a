@@ -327,6 +327,17 @@ int main(int argc, char **argv) {
         end = system_frame(end);
         if (m68k_last_unknown) break;
 
+        static int scene_log = -1;
+        if (scene_log < 0) scene_log = getenv("DB4A_SCENE") ? 1 : 0;
+        if (scene_log) {
+            extern const uint8_t *hal_ram_ptr(size_t *);
+            size_t rl; const uint8_t *rp = hal_ram_ptr(&rl);
+            uint32_t sp_ = ((uint32_t)rp[0xE002] << 24) | ((uint32_t)rp[0xE003] << 16)
+                         | ((uint32_t)rp[0xE004] << 8) | rp[0xE005];
+            static uint32_t last = 0xFFFFFFFFu;
+            if (sp_ != last) { last = sp_;
+                printf("  frame %6u  $FFFFE002 = %06X\n", frames, sp_); }
+        }
         if (wav) {
             /* Mix both chips. The YM2612 is stereo with per-channel panning;
                the PSG is mono and goes to both sides. Both produce at the same
