@@ -7,6 +7,7 @@
 #include "z80.h"
 #include "system.h"
 #include "invariant.h"
+#include "inputlog.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -119,7 +120,25 @@ int main(int argc, char **argv) {
     if (nscript)
         fprintf(stderr, "parsed %u input events; last at frame %u\n",
                 nscript, script[nscript-1].at);
+    /* A recording replaces the scripted press list entirely: it carries exact
+       press and release frames, so nothing has to be inferred. */
+    int replaying = 0;
+    { const char *rp = getenv("DB4A_REPLAY");
+      if (rp && inputlog_replay_open(rp)) {
+          replaying = 1;
+          unsigned need = inputlog_replay_last_frame() + 600;
+          /* Also run past the furthest requested capture, or a shot scheduled
+             after the last input silently never happens. */
+          for (unsigned k = 0; k < nshots; k++)
+              if (shot_at[k] + 60 > need) need = shot_at[k] + 60;
+          if (max_frames < need) {
+              max_frames = need;
+              printf("extending run to %u frames to cover the recording\n", need);
+          }
+      } }
+
     for (frames = 0; frames < max_frames; frames++) {
+        if (replaying) inputlog_replay_frame(frames);
         /* Hold length matters: a menu that advances on each press can consume
            one long hold twice. DB4A_HOLD tunes it. */
         for (unsigned k = 0; k < nscript; k++) {

@@ -10,6 +10,7 @@
 #include "input.h"
 #include "system.h"
 #include "invariant.h"
+#include "inputlog.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -83,6 +84,14 @@ int main(int argc, char **argv) {
 
     printf("controls: arrows = D-pad, Z/X/C = A/B/C, Enter = Start, Esc = quit\n");
 
+    /* DB4A_RECORD=<file> captures play; DB4A_REPLAY=<file> plays it back. */
+    const char *recpath = getenv("DB4A_RECORD");
+    const char *reppath = getenv("DB4A_REPLAY");
+    if (recpath) inputlog_record_open(recpath);
+    int replaying = reppath ? inputlog_replay_open(reppath) : 0;
+    if (replaying)
+        printf("replaying -- keyboard input is ignored\n");
+
     int running = 1;
     unsigned frames = 0;
     Uint64 t0 = SDL_GetTicks64();
@@ -93,16 +102,23 @@ int main(int argc, char **argv) {
             else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
                 int down = (e.type == SDL_KEYDOWN);
                 if (e.key.keysym.sym == SDLK_ESCAPE) running = 0;
+                if (e.key.repeat) continue;   /* auto-repeat is not a new press */
                 for (int i = 0; i < NBINDINGS; i++)
-                    if (BINDINGS[i].key == e.key.keysym.sym)
+                    if (BINDINGS[i].key == e.key.keysym.sym && !replaying) {
                         pad_set(BINDINGS[i].pad, down);
+                        inputlog_record(frames, BINDINGS[i].pad, down);
+                    }
             } else if (e.type == SDL_CONTROLLERBUTTONDOWN || e.type == SDL_CONTROLLERBUTTONUP) {
                 int down = (e.type == SDL_CONTROLLERBUTTONDOWN);
                 for (int i = 0; i < NGC; i++)
-                    if (GC_MAP[i].b == e.cbutton.button) pad_set(GC_MAP[i].pad, down);
+                    if (GC_MAP[i].b == e.cbutton.button && !replaying) {
+                        pad_set(GC_MAP[i].pad, down);
+                        inputlog_record(frames, GC_MAP[i].pad, down);
+                    }
             }
         }
 
+        if (replaying) inputlog_replay_frame(frames);
         pc = system_frame(pc);
         if (m68k_last_unknown) {
             fprintf(stderr, "no block for PC %06X -- stopping\n", m68k_last_unknown);
@@ -122,6 +138,7 @@ int main(int argc, char **argv) {
         if (now < target) SDL_Delay((Uint32)(target - now));
     }
 
+    inputlog_record_close();
     printf("ran %u frames, %lu blocks\n", frames, m68k_blocks_run);
     invariant_report();
     pad_report();

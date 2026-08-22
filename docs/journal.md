@@ -1960,3 +1960,42 @@ Likely cause for the missing structures: `build_item()` re-selects the yard
 with `a` for each item, but the interface state after a placement is not the
 same as after arrival, so `down right a` probably does not land on the intended
 item. Needs the same empirical stepping used to find the slab sequence.
+
+## Input recording and replay
+
+Scripted scenarios express *intent* — "press down twice" — and then have to
+guess at things the game never makes observable: how far a cursor travels, where
+the camera scrolls to, which tile ends up under it. Several attempts at building
+a power station failed on exactly that, and each fix was a guess at geometry.
+
+Recording removes the guessing. `src/inputlog.c` captures every press and
+release with its frame number, and replays the file back into either frontend.
+
+```
+make record REC=data/recordings/slab.txt      # play; inputs are saved
+make replay REC=data/recordings/slab.txt SHOTS=6000,9000
+```
+
+The format is plain text so a recording can be read, edited and diffed:
+
+```
+# db4a input recording
+# frame button down
+2400 start 1
+2406 start 0
+```
+
+Validated before use rather than after: a recording generated from the known
+good scripted slab sequence replays to 5399 distinct blocks, matching the
+scripted run.
+
+Two details that would otherwise bite:
+
+- Keyboard auto-repeat is filtered (`e.key.repeat`), or holding a direction
+  records a stream of phantom presses.
+- The headless run auto-extends to cover the recording *and* any requested
+  capture. Without the second half, a screenshot scheduled after the last input
+  silently never happens — which it did on the first attempt.
+
+While replaying, live keyboard input is ignored, so a replay cannot be
+accidentally perturbed.

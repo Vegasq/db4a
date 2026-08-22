@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play playthrough compare-screen vectors clean
+.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play record replay playthrough compare-screen vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -43,6 +43,19 @@ check-z80: build/z80_zex
 build/z80_zex: tests/z80_zex.c build/z80.o include/z80.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/z80_zex.c build/z80.o -o $@
+
+## record - play the game and save your inputs to a file
+##          usage: make record REC=data/recordings/slab.txt
+REC ?= data/recordings/session.txt
+record: build/db4a-sdl
+	@mkdir -p $(dir $(REC))
+	DB4A_RECORD=$(REC) ./build/db4a-sdl "$(ROM)"
+
+## replay - replay a recording headlessly, capturing screenshots
+##          usage: make replay REC=data/recordings/slab.txt SHOTS=6000,9000
+SHOTS ?=
+replay: build/db4a
+	DB4A_REPLAY=$(REC) DB4A_SHOTS=$(SHOTS) DB4A_PPM=build/replay ./build/db4a "$(ROM)" 200
 
 ## playthrough - drive the game through a scripted route, capturing each screen
 ##               usage: make playthrough SCENARIO=house
@@ -87,7 +100,7 @@ run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
 COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o \
-               build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o
+               build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
 	$(CC) $^ -o $@
@@ -102,6 +115,10 @@ build/db4a-sdl: $(COMMON_OBJS) build/sdl_main.o
 build/sdl_main.o: src/sdl_main.c include/render.h include/input.h include/hal.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) $(shell pkg-config --cflags sdl2) -c $< -o $@
+
+build/inputlog.o: src/inputlog.c include/inputlog.h include/input.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/invariant.o: src/invariant.c include/invariant.h
 	@mkdir -p build
