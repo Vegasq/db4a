@@ -20,8 +20,14 @@
    read the game performs, so "the game ignores input" and "the game never
    asks for input" can be told apart. */
 static int log_pad = -1;
+/* 0 = off, 1 = presses and any read taken while a button is held, 2 = also the
+   TH strobe. Level 1 is the useful one: the strobe happens every frame forever
+   and buries the handful of reads that actually matter. */
 static int logging(void) {
-    if (log_pad < 0) log_pad = getenv("DB4A_LOG_PAD") ? 1 : 0;
+    if (log_pad < 0) {
+        const char *v = getenv("DB4A_LOG_PAD");
+        log_pad = !v ? 0 : (v[0] == 'a' || v[0] == '2') ? 2 : 1;
+    }
     return log_pad;
 }
 unsigned long pad_reads, pad_ctrl_writes, pad_data_writes;
@@ -43,14 +49,14 @@ void pad_set(int b, int pressed) {
 
 void pad_write_ctrl(int port, uint8_t v) {
     pad_ctrl_writes++;
-    if (logging()) fprintf(stderr, "[pad] port%d CTRL <- %02X\n", port, v);
+    if (logging() >= 2) fprintf(stderr, "[pad] port%d CTRL <- %02X\n", port, v);
     if (port < 2) ctrl[port] = v;
 }
 
 void pad_write_data(int port, uint8_t v) {
     pad_data_writes++;
-    if (logging()) fprintf(stderr, "[pad] port%d DATA <- %02X (TH=%d)\n",
-                           port, v, (v >> 6) & 1);
+    if (logging() >= 2) fprintf(stderr, "[pad] port%d DATA <- %02X (TH=%d)\n",
+                                port, v, (v >> 6) & 1);
     if (port >= 2) return;
     /* TH only changes when the console has configured it as an output. */
     if (ctrl[port] & 0x40) th[port] = (v >> 6) & 1;
@@ -75,8 +81,21 @@ uint8_t pad_read_data(int port) {
                       (held[PAD_A]     ? 0 : 1) << 4 |
                       (held[PAD_START] ? 0 : 1) << 5);
     }
-    if (logging() && pad_reads > pad_log_from && pad_reads < pad_log_from + 24)
-        fprintf(stderr, "[pad] port%d READ -> %02X (TH=%d)\n", port, b, th[0]);
+    /* Log reads only while something is held: that is the exact moment the
+       question "does the game see this button" is answered, and it keeps the
+       output to a few lines per press instead of thousands per second. */
+    int any = 0;
+    for (int i = 0; i < PAD_COUNT; i++) any |= held[i];
+    if (logging() && any) {
+        static unsigned long shown;
+        if (shown < 400) {
+            shown++;
+            fprintf(stderr, "[pad] port%d READ -> %02X (TH=%d)  held:", port, b, th[port]);
+            for (int i = 0; i < PAD_COUNT; i++)
+                if (held[i]) fprintf(stderr, " %s", BNAME[i]);
+            fprintf(stderr, "\n");
+        }
+    }
     return b;
 }
 
