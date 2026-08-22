@@ -102,7 +102,7 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/mouse.o build/psg.o build/ym2612.o build/savestate.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/mouse.o build/cursor.o build/psg.o build/ym2612.o build/savestate.o \
                build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
@@ -159,7 +159,11 @@ build/savestate.o: src/savestate.c include/savestate.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
-build/mouse.o: src/mouse.c include/mouse.h include/input.h
+build/mouse.o: src/mouse.c include/mouse.h include/input.h include/cursor.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/cursor.o: src/cursor.c include/cursor.h include/native.h include/mouse.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -198,6 +202,10 @@ check-mouse: build/db4a
 ## check-state - save a state mid-run, resume from it, and require the same frame
 check-state: build/db4a
 	./tests/savestate.sh
+
+## check-native - native C overrides must match the cartridge code they replace
+check-native: build/db4a
+	./tests/native.sh
 
 ## check-houses - all three houses must select and load their mission
 check-houses: build/db4a

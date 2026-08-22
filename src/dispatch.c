@@ -5,6 +5,9 @@
  * will go; until it exists we stop and report, so gaps are loud rather than
  * silently wrong. */
 #include "m68k.h"
+#include "native.h"
+#include <string.h>
+#include <stdlib.h>
 #include "hal.h"
 #include "z80.h"
 #include "invariant.h"
@@ -141,6 +144,103 @@ static int find_block(uint32_t pc) {
     return -1;
 }
 
+/* Equivalence checker for native overrides (DB4A_NATIVE=check).
+ *
+ * Runs the C implementation, rewinds RAM and the CPU, runs the cartridge
+ * blocks it replaced, and compares. Everything is compared, not just the
+ * variables the override was written against -- a whole-RAM diff catches
+ * writes the author did not know the routine made, which is exactly the
+ * failure an override is most likely to have.
+ *
+ * The cartridge's result is the one that survives, so a run with checking on
+ * behaves identically to a run with overrides off and stays a valid recording.
+ */
+static uint8_t chk_before[0x10000], chk_native[0x10000];
+unsigned long native_mismatches;
+unsigned long native_checks;
+
+static void native_report(void) {
+    fprintf(stderr, "[native] %lu calls checked, %lu mismatched\n",
+            native_checks, native_mismatches);
+}
+
+static uint32_t native_verify(uint32_t pc, native_fn nf) {
+    size_t len = 0;
+    uint8_t *ram = hal_ram_mut(&len);
+    if (len > sizeof chk_before) return nf();
+
+    if (!native_checks++) atexit(native_report);
+
+    m68k_t   cpu0   = CPU;
+    uint64_t cycle0 = CPU.cycles;
+    memcpy(chk_before, ram, len);
+
+    uint32_t pc_c  = nf();
+    uint64_t cyc_c = CPU.cycles - cycle0;
+    m68k_t   cpu_c = CPU;
+    memcpy(chk_native, ram, len);
+
+    memcpy(ram, chk_before, len);
+    CPU = cpu0;
+
+    /* Run cartridge blocks until they reach the PC our C claims to exit at. */
+    uint32_t p = pc;
+    unsigned guard = 0;
+    while (p != pc_c && guard++ < 512) {
+        int j = find_block(p);
+        if (j < 0) break;
+        p = BLOCK_FN[j]();
+    }
+    uint64_t cyc_r = CPU.cycles - cycle0;
+
+    /* Registers matter as much as RAM. The first version of this checker
+       compared RAM, cycles and the exit PC only, and passed on every one of
+       9319 calls while the run still diverged -- because the override left
+       d0-d2 holding whatever the caller had put there, and the code after the
+       exit reads them. Compare the whole CPU. */
+    unsigned regdiff = 0;
+    for (int r = 0; r < 8; r++) {
+        if (cpu_c.d[r] != CPU.d[r] && native_mismatches < 12)
+            fprintf(stderr, "[native] %06X  d%d C=%08X ROM=%08X\n", pc, r, cpu_c.d[r], CPU.d[r]);
+        if (cpu_c.a[r] != CPU.a[r] && native_mismatches < 12)
+            fprintf(stderr, "[native] %06X  a%d C=%08X ROM=%08X\n", pc, r, cpu_c.a[r], CPU.a[r]);
+        regdiff += (cpu_c.d[r] != CPU.d[r]) + (cpu_c.a[r] != CPU.a[r]);
+    }
+    if (cpu_c.n != CPU.n || cpu_c.z != CPU.z || cpu_c.v != CPU.v ||
+        cpu_c.c != CPU.c || cpu_c.x != CPU.x) {
+        if (native_mismatches < 12)
+            fprintf(stderr, "[native] %06X  flags C=%d%d%d%d%d ROM=%d%d%d%d%d\n", pc,
+                    cpu_c.x, cpu_c.n, cpu_c.z, cpu_c.v, cpu_c.c,
+                    CPU.x, CPU.n, CPU.z, CPU.v, CPU.c);
+        regdiff++;
+    }
+
+    unsigned diffs = 0;
+    unsigned first = 0;
+    for (size_t k = 0; k < len; k++)
+        if (chk_native[k] != ram[k]) { if (!diffs) first = (unsigned)k; diffs++; }
+
+    if (diffs || regdiff || cyc_c != cyc_r || p != pc_c) {
+        if (native_mismatches < 12) {
+            fprintf(stderr, "[native] %06X mismatch:", pc);
+            if (p != pc_c)     fprintf(stderr, " exit C=%06X ROM=%06X", pc_c, p);
+            if (cyc_c != cyc_r) fprintf(stderr, " cycles C=%llu ROM=%llu",
+                                        (unsigned long long)cyc_c, (unsigned long long)cyc_r);
+            if (diffs) {
+                fprintf(stderr, " %u RAM bytes, first FF%04X C=%02X ROM=%02X",
+                        diffs, first, chk_native[first], ram[first]);
+                for (size_t k = first; k < len && k < first + 0x60; k++)
+                    if (chk_native[k] != ram[k])
+                        fprintf(stderr, "\n           FF%04X  C=%02X  ROM=%02X",
+                                (unsigned)k, chk_native[k], ram[k]);
+            }
+            fputc('\n', stderr);
+        }
+        native_mismatches++;
+    }
+    return p;
+}
+
 /* Run until CPU.cycles reaches `deadline`, or a PC has no block. */
 uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
     m68k_last_unknown = 0;
@@ -155,7 +255,13 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         m68k_cur_block = pc;
         trail_push(pc);
         trace_block(pc);
-        pc = BLOCK_FN[i]();
+        /* A native override replaces the recompiled block with hand-written C
+           that does the same job and returns the same next PC. Looked up after
+           find_block deliberately: an override must sit on a real block entry,
+           and requiring the block to exist keeps that honest. */
+        native_fn nf = native_active() ? native_lookup(pc) : NULL;
+        if (nf && native_checking()) pc = native_verify(pc, nf);
+        else                         pc = nf ? nf() : BLOCK_FN[i]();
         m68k_blocks_run++;
     }
     return pc;
