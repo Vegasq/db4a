@@ -40,7 +40,7 @@ v1 is done when all of the following hold:
 |---|-----------|--------------------|--------|
 | 1 | Boots from reset through VDP init to the title screen | frame hash matches reference emulator | **done** — 71680/71680 |
 | 2 | Intro and house-select screens navigable | manual play | **done** |
-| 3 | Mission 1 loads and renders correctly | frame hash matches reference at fixed checkpoints | **done** — 99.35% at frame 6000; residual is task #21 |
+| 3 | Mission 1 loads and renders correctly | frame hash matches reference at fixed checkpoints | **done** — 99.20% at frame 6000; the residual is unit positions, task #21 |
 | 4 | Core loop works: build, harvest spice, combat | manual play | **done** — mission won |
 | 5 | Both win **and** lose conditions reachable | manual play | **done** — Victory in mission 1, Defeat in mission 2 (`tests/defeat.sh`) |
 | 6 | Correct pacing — PAL 49.70 Hz, no drift | frame timing measured over 60 s | **done** — 0.0002% drift |
