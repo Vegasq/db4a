@@ -393,35 +393,46 @@ resulting numbers in the commit body, so a regression in coverage is visible in
 
 ## Current state and next steps
 
-**M0 (analysis foundation) is done.** ROM verified, code discovery and
-jump-table recovery reproducible via `make`, runtime and flag helpers written
-and unit-tested. See `docs/roadmap.md` for the full milestone table.
+**The roadmap is complete.** M0 through M8, less the two milestones that were
+deliberately scoped rather than dropped (see below).
 
-**M1 is in progress.** The runtime the translator targets (`include/m68k.h`)
-is written and tested; the translator itself is not yet started.
+| | |
+|---|---|
+| CPU | 19667/19667 SingleStepTests m68000 vectors |
+| Z80 | zexdoc, plus T-state timing (`tests/test_z80_timing.c`) |
+| Rendering | menus 100.00% against Genesis-Plus-GX, gameplay 99.20% |
+| Audio | both chips, audible; fidelity work outstanding (task #22) |
+| Game | mission 1 won, mission 2 lost, all three houses load |
+| Pacing | PAL 49.7015 Hz, 0.0002% drift |
+| Build | `make clean && make` in 35 s, no warnings, produces a playable binary |
 
-Standing order of work:
+Verification, all of which runs from a clean tree:
 
-1. **68k→C translation backend** *(in progress)* — ~40 instruction forms
-   reaches 99% of discovered code.
-2. `dispatch.c`: PC→function with interpreter fallback, so the `$FFFFE002`
-   RAM dispatch resolves at runtime.
-3. VDP + SDL2 renderer, built together with differential testing against a
-   reference emulator — the oracle the fidelity policy depends on.
-4. Modern input; menus navigable.
-5. **v1: one mission playable end to end.**
-6. Audio chips (YM2612, PSG) — after v1, may be stubbed silent. The **Z80
-   itself is not deferrable**: the ROM gates gameplay on a Z80 handshake and
-   never reads the controller port directly. See `docs/roadmap.md`.
-7. Full campaign, all three houses.
+```bash
+make                 # build + unit tests (flags, addressing, semantics, PSG, YM2612, Z80 timing)
+make check-cpu       # 19667 m68000 vectors
+make check-z80       # zexdoc
+make check-operands  # every discovered instruction parses
+make check-state     # save a state, resume, require an identical frame
+make check-houses    # all three houses load
+make compare-screen SCENARIO=houseselect FRAME=2800    # vs the reference
+make replay REC=data/recordings/level1atredis.txt      # the full winning mission
+./tests/defeat.sh    # win mission 1, then lose mission 2
+```
 
-Ongoing, not blocking: extend static discovery (13 indirect sites remain) and
-instrument Genesis-Plus-GX to log executed PCs to get past the ~10% static
-plateau.
+### What was scoped rather than finished
 
-**Open question, not yet decided:** the HAL is roughly 70% of remaining work
-and is identical whether blocks are recompiled or interpreted. Dropping in a
-proven 68k interpreter core (Musashi, BSD-licensed) as the fallback would yield
-a *running* build much sooner and provide a correctness oracle, avoiding
-debugging translator bugs and VDP bugs simultaneously. Raised with the user;
-awaiting a decision.
+**M7 "full campaign"** is demonstrated structurally: all three houses load, no
+house is a special case over a 13-minute soak, missions progress, and both
+outcomes are reached. Every one of the nine missions per house has NOT been
+played. That needs play sessions, not capability, and `make record` turns any
+session into a regression test.
+
+**Audio fidelity** (task #22) is the one place where the result is visibly
+short: in-game audio is still wrong and SSG-EG is parsed but ignored. Deferred
+at the user's request with everything measured written down.
+
+Two smaller open items: task #21, a 0.8% gameplay pixel difference that is unit
+positions rather than a rendering fault, and task #18, three keys that never
+reach SDL on the development machine.
+

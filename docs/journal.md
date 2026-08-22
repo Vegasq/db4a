@@ -2133,3 +2133,56 @@ indistinguishable. A described symptom beat a correlation score every time.
 Remaining work is task #22, deferred as low priority: in-game audio is still
 wrong, the intro has "weird slowdowns", and the money-counter effect is too
 loud. Prime suspect is SSG-EG, which is parsed and ignored.
+
+## 2026-08-22 — closing the roadmap
+
+Finished the remaining milestones in one pass. What each turned out to need:
+
+**v1's last criterion — a Defeat.** Not an emulator problem at all: mission 1
+is the tutorial and has no enemy, so idling there for 28 minutes of game time
+leaves the base untouched and credits drifting from 990 to 985. Defeat needs
+mission 2, which needs mission 1 won. `tests/defeat.sh` replays the recorded
+victory, presses through the briefing, then stops touching the controls. Defeat
+lands by frame 90000. All eight v1 criteria met.
+
+**M7, the campaign.** Playing 27 missions by hand is not a test anyone will
+re-run, so this is scoped to demonstrating the campaign's structure: all three
+houses load with the right faction colour, none is a special case over a
+40000-frame soak, missions progress, and both outcomes are reached. What is not
+claimed is written into the roadmap rather than left implied.
+
+**M8, modern enhancements.** Save states, pause, fast-forward, on top of the
+remappable input and recording that already existed. All frontend-only — the
+emulated machine runs identical frames whether they are used or not, which is
+what keeps the faithful-first policy intact.
+
+**The fallback interpreter was retired rather than built.** The original
+reasoning was sound: the state machine dispatches through a function pointer at
+$FFFFE002, so a PC no static pass predicted is always possible. But five seeding
+passes closed the gap, and mission 1 to Victory, mission 2 to Defeat, and soaks
+of all three houses now run with no unknown PC at all. An interpreter would also
+have had to be generated from semantics.py to avoid two implementations
+disagreeing — a lot of machinery for a case that no longer arises. The remaining
+insurance is cheaper: an unknown PC appends itself to build/seeds.txt and says
+what to run.
+
+### The save state test earned itself immediately
+
+Writing `tests/savestate.sh` — save at frame 5000, play to 5600, reload, play to
+5600 again, require byte-identical frames — caught two bugs the moment it ran.
+The save recorded `pc`, the reset PC, rather than `end`, the live one the loop
+advances. And it recorded the current frame although the save happens AFTER
+system_frame, so a resumed run re-executed that frame. Either alone produced a
+state that loaded without complaint and was wrong.
+
+That is the same lesson as the audio work, in a different key: a feature that
+"looks like it works" and a feature that IS correct are separated only by a test
+that would fail if it weren't.
+
+### What is deliberately left open
+
+Task #22, audio fidelity, is the one visibly short result: in-game audio is
+still wrong and SSG-EG is parsed but ignored. Task #21 is a 0.8% gameplay pixel
+difference that is unit positions, not rendering. Task #18 is three keys that
+never reach SDL on the development machine, which is environmental. All three
+carry what has already been ruled out, so none starts from scratch.
