@@ -127,22 +127,34 @@ def main(path):
     order = sorted(t.insns)
     for idx, a in enumerate(order):
         sz, mn, op = t.insns[a]
-        if not mn.startswith('lea'):
+        base = mn.split('.')[0]
+
+        # Two shapes of the same idiom: take the address of a return point,
+        # then branch into a routine that comes back to it.
+        #
+        #   lea.l $49b1e(pc), a0     pea.l $49c14(pc)
+        #   bra.b $49b4c             ... ; bra into the routine
+        #   049b1e: <returns via jmp (a0)>   049c14: <returns via rts>
+        #
+        # Nothing branches to the return point, so recursive descent never
+        # reaches it and execution dies there at runtime.
+        if base == 'lea':
+            # Require the next instruction to be an unconditional transfer:
+            # seeding every lea target drags in data tables.
+            nxt = a + sz
+            if nxt not in t.insns:
+                continue
+            if t.insns[nxt][1].split('.')[0] not in ('bra', 'jmp', 'bsr', 'jsr'):
+                continue
+            m = re.match(r'^\$([0-9a-f]+)\(pc\), a[0-7]$', op.strip())
+        elif base == 'pea':
+            # pea pushes a return address. The PC-relative form is a code
+            # pointer by construction; the frame-relative form (-$12(a6)) is
+            # not, and is excluded by the pattern.
+            m = re.match(r'^\$([0-9a-f]+)\(pc\)$', op.strip())
+        else:
             continue
-        # Match the idiom exactly rather than approximately: a PC-relative lea
-        # IMMEDIATELY followed by an unconditional transfer.
-        #     lea.l $49b1e(pc), a0
-        #     bra.b $49b4c
-        # Distance heuristics were too loose -- seeding every nearby lea target
-        # dragged in data tables, leaving 771 instructions the generator could
-        # not emit where real code here is 100% emittable.
-        nxt = a + sz
-        if nxt not in t.insns:
-            continue
-        nmn = t.insns[nxt][1].split('.')[0]
-        if nmn not in ('bra', 'jmp', 'bsr', 'jsr'):
-            continue
-        m = re.match(r'^\$([0-9a-f]+)\(pc\), a[0-7]$', op.strip())
+
         if not m:
             continue
         tgt = int(m.group(1), 16)
@@ -152,7 +164,7 @@ def main(path):
             t.trace(tgt)
             lea_seeds += 1
     if lea_seeds:
-        print("lea targets seeded    : %d" % lea_seeds)
+        print("lea/pea targets seeded: %d" % lea_seeds)
 
     # The game's state machine dispatches through a function pointer in RAM
     # ($FFFFE002), and several handlers are installed with a literal address:

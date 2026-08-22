@@ -1590,3 +1590,48 @@ That address is reached through a computed dispatch:
 A position-independent jump: normalise `a0`, re-add the PC-relative base, and
 the arms follow the branch. Same family as the A0-return idiom, different
 shape.
+
+### pea return addresses, and the limit of static discovery
+
+`$49C14` turned out not to be a jump table at all — my first reading was wrong.
+It is a return address pushed with `pea`:
+
+```
+049BFC  move.l  a2, -(a7)
+049BFE  pea.l   $49c14(pc)            ; push the return address
+049C02  movea.l #$49b1e, a0
+049C08  suba.l  #$49c0e, a0           ; position-independent address
+049C0E  lea.l   $49c0e(pc, a0.l), a0  ; arithmetic, not a dispatch
+049C12  bra.b   $49c2c                ; enter the routine
+049C14  <returns here via rts>
+```
+
+The same idiom as the A0-return case, using the stack instead of a register.
+Generalised the seeding pass to cover both shapes. The frame-relative form
+(`pea -$12(a6)`) is excluded by the pattern, and the validity probe correctly
+rejected `pea $492e4(pc)` — that one points backwards and is a data pointer
+passed as an argument, not a return address.
+
+```
+lea/pea targets seeded : 11
+instructions           : 33160  (+13)
+unimplemented          : 0
+```
+
+The reported route now gets much further: **1651 -> 2538 distinct blocks**.
+
+It then stops at `$19DB8`, and this one is different in kind:
+
+```
+019FE4  jsr (a2)
+```
+
+A2 holds a function pointer loaded at runtime. Nothing in the ROM references
+`$19DB8` statically — no `lea`, no `pea`, no immediate. This is a genuine
+virtual call, and no amount of static analysis will find it.
+
+**That is the limit.** Each fix so far revealed the next undiscovered target,
+and the remaining ones are runtime-computed by construction. Continuing to
+chase them individually is whack-a-mole; the answer is to discover them
+automatically by replay, which `tools/bootstrap.sh` already does — it just
+needs to be driven by a realistic playthrough rather than a single Start press.
