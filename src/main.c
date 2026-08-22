@@ -5,6 +5,7 @@
 #include "psg.h"
 #include "ym2612.h"
 #include "savestate.h"
+#include "mouse.h"
 #include "render.h"
 #include "input.h"
 #include "z80.h"
@@ -253,6 +254,18 @@ int main(int argc, char **argv) {
            steady music; spread means the wobble is in our scheduling rather
            than in the driver's. DB4A_LOG_TEMPO=2 also lists the first frames. */
         if (getenv("DB4A_LOG_TEMPO")) tempo_sample(frames);
+        { static int mt = -1; static int tx, ty;
+          if (mt < 0) { const char *e = getenv("DB4A_MOUSE_TARGET");
+                        mt = (e && sscanf(e, "%d,%d", &tx, &ty) == 2) ? 1 : 0;
+                        if (mt) mouse_enable(1); }
+          if (mt) {
+              mouse_steer(tx, ty);
+              if ((frames % 20) == 0) {
+                  int cx, cy; mouse_cursor_pos(&cx, &cy);
+                  printf("  frame %5u cursor=(%3d,%3d) target=(%3d,%3d)\n",
+                         frames, cx, cy, tx, ty);
+              }
+          } }
         end = system_frame(end);
         if (m68k_last_unknown) break;
 
