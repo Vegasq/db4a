@@ -8,6 +8,7 @@
 #include "hal.h"
 #include "z80.h"
 #include "invariant.h"
+#include "vdp.h"
 #include "render.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -177,6 +178,7 @@ uint32_t m68k_run_frame(uint32_t pc) {
        there because the game rewrites vertical scroll DURING the frame and a
        real VDP draws each line with the value in effect at that line. */
     unsigned line = 0;
+    vdp_frame_start = start;
     render_frame_begin();
     while (CPU.cycles < deadline) {
         while (line < PAL_LINES) {

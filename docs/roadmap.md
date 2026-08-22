@@ -43,7 +43,7 @@ v1 is done when all of the following hold:
 | 3 | Mission 1 loads and renders correctly | frame hash matches reference at fixed checkpoints |
 | 4 | Core loop works: build, harvest spice, combat | manual play |
 | 5 | Both win **and** lose conditions reachable | manual play |
-| 6 | Correct pacing — PAL 50 Hz, no drift | frame timing measured over 60 s |
+| 6 | Correct pacing — PAL 49.70 Hz, no drift | frame timing measured over 60 s |
 | 7 | No crash or hang across a full mission | soak run |
 | 8 | Builds and runs on Linux x86_64 from a clean tree | `make clean && make` |
 

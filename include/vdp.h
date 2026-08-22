@@ -36,6 +36,8 @@ uint16_t vdp_read_status(void);
 void     vdp_dump(void);
 
 /* Register accessors used by the renderer. */
+extern uint64_t vdp_frame_start;   /* CPU cycle at line 0 of this frame */
+
 static inline int vdp_display_enabled(void) { return (VDP.reg[1] >> 6) & 1; }
 static inline int vdp_vint_enabled(void)    { return (VDP.reg[1] >> 5) & 1; }
 static inline int vdp_dma_enabled(void)     { return (VDP.reg[1] >> 4) & 1; }

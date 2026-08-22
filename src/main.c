@@ -28,7 +28,7 @@ static int cmp_hot(const void *a, const void *b) {
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s <rom> [frames]\n", argv[0]); return 2; }
     /* Pacing is cycle-based now, so the budget is a frame count: at PAL
-       50 Hz, 1 frame = 152009 cycles = 20 ms of game time. */
+       49.70 Hz, 1 frame = 152923 cycles = 20.12 ms of game time. */
     unsigned max_frames = (argc > 2) ? (unsigned)strtoul(argv[2], NULL, 0) : 600;
 
     FILE *f = fopen(argv[1], "rb");
@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
         }
     }
     printf("frames simulated  : %u  (%.2f s of game time)\n",
-           frames, frames / 50.0);
+           frames, frames / 49.7015);
     printf("cycles emulated   : %llu\n", (unsigned long long)CPU.cycles);
 
     printf("\nblocks executed   : %lu\n", m68k_blocks_run);

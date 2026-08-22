@@ -11,6 +11,7 @@
  *     word 2:  CD5-CD2 in bits 7-4, A15-A14 in bits 1-0
  */
 #include "vdp.h"
+#include "hal.h"
 #include "m68k.h"
 #include "invariant.h"
 #include <stdio.h>
@@ -158,9 +159,34 @@ uint16_t vdp_read_data(void) {
  * reference within the first 100 frames -- the loop exited immediately here
  * and span there. Transfers are performed instantaneously, so a completion
  * deadline is recorded and the bit reports busy until the CPU reaches it. */
+uint64_t vdp_frame_start;
+
+/* Status register. The VBlank and HBlank flags were previously never set, so
+   any loop polling them to synchronise saw a constant and fell through at the
+   wrong moment -- which is how a state transition landed two frames late
+   against the reference while the frame COUNT stayed correct.
+ *
+ * Both are derived from where the CPU is inside the frame. Line 0 is the start
+ * of active display; PAL V28 displays 224 of 313 lines, so anything at or past
+ * 224 is vertical blanking. Horizontal blanking is the tail of each line:
+ * H40 displays 320 pixels of a 420-pixel line, so roughly the last quarter.
+ *
+ * With the display disabled the VDP reports vertical blanking continuously,
+ * which is what lets a game blank the screen and then stream VRAM. */
 uint16_t vdp_read_status(void) {
-    uint16_t st = 0x3400 | 0x0200 | 0x0001;
+    uint16_t st = 0x3400 | 0x0200 | 0x0001;   /* unused bits, FIFO empty, PAL */
     if (CPU.cycles < VDP.dma_busy_until) st |= 0x0002;
+
+    uint64_t into = CPU.cycles - vdp_frame_start;
+    if (into >= PAL_FRAME_CYCLES) into = PAL_FRAME_CYCLES - 1;   /* ran long */
+    unsigned line   = (unsigned)((into * PAL_LINES) / PAL_FRAME_CYCLES);
+    unsigned visible = (VDP.reg[1] & 0x08) ? 240u : 224u;
+
+    if (!vdp_display_enabled() || line >= visible) st |= 0x0008;  /* VBlank */
+
+    uint64_t per_line = PAL_FRAME_CYCLES / PAL_LINES;
+    uint64_t in_line  = into - (uint64_t)line * PAL_FRAME_CYCLES / PAL_LINES;
+    if (in_line * 4 >= per_line * 3) st |= 0x0004;                /* HBlank */
     return st;
 }
 
