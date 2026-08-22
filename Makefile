@@ -199,6 +199,10 @@ build/main.o: src/main.c include/m68k.h include/hal.h
 vectors: verify-rom
 	python3 tools/vectors.py "$(ROM)"
 
+## check-mouse - mouse steering must not hold the d-pad outside gameplay
+check-mouse: build/db4a
+	./tests/mouse.sh
+
 ## check-state - save a state mid-run, resume from it, and require the same frame
 check-state: build/db4a
 	./tests/savestate.sh

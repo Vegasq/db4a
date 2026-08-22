@@ -37,6 +37,22 @@ more robust because it needs no RAM archaeology. It is not: the cursor sprite
 (tile `6C6`) **blinks**, so it is absent from the sprite list on roughly half
 the frames.
 
+## Only during gameplay
+
+Steering is confined to gameplay, decided by the scene pointer at `$FFFFE002`:
+`006D0C`, `00608E` (placing a building) and `00B540` are gameplay, everything
+else is a menu, briefing or cutscene.
+
+This is not a nicety. Outside gameplay the cursor variables read **(0, 0)**,
+which is a perfectly plausible coordinate, so a range check passes and the
+steering drives towards the pointer — holding right and down forever and making
+the mentat screen impossible to get past. That is how this first shipped.
+
+The related rule: **every path that declines to steer must release the d-pad
+first.** Returning early without doing so leaves whatever was pressed held down.
+`make check-mouse` drives a scripted route to the mission with steering active
+and fails if the game does not arrive.
+
 ## Behaviour
 
 A d-pad press moves the cursor about 7 pixels, so the pointer cannot be matched
