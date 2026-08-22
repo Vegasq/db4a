@@ -5,3 +5,19 @@ roms/
 __pycache__/
 src/gen/*.c
 ref/
+
+# Emulator output. None of this is ours to publish: framebuffers, RAM dumps and
+# audio captures are all derived from the cartridge, and every one of them is
+# regenerable from a make target.
+*.ppm
+*.png
+*.wav
+*.ram
+*.state
+*.trace
+*.bundle
+
+# Files created when a shell flag lands in the filename position -- how a 210 KB
+# framebuffer and an 8 KB Z80 RAM dump of the sound driver reached a commit.
+/1
+/--*
