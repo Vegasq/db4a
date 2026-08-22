@@ -2062,3 +2062,74 @@ A screen diff tells you something is wrong. A memory diff tells you what.
 
 (Genesis-Plus-GX returns work RAM byte-swapped within each 16-bit word, the same
 x86 trap CLAUDE.md records for `od -t x2`. Un-swap before diffing.)
+
+## 2026-08-22 — audio, from silence to a game with a soundtrack
+
+Went from both sound chips stubbed to music and effects throughout. Five real
+bugs, and the pattern of how they were found is the part worth keeping.
+
+**The PSG is a red herring for this game.** Implemented and unit-tested first,
+on the theory that a small chip would get a pipeline in place. It did, but Dune
+writes the PSG 38 times at init to mute all four channels and never touches it
+again: its output is *exactly* zero for the entire mission. All the sound is
+YM2612. Recorded so the silence is never mistaken for a defect.
+
+**The driver stall.** Music crawled, then stopped entirely a minute in. Both
+were one bug: `psg_run`/`ym_run` were called once at the END of each frame, so
+the YM2612's timers could not advance while the Z80 was executing. Dune's driver
+writes 0x15 to register 0x27 and then spins on `bit 0,(hl)` waiting for the
+Timer A overflow — it was polling a flag that was physically unable to change,
+burning its whole slice, and getting one timer event per frame instead of the
+~10000 it expects. The chips now advance before the Z80 runs each slice.
+
+**Z80 instruction timing.** Every non-indexed CB-prefixed instruction was 4
+T-states heavy, because the tables carry the full documented cost including the
+prefix fetch and `z80_step` had already charged 4 for it. `bit 0,(hl)` cost 16
+instead of 12 — the exact instruction the driver spins on, and it is CPU-bound
+there, so the music ran slow. Fixing it took RMS against the reference from
+622.5 to an exact 599.6.
+
+zexdoc had been green throughout. It proves the core computes the right
+RESULTS and says nothing about how long anything takes, so this class of bug was
+invisible to every test we had. `tests/test_z80_timing.c` now covers it.
+
+**Modulation depth was 4x too shallow**, and the LFO did not exist at all
+(register 0x22 ignored, though Dune enables it). Both show up as *per-effect*
+volume errors rather than a global one, because how bright an FM voice is
+depends entirely on modulation depth.
+
+**A DC offset from the DAC.** It holds its last sample once the driver stops
+feeding it; on hardware nothing downstream passes DC, but here the held value
+became a -708 offset that the whole mix rode on and clipped against. That was
+the "engine sound never clears, then everything is broken" report. Fixed with a
+one-pole high pass at ~27 Hz, matching the console's AC-coupled output.
+
+### What went wrong in the debugging, which is the transferable part
+
+Three of my own measurements actively misled me:
+
+- I concluded Timer A was running at 54% speed. It was not: the timer only ticks
+  while enabled, and the game does not start it until the music begins.
+- I blamed a level decay on the DC blocker. It was a missing accumulator reset I
+  had introduced myself one commit earlier, which made `sum_n` grow without
+  bound so each output sample averaged an ever-longer stretch — a 1/n decay that
+  looks exactly like an envelope fault.
+- `DB4A_REPLAY` silently extended every run to cover the whole recording, so a
+  series of runs at 200, 600 and 1500 frames all simulated 27609 and returned
+  identical numbers. I read that as "the driver has stopped".
+
+The envelope tests failed twice for reasons that were the test's fault, not the
+chip's: measuring the PEAK across a release window reports its loud first
+milliseconds, and reading the ring buffer straight after a key-off returns audio
+generated before it. Both made a working chip look broken. A test for a stuck
+note that errs toward "stuck" is worse than no test.
+
+Meanwhile every single fix originated in the user describing what they heard —
+"too slow", "the engine sound never clears", "only clicks after house select",
+"the money counter is too loud". The automated tempo comparisons never resolved
+anything: onset-flux correlation peaked at 0.18 with 0.97x, 1.14x and 1.27x
+indistinguishable. A described symptom beat a correlation score every time.
+
+Remaining work is task #22, deferred as low priority: in-game audio is still
+wrong, the intro has "weird slowdowns", and the money-counter effect is too
+loud. Prime suspect is SSG-EG, which is parsed and ignored.
