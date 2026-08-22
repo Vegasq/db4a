@@ -2186,3 +2186,64 @@ still wrong and SSG-EG is parsed but ignored. Task #21 is a 0.8% gameplay pixel
 difference that is unit positions, not rendering. Task #18 is three keys that
 never reach SDL on the development machine, which is environmental. All three
 carry what has already been ruled out, so none starts from scratch.
+
+## 2026-08-22 — the cursor could never have followed the mouse
+
+Mouse control worked but the cursor trailed the pointer badly. The assumption
+was that the steering was mistuned. It was not: the cartridge cannot move its
+cursor that fast, and a second dead zone nobody had found was dragging it back.
+
+**Finding the code.** Added a RAM watchpoint, `DB4A_WATCH=FFBF12`, which prints
+every write to an address together with the block that made it. Two writers
+appeared. `$4BDC` was a red herring — it adds a pending delta that is almost
+always zero. The real one was `$706C`.
+
+**What the ROM does.** Cursor at `$FFBF12`/`$FFBF14` in screen pixels, with
+sub-pixel accumulators at `$FFBF3C`/`$FFBF3E` and a 16.16 speed at `$FFBF40`
+that ramps by `$1000` a frame and caps at `$30000`. Three pixels a frame at
+50 Hz is 150 px/s: over two seconds corner to corner. No steering policy can
+beat that.
+
+Worse, `$706C` scrolls the map whenever the cursor leaves **X 120..200,
+Y 82..142** — a box a quarter of the screen wide — and pulls the cursor back
+towards it. Warping the cursor to (40,40) and watching it crawl back to
+(120,82) is what identified it. The 24-pixel clamp box at `$FFBF1A` that had
+looked like the culprit was a side issue.
+
+**The fix.** Write the cursor position directly, and own the routine. Both
+wanted changes are governed by two thresholds per axis, a shift and two speed
+caps, all instruction immediates — patching a dozen of those in the ROM image
+would work and would be unreadable. `src/cursor.c` is the first native
+override: one block entry replaced by C that does the same job and returns the
+same next PC. `docs/natives.md` has the method.
+
+**Three things went wrong, all worth keeping.**
+
+*The equivalence checker passed while the run diverged.* It compared RAM, the
+cycle count and the exit PC — 9319 calls, zero mismatches, visibly different
+frames. The override was leaving `d0`-`d2` and the X flag holding the caller's
+values, and the code after the exit reads them. A checker that does not compare
+registers finds nothing and reads like success. Fixed by comparing the whole
+CPU; the arithmetic now goes through the same `add16`/`sub16`/`cmp16` helpers
+the generated code uses, so the flags are right by construction rather than by
+a second reading of the manual.
+
+*Then it still diverged.* With registers compared and every call matching
+exactly, `DB4A_NATIVE=1` and `=check` produced identical frames to each other
+and different ones from `=0`. That grouping was the clue: check mode discards
+the C's results entirely, so the cause could not be the C. It is atomicity.
+`m68k_run_until` tests the slice deadline *between* blocks; the routine is
+eight blocks and ~1000 cycles against a 500-cycle slice, so the cartridge
+always yields to the Z80 in the middle of it and an override cannot. 0.62% of
+pixels at frame 6000 — the same order as task #21. The override is therefore
+gated on mouse control, and a faithful run is bit-exact. Task #23 is the real
+fix: interleave on absolute cycle position rather than block boundaries.
+
+*The control that should have been first.* Two runs of the same configuration,
+to establish the harness is deterministic, before drawing any conclusion from
+two runs of different ones. It cost a detour into a semantics bug that was not
+there.
+
+Verified: `make check-native` (9319 calls, 0 mismatched; faithful frames
+identical), all unit tests, `check-state`, `check-houses`, `tests/mouse.sh`,
+the full 27609-frame winning mission, and `tests/defeat.sh`.

@@ -251,6 +251,45 @@ Consequences for contributors:
 - If interpreted and recompiled execution ever diverge, that is a generator
   bug by construction, not a semantics disagreement.
 
+## Native overrides -- game logic in C
+
+`src/cursor.c` is the first piece of game logic this project implements in C
+rather than running out of the cartridge. A **native override** replaces one
+block entry with a hand-written C function that does the same job against the
+same RAM and returns the PC the ROM would have continued from.
+
+Full methodology, including how to pick the next routine: **`docs/natives.md`**.
+
+The rules, because getting them wrong is quiet rather than loud:
+
+1. **Override only at a real block entry.** The dispatcher looks up whole
+   blocks; a PC in the middle of one is never consulted.
+2. **Account for cycles.** Cycle counts drive frame pacing and the Z80
+   interleave. Take the numbers from each generated block's `CPU.cycles +=`.
+3. **Registers and flags are part of the contract.** An override is spliced
+   into the middle of execution and must leave the CPU as the blocks would
+   have. Route arithmetic through the `add16`/`sub16`/`cmp16` helpers so flags
+   are right by construction.
+
+```bash
+make check-native                       # per-call equivalence + faithful run unchanged
+DB4A_NATIVE=check ./build/db4a "$ROM" 12000
+DB4A_NATIVE=0                           # never override    =1  always
+```
+
+**The checker must compare everything.** Its first version compared RAM, cycles
+and the exit PC, and passed on all 9319 calls of a mission while the run
+visibly diverged -- the override was leaving `d0`-`d2` and X holding the
+caller's values. Whole-RAM diff plus every register plus the flags.
+
+**Overrides are not free.** `m68k_run_until` checks the slice deadline between
+blocks, so collapsing an eight-block, ~1000-cycle routine into one indivisible
+step moves where the 68000 yields to the Z80 -- 0.62% of pixels at frame 6000,
+the same order as task #21. That is why the cursor override is gated on mouse
+control instead of being on by default. The real fix is to interleave on
+absolute cycle position rather than block boundaries; do that before migrating
+more routines.
+
 ## Reference oracle
 
 **Genesis-Plus-GX**, patched to log executed PCs. Chosen over BlastEm for
@@ -322,6 +361,12 @@ wrong and SSG-EG is parsed but ignored.
 
 These cost real debugging time. Do not rediscover them.
 
+- **`DB4A_WATCH=FFBF12` names the block that wrote a RAM address.** This is the
+  fastest way from "some variable changed" to "this routine did it", and it
+  found the cursor code in minutes after static analysis had pointed at the
+  wrong one of the two writers. Block granularity, which is what you feed back
+  into `tools/` to disassemble.
+
 - **capstone's m68k `detail` API reports `disp=0` for absolute addressing.**
   It cannot distinguish `jsr $1664.w` from `jsr (a0)` structurally. Parse
   `op_str` text instead — it is correct for every addressing mode. PC-relative
@@ -357,6 +402,8 @@ These cost real debugging time. Do not rediscover them.
 CLAUDE.md            this file
 Makefile             reproducible analysis + test targets
 include/m68k.h       CPU state, memory interface, flag helpers
+src/cursor.c         first game routine owned in C (see docs/natives.md)
+include/native.h     native-override interface
 tools/semantics.py   SINGLE SOURCE OF TRUTH for instruction semantics
 tools/vectors.py     exception vector table dump
 tools/trace.py       recursive-descent code discovery (main analysis tool)
@@ -364,6 +411,7 @@ tools/jumptab.py     jump-table format detection and resolution
 tools/rommap.py      coarse entropy banding (classification NOT trustworthy)
 tests/test_flags.c   68000 flag semantics unit tests
 docs/roadmap.md      goal, definition of done, non-goals, milestones
+docs/natives.md      replacing cartridge code with C: how, and what it costs
 docs/rom.md          base ROM provenance and header dump
 docs/journal.md      chronological record of work and findings
 build/               generated, gitignored, fully reproducible
@@ -415,6 +463,7 @@ make check-z80       # zexdoc
 make check-operands  # every discovered instruction parses
 make check-state     # save a state, resume, require an identical frame
 make check-houses    # all three houses load
+make check-native    # C overrides match the cartridge code they replace
 make compare-screen SCENARIO=houseselect FRAME=2800    # vs the reference
 make replay REC=data/recordings/level1atredis.txt      # the full winning mission
 ./tests/defeat.sh    # win mission 1, then lose mission 2
