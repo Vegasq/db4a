@@ -18,6 +18,7 @@
 #include "psg.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 
 #define FM_CLOCK_DIV 144u
@@ -108,6 +109,7 @@ static struct {
     int32_t  sum_l, sum_r;
     uint32_t sum_n;
     uint8_t  timer_ctrl;
+    int32_t  dc_x_l, dc_y_l, dc_x_r, dc_y_r;   /* DC blocker history */
     /* Timers. A sound driver paces itself on these overflow flags, so leaving
        them at zero makes the music play at whatever slower rate the driver
        falls back to. Both count at the FM sample rate (chip clock / 144):
@@ -320,7 +322,33 @@ void ym_run(uint64_t cycles) {
                DAC, so lift the mix to use the available range. */
             int32_t ol = Y.sum_n ? (Y.sum_l * 4) / (int32_t)Y.sum_n : 0;
             int32_t or_ = Y.sum_n ? (Y.sum_r * 4) / (int32_t)Y.sum_n : 0;
+            /* Start the next averaging window. Losing this line makes sum_n
+               grow without bound, so each output sample averages a longer and
+               longer stretch of the waveform and the level decays as 1/n --
+               which looks exactly like an envelope fault and is not one. */
             Y.sum_l = Y.sum_r = 0; Y.sum_n = 0;
+
+            /* Block DC, as the console's AC-coupled output stage does.
+             *
+             * The DAC holds its last sample indefinitely once the driver stops
+             * feeding it. On hardware that is harmless because nothing
+             * downstream passes DC. Without this the held value becomes a
+             * constant offset -- measured at -708 after the intro cinematic,
+             * against the reference's 0 -- and everything else rides on it and
+             * clips, which is why a sound effect seemed to hang and the mix
+             * afterwards was a mess.
+             *
+             * One-pole high pass: y[n] = x[n] - x[n-1] + k*y[n-1] with
+             * k = 1020/1024, a corner near 27 Hz. Measured in isolation that
+             * passes a 240 Hz tone at 0.996 and removes a DC step completely
+             * within a tenth of a second. */
+            {
+                int32_t yl = ol - Y.dc_x_l + (Y.dc_y_l * 1020) / 1024;
+                Y.dc_x_l = ol; Y.dc_y_l = yl; ol = yl;
+                int32_t yr = or_ - Y.dc_x_r + (Y.dc_y_r * 1020) / 1024;
+                Y.dc_x_r = or_; Y.dc_y_r = yr; or_ = yr;
+            }
+
             if (ol  >  32767) ol  =  32767;
             if (ol  < -32768) ol  = -32768;
             if (or_ >  32767) or_ =  32767;
@@ -371,6 +399,12 @@ void ym_write(unsigned port, uint8_t v) {
             Y.tb_run = (v >> 1) & 1;
             break;
         case 0x28: {                              /* key on/off */
+            if (getenv("DB4A_KEYLOG")) {
+                static unsigned long shown;
+                if (shown++ < 60) fprintf(stderr, "[key] 28 <- %02X (ch=%u bits=%X)\n",
+                                          v, (unsigned)((v & 3) + ((v & 4) ? 3 : 0)),
+                                          (v >> 4) & 15);
+            }
             unsigned ci = v & 3;
             if (ci == 3) break;
             if (v & 4) ci += 3;
@@ -450,8 +484,19 @@ size_t ym_read_samples(int16_t *out, size_t max) {
 }
 
 void ym_report(void) {
+    static const char *SN[5] = {"att","dec","sus","rel","off"};
+    int cnt[5] = {0,0,0,0,0};
+    for (int c = 0; c < 6; c++)
+        for (int i = 0; i < 4; i++) cnt[Y.ch[c].op[i].state]++;
+    printf("ym eg states:");
+    for (int i = 0; i < 5; i++) printf(" %s=%d", SN[i], cnt[i]);
+    printf("   keyed:");
+    for (int c = 0; c < 6; c++) printf(" ch%d=%X", c, Y.ch[c].keyed);
+    printf("\n");
+
     printf("ym2612  writes=%lu keyons=%lu dac=%s  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
            ym_writes, ym_keyons, Y.dac_on ? "on" : "off",
            Y.ta_run ? "run" : "off", Y.ta_period,
            Y.tb_run ? "run" : "off", Y.tb_period, ym_available());
 }
+

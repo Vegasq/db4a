@@ -139,6 +139,10 @@ build/hal_z80.o: src/hal_z80.c include/z80.h include/m68k.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/test_ym: tests/test_ym.c src/ym2612.c include/ym2612.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+
 build/test_psg: tests/test_psg.c src/psg.c include/psg.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
@@ -176,11 +180,12 @@ vectors: verify-rom
 	python3 tools/vectors.py "$(ROM)"
 
 ## test - build and run all unit tests
-test: build/test_flags build/test_ea build/test_sem build/test_psg
+test: build/test_flags build/test_ea build/test_sem build/test_psg build/test_ym
 	./build/test_flags
 	./build/test_ea
 	./build/test_sem
 	./build/test_psg
+	./build/test_ym
 
 build/test_flags: tests/test_flags.c include/m68k.h
 	@mkdir -p build
