@@ -23,6 +23,22 @@ OUT  = os.path.join(ROOT, "build", "play")
 def mash(button, gap, count):
     return [('mash', button, gap, count)]
 
+ALL_BUTTONS = ['up', 'down', 'left', 'right', 'a', 'b', 'c', 'start']
+
+def sweep(buttons, gap, rounds=1):
+    """Press each button in turn, `rounds` times over.
+
+    Exercising every input is how dispatch tables get covered: an arm is only
+    reached if something selects it, and a scenario that only presses Start
+    selects arm 0 forever. Most crashes found by hand have been later arms of
+    a table whose first arm worked fine.
+    """
+    steps = []
+    for _ in range(rounds):
+        for b in buttons:
+            steps.append(('mash', b, gap, 1))
+    return steps
+
 SCENARIOS = {
     # The route reported from interactive play: title -> house select ->
     # advisor briefing -> (previously) a crash in the 0x49xxx subsystem.
@@ -36,6 +52,23 @@ SCENARIOS = {
         + mash('b', 90, 14)
         + [('shot', '04-mentat'), ('wait', 400), ('shot', '05-later')]
     ),
+    # Into the mission, then exercise every input. This is the scenario that
+    # matters for coverage: menus select one dispatch arm, gameplay selects
+    # many, and only pressing everything reaches them all.
+    "gameplay": (
+        [('wait', 2400),
+         ('press', 'start'), ('wait', 250),
+         ('press', 'b'),     ('wait', 250)]
+        + mash('b', 90, 16)                      # through the advisor briefing
+        + [('wait', 300), ('shot', '01-in-game')]
+        + sweep(ALL_BUTTONS, 45, rounds=3)       # every button, three passes
+        + [('shot', '02-after-sweep')]
+        + sweep(['up', 'down', 'left', 'right'], 25, rounds=6)   # directions
+        + [('shot', '03-after-dpad')]
+        + sweep(['a', 'b', 'c', 'start'], 40, rounds=4)          # actions
+        + [('shot', '04-after-actions'), ('wait', 300), ('shot', '05-final')]
+    ),
+
     # Just the opening, as a fast regression check.
     "intro": [
         ('wait', 300),  ('shot', '01-logo'),
