@@ -1848,3 +1848,35 @@ than leaving it as "it doesn't work".
 
 Next step is to find the confirm action, most likely a press-and-hold or a
 two-button combination the single-press sweep cannot express.
+
+### Building a concrete slab
+
+With the sequence supplied from real play, the scenario works: select the
+Construction Yard with `a`, then `down` + `a` to order the slab, wait, then
+`down` + `a` to place it.
+
+Observable progression across the captures:
+
+```
+00-arrive          credits 990
+01-yard-selected   side panel opens
+02-slab-ordered    credits 983    <- build started
+03-building        progress shown
+04-placement-mode  striped overlay across the yard
+05/06-settled      credits 976, "OK" indicator on the yard
+```
+
+Against the reference at every stage: **99.57%, 99.57%, 100.00%, 99.59%,
+99.58%**. One frame exact, the rest differing by ~300 sprite-animation pixels.
+So the whole build interaction is faithful, not merely reachable.
+
+`make playthrough SCENARIO=slab`.
+
+**Three times in this task an ad-hoc pixel-count proxy gave a confidently wrong
+answer** — a "progress bar" region that returned identical values for 700,
+1500 and 2500 frame waits, and a "stripe detector" that reported the overlay
+gone while the screenshot plainly showed it. Each time the fix was to stop
+measuring a made-up region and either look at the frame or run
+`compare_screen.sh`. The lesson is the one already written down after the
+RGB565 episode: use the instrument that is calibrated, do not invent a new one
+per question.

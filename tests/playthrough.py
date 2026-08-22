@@ -114,20 +114,23 @@ SCENARIOS = {
     # select the Construction Yard, then step through the build panel one input
     # at a time with a capture after each, so the menu's behaviour can be read
     # off the screenshots rather than assumed.
+    # Build a concrete slab, per the sequence described from real play:
+    # select the Construction Yard with A, then down+A to start the slab,
+    # wait for it to build, then down+A to place it.
     "slab": (
         [('wait', 2400),
          ('press', 'start'), ('wait', 250),
          ('press', 'b'),     ('wait', 250)]
         + mash('b', 90, 18)
         + [('wait', 300),      ('shot', '00-arrive')]
-        + [('press', 'a'),     ('wait', 90), ('shot', '01-select-yard')]
-        + [('press', 'a'),     ('wait', 90), ('shot', '02-a-again')]
-        + [('press', 'down'),  ('wait', 60), ('shot', '03-down')]
-        + [('press', 'down'),  ('wait', 60), ('shot', '04-down')]
-        + [('press', 'a'),     ('wait', 90), ('shot', '05-a')]
-        + [('press', 'c'),     ('wait', 90), ('shot', '06-c')]
-        + [('press', 'b'),     ('wait', 90), ('shot', '07-b')]
-        + [('wait', 600),      ('shot', '08-wait')]
+        + [('press', 'a'),     ('wait', 90),  ('shot', '01-yard-selected')]
+        + [('press', 'down'),  ('wait', 50)]
+        + [('press', 'a'),     ('wait', 120), ('shot', '02-slab-ordered')]
+        + [('wait', 900),      ('shot', '03-building')]
+        + [('press', 'down'),  ('wait', 50)]
+        + [('press', 'a'),     ('wait', 200), ('shot', '04-placement-mode')]
+        + [('press', 'b'),     ('wait', 200), ('shot', '05-after-confirm')]
+        + [('wait', 400),      ('shot', '06-settled')]
     ),
 
     # Just the opening, as a fast regression check.
