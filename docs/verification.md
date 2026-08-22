@@ -36,9 +36,9 @@ honest. Detecting traps from the transaction log is more reliable than
 inferring them from the final register state, because a trap taken while
 already in supervisor mode leaves the S bit unchanged.
 
-Current state, full suite (127 instruction files, 60 vectors each):
+Current state, full suite (127 instruction files, `VECN` vectors each):
 
-    make check-cpu  ->  4586/4710 passed
+    make check-cpu  ->  19667/19667 passed
 
 Bugs this layer found, none of which game-level testing caught:
 
@@ -52,9 +52,24 @@ Bugs this layer found, none of which game-level testing caught:
 | `BCHG`/`BSET`/`BCLR`/`BTST` never applied `(An)+` | pointer drift |
 | `CMP` with a memory destination never applied `(An)+` | pointer drift |
 | `MOVEM (An)+` clobbered `An` when `An` was in its own list | wrong pointer after load |
+| `MOVEM -(An)` stored the decremented `An`, not its original value | wrong value in the saved frame |
+| `MOVEM (An)+` kept the loaded `An` instead of the final increment | the opposite error, from over-correcting the row above |
+| `MOVEM` PC-relative source read one word low | every register loaded from the wrong slot |
+| indexed operands with extension bit 8 set took capstone's displacement | wrong address, often off by the whole displacement |
+| register-count `ROXR.b` rotated a longword by an immediate | 96 of 200 `ROXR.b` vectors wrong |
+| `BTST` with an immediate operand used mod 32 | tested the wrong bit of the wrong value |
 
-Still failing, left visible rather than filtered: `DIVS`, `DIVU`, `MOVEfromSR`,
-`MOVEM.l`, `MOVEM.w`, `MOVEtoCCR`, `ROXR.b`, `SUB.b`.
+Nothing is currently failing. Four of the seven bugs above were decode-level:
+capstone emits 68020 interpretations even in `CS_MODE_M68K_000`, so the
+extension-bit-8 and register-count-ROX forms are now decoded from raw bytes
+instead (`ea.fix_brief`, `ea.fix_shift`, `ea.fix_btst_imm`). None of them occur
+in the Dune ROM -- all 816 of its indexed operands decode correctly -- so this
+buys CPU correctness and transferability to other Genesis titles rather than
+fixing anything Dune-visible.
+
+The harness capped printed failures at 3 per group, which made a saturated cap
+indistinguishable from a group with exactly three problems: `ROXR.b` displayed 3
+while actually failing 96. Each group now reports its true failing-vector count.
 
 Unimplemented entirely, and skipped at 100%: `ABCD`, `SBCD`, `NBCD`, `MOVEP`,
 `TAS`, `NEGX.b`, and the `ORI`/`ANDI`/`EORI` to-CCR forms. None appear in this
