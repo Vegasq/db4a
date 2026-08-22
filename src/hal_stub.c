@@ -27,11 +27,15 @@ static int is_z80(uint32_t a) {
 
 unsigned long hal_io_reads, hal_io_writes;
 extern uint32_t m68k_cur_block;
+static void watch_check(uint32_t a, uint32_t v, int width);
 int hal_log_io;
 
 void hal_set_rom(const uint8_t *d, size_t n) { rom = d; rom_len = n; }
 void hal_reset_ram(void) { memset(ram, 0, sizeof ram); }
 const uint8_t *hal_ram_ptr(size_t *len) { if (len) *len = sizeof ram; return ram; }
+/* Writable view, for the native-override equivalence checker only: it has to
+   rewind RAM between running our C and running the cartridge's blocks. */
+uint8_t *hal_ram_mut(size_t *len) { if (len) *len = sizeof ram; return ram; }
 void *hal_ram_state(size_t *len) { *len = sizeof ram; return ram; }
 
 /* Hardware reads.
@@ -143,7 +147,8 @@ void m68k_write8(uint32_t a, uint8_t v) {
 }
 void m68k_write16(uint32_t a, uint16_t v) {
     a &= 0xFFFFFF;
-    if (a >= 0xFF0000) { ram[a & 0xFFFF] = (uint8_t)(v >> 8);
+    if (a >= 0xFF0000) { watch_check(a, v, 2);
+                         ram[a & 0xFFFF] = (uint8_t)(v >> 8);
                          ram[(a + 1) & 0xFFFF] = (uint8_t)v; return; }
     /* BUSREQ and RESET are written as words (move.w #$0100,$A11100), so they
        must be routed here as well as in the byte path. */
@@ -161,6 +166,28 @@ void m68k_write16(uint32_t a, uint16_t v) {
     }
     if (a >= 0xA00000) { hal_io_writes++; return; }
 }
+/* RAM watchpoint: DB4A_WATCH=FFBF12 logs every write to that address with the
+ * block that did it. Block granularity, not instruction -- m68k_cur_block is
+ * the entry PC of the block in flight, which is what you feed back into
+ * tools/ to disassemble. Costs one compare on the RAM path when unset. */
+static uint32_t watch_addr;      /* 0 = disabled */
+static int      watch_ready;
+unsigned long   hal_watch_hits;
+
+static void watch_check(uint32_t a, uint32_t v, int width) {
+    if (!watch_ready) {
+        const char *e = getenv("DB4A_WATCH");
+        watch_addr = e ? (uint32_t)strtoul(e, NULL, 16) : 0;
+        watch_ready = 1;
+    }
+    if (!watch_addr) return;
+    if (a > watch_addr || a + (uint32_t)width <= watch_addr) return;
+    if (hal_watch_hits < 200)
+        fprintf(stderr, "[watch] %06X <- %0*X  from block %06X\n",
+                a, width * 2, v, m68k_cur_block);
+    hal_watch_hits++;
+}
+
 void m68k_write32(uint32_t a, uint32_t v) {
     m68k_write16(a, (uint16_t)(v >> 16));
     m68k_write16(a + 2, (uint16_t)v);
