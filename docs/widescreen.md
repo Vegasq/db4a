@@ -286,6 +286,24 @@ It looks correct at frame 6000 because the camera has been stationary long
 enough for the surrounding columns to be whatever was last drawn there. That is
 luck, not a property to build on.
 
+### Why it cannot be fixed by sampling harder
+
+Measured during a scroll, with the camera driven into the map edge:
+
+- `hscroll` climbs to **512 and stops**. The planes are 512 px wide, so at that
+  point the view occupies plane columns 0–39.
+- The widescreen extension therefore samples columns **54–63**, wrapping to the
+  far side of the ring buffer — a different part of the map entirely. That is
+  the detached blob at the left edge.
+- Over the same span the game writes **0 to 2 plane columns per frame**. It does
+  not stream the tilemap as it scrolls; it writes the view once and leaves the
+  rest alone.
+
+So the data for the extra columns is not merely stale, it was never there. No
+amount of tracking which columns are fresh helps: marking the stale ones and
+blanking them would blank the entire extension, which is the same as having no
+widescreen at all.
+
 ### Where that leaves it
 
 Three ways forward, none of them small:
