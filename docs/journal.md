@@ -2032,3 +2032,33 @@ different causes, and the useful signal each time came from the user's
 description of the TIMING ("prints DOWN and UP with no delay"), not from the
 symptom. The pad log now reports reads while a button is held, and names every
 key SDL sees, so the next one of these starts from evidence.
+
+## 2026-08-22 — the PAL frame is 152,923 cycles, not 152,009
+
+Correcting the entry above. It reasoned "the 68000 runs at 53203424/7 =
+7,600,489 Hz, so a 50 Hz frame is 152,009 cycles". The premise is wrong: the
+PAL Mega Drive does not run at 50 Hz. A PAL frame is 313 lines of 3420 master
+clocks = 1,070,460, giving 1070460/7 = **152,922.86** cycles at **49.7015 Hz**.
+Genesis-Plus-GX reports 49.70 fps for this ROM.
+
+The error gave the CPU 914 fewer cycles every frame, 0.6% less work than
+hardware. Menus never showed it. Gameplay did: the map's smooth scroll moves by
+a relative delta rather than toward an absolute target, so a transient rate
+difference became permanent, and gameplay frames sat 3 pixels off the reference
+forever after. Fixing the frame length took frame 6000 from 64.63% to 99.35%
+exact and made the camera variable $FFE3BA agree exactly.
+
+**How it was found**, which is the transferable part. Pixel comparison said
+"3 pixels down matches at 96%" and nothing more; I twice drew a wrong conclusion
+from it, first blaming mid-frame scroll and then building a per-scanline
+renderer that changed no output. What settled it was comparing 68K work RAM
+between the two emulators: $FFE3BA held 46 against the reference's 43, which
+proved the GAME had computed a different camera and the renderer was innocent.
+Bisecting RAM frame by frame then showed agreement through frame 84 and a
+counter at $FFE007 running exactly 2 frames behind from 94 onward -- a phase
+error in a timed sequence, which points at frame length rather than arithmetic.
+
+A screen diff tells you something is wrong. A memory diff tells you what.
+
+(Genesis-Plus-GX returns work RAM byte-swapped within each 16-bit word, the same
+x86 trap CLAUDE.md records for `od -t x2`. Un-swap before diffing.)

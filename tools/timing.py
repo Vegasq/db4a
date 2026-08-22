@@ -6,7 +6,7 @@ operation plus an effective-address calculation cost per memory operand.
 This is an APPROXIMATION and is documented as one. It does not model
 instruction prefetch overlap, and it does not model Mega Drive bus contention,
 where the 68000 stalls while the VDP has the bus. It is accurate enough to pace
-frames at 50 Hz, which is what it exists for; it is NOT accurate enough for
+frames at 49.70 Hz, which is what it exists for; it is NOT accurate enough for
 raster-timed effects. This ROM has no HBlank handler, so that is acceptable.
 
 Where a value depends on data (shift counts, multiply, divide) the worst or
@@ -107,7 +107,8 @@ def block_cycles(instrs):
     """Sum cycles for a list of (mnemonic, operands, size)."""
     return sum(cycles(mn, ops, sz) for mn, ops, sz in instrs)
 
-# PAL Mega Drive: the 68000 runs at 53203424/7 Hz and the display is 50 Hz.
+# PAL Mega Drive: the 68000 runs at 53203424/7 Hz and the display is 49.70 Hz
+# (313 lines * 3420 master clocks per frame), NOT 50 -- see include/hal.h.
 PAL_CPU_HZ       = 53203424 // 7      # 7,600,489
 PAL_FRAME_CYCLES = PAL_CPU_HZ // 50   # 152,009
 NTSC_CPU_HZ       = 53693175 // 7     # 7,670,453

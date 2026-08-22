@@ -13,7 +13,7 @@ of the faithful baseline.
 
 Decided 2026-08-21.
 
-Phase 1 targets a byte-faithful port: 320x224, PAL 50 Hz pacing, identical
+Phase 1 targets a byte-faithful port: 320x224, PAL 49.70 Hz pacing, identical
 graphics and audio. Input handling is the **only** thing that changes.
 
 This is not conservatism for its own sake. A faithful build can be diffed
