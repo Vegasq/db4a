@@ -108,6 +108,15 @@ static struct {
     int32_t  sum_l, sum_r;
     uint32_t sum_n;
     uint8_t  timer_ctrl;
+    /* Timers. A sound driver paces itself on these overflow flags, so leaving
+       them at zero makes the music play at whatever slower rate the driver
+       falls back to. Both count at the FM sample rate (chip clock / 144):
+       Timer A overflows after 1024 - NA ticks, Timer B after 16*(256 - NB). */
+    uint16_t ta_period, ta_count;
+    uint8_t  tb_period;
+    uint16_t tb_count;
+    uint16_t tb_div;
+    uint8_t  ta_run, tb_run, ta_flag, tb_flag;
 } Y;
 
 #define RING 16384
@@ -255,9 +264,28 @@ static void fm_sample(int32_t *L, int32_t *R) {
     *L = l; *R = r;
 }
 
+static void timers_tick(void) {
+    if (Y.ta_run) {
+        if (++Y.ta_count >= 1024u) {
+            Y.ta_count = Y.ta_period;
+            if (Y.timer_ctrl & 0x04) Y.ta_flag = 1;
+        }
+    }
+    if (Y.tb_run) {
+        if (++Y.tb_div >= 16u) {
+            Y.tb_div = 0;
+            if (++Y.tb_count >= 256u) {
+                Y.tb_count = Y.tb_period;
+                if (Y.timer_ctrl & 0x08) Y.tb_flag = 1;
+            }
+        }
+    }
+}
+
 static void advance_chip(void) {
     /* One FM sample: run every operator's phase and envelope. */
     Y.eg_cnt++;
+    timers_tick();
     for (int ci = 0; ci < 6; ci++) {
         ch_t *c = &Y.ch[ci];
         for (int i = 0; i < 4; i++) {
@@ -330,7 +358,18 @@ void ym_write(unsigned port, uint8_t v) {
 
     if (bank == 0 && reg < 0x30) {
         switch (reg) {
-        case 0x27: Y.timer_ctrl = v; break;
+        case 0x24: Y.ta_period = (uint16_t)((Y.ta_period & 3) | (v << 2)); break;
+        case 0x25: Y.ta_period = (uint16_t)((Y.ta_period & 0x3FC) | (v & 3)); break;
+        case 0x26: Y.tb_period = v; break;
+        case 0x27:
+            Y.timer_ctrl = v;
+            if (v & 0x10) Y.ta_flag = 0;          /* reset the overflow flags */
+            if (v & 0x20) Y.tb_flag = 0;
+            if ((v & 1) && !Y.ta_run) Y.ta_count = Y.ta_period;
+            if ((v & 2) && !Y.tb_run) { Y.tb_count = Y.tb_period; Y.tb_div = 0; }
+            Y.ta_run = v & 1;
+            Y.tb_run = (v >> 1) & 1;
+            break;
         case 0x28: {                              /* key on/off */
             unsigned ci = v & 3;
             if (ci == 3) break;
@@ -381,7 +420,9 @@ void ym_write(unsigned port, uint8_t v) {
     }
 }
 
-uint8_t ym_read_status(void) { return 0; }       /* timers not implemented */
+uint8_t ym_read_status(void) {
+    return (uint8_t)((Y.ta_flag ? 1 : 0) | (Y.tb_flag ? 2 : 0));
+}
 
 void ym_reset(void) {
     init_tables();
@@ -409,6 +450,8 @@ size_t ym_read_samples(int16_t *out, size_t max) {
 }
 
 void ym_report(void) {
-    printf("ym2612  writes=%lu keyons=%lu dac=%s  frames queued=%zu\n",
-           ym_writes, ym_keyons, Y.dac_on ? "on" : "off", ym_available());
+    printf("ym2612  writes=%lu keyons=%lu dac=%s  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
+           ym_writes, ym_keyons, Y.dac_on ? "on" : "off",
+           Y.ta_run ? "run" : "off", Y.ta_period,
+           Y.tb_run ? "run" : "off", Y.tb_period, ym_available());
 }
