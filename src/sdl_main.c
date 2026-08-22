@@ -111,27 +111,31 @@ int main(int argc, char **argv) {
 
     int running = 1;
     unsigned frames = 0;
+    uint8_t key_state[PAD_COUNT] = {0};   /* what the keyboard asked for last frame */
     Uint64 t0 = SDL_GetTicks64();
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) running = 0;
             else if (e.type == SDL_KEYDOWN || e.type == SDL_KEYUP) {
-                int down = (e.type == SDL_KEYDOWN);
+                /* Pad state is POLLED once per frame below, not derived from
+                   these events. Auto-repeat emits a KEYUP/KEYDOWN pair per
+                   repeat: the repeat flag marks the KEYDOWN but NOT the KEYUP,
+                   so an event-driven binding released the button mid-hold and
+                   never pressed it again -- "A" logged DOWN then immediately up
+                   while the key was still held. Polling cannot see repeat at
+                   all. Events are still used for quit and for diagnostics. */
                 if (e.key.keysym.sym == SDLK_ESCAPE) running = 0;
-                if (e.key.repeat) continue;   /* auto-repeat is not a new press */
-                int matched = 0;
-                for (int i = 0; i < NBINDINGS; i++)
-                    if ((BINDINGS[i].key  == e.key.keysym.sym ||
-                         BINDINGS[i].scan == e.key.keysym.scancode) && !replaying) {
-                        matched = 1;
-                        pad_set(BINDINGS[i].pad, down);
-                        inputlog_record(frames, BINDINGS[i].pad, down);
-                    }
-                if (!matched && down && getenv("DB4A_LOG_PAD"))
-                    fprintf(stderr, "[key] unmapped: sym=%s scancode=%s\n",
-                            SDL_GetKeyName(e.key.keysym.sym),
-                            SDL_GetScancodeName(e.key.keysym.scancode));
+                if (e.type == SDL_KEYDOWN && !e.key.repeat && getenv("DB4A_LOG_PAD")) {
+                    int known = 0;
+                    for (int i = 0; i < NBINDINGS; i++)
+                        if (BINDINGS[i].key  == e.key.keysym.sym ||
+                            BINDINGS[i].scan == e.key.keysym.scancode) known = 1;
+                    if (!known)
+                        fprintf(stderr, "[key] unmapped: sym=%s scancode=%s\n",
+                                SDL_GetKeyName(e.key.keysym.sym),
+                                SDL_GetScancodeName(e.key.keysym.scancode));
+                }
             } else if (e.type == SDL_CONTROLLERBUTTONDOWN || e.type == SDL_CONTROLLERBUTTONUP) {
                 int down = (e.type == SDL_CONTROLLERBUTTONDOWN);
                 for (int i = 0; i < NGC; i++)
@@ -140,6 +144,26 @@ int main(int argc, char **argv) {
                         inputlog_record(frames, GC_MAP[i].pad, down);
                     }
             }
+        }
+
+        /* Sample the real keyboard state for this frame. A key that went up and
+           back down within one frame (exactly what auto-repeat does) reads as
+           held, which is correct: the user never let go. */
+        if (!replaying) {
+            const Uint8 *ks = SDL_GetKeyboardState(NULL);
+            int want[PAD_COUNT];
+            for (int p = 0; p < PAD_COUNT; p++) want[p] = 0;
+            for (int i = 0; i < NBINDINGS; i++) {
+                SDL_Scancode sc = SDL_GetScancodeFromKey(BINDINGS[i].key);
+                if (ks[BINDINGS[i].scan] || (sc != SDL_SCANCODE_UNKNOWN && ks[sc]))
+                    want[BINDINGS[i].pad] = 1;
+            }
+            for (int p = 0; p < PAD_COUNT; p++)
+                if (want[p] != key_state[p]) {
+                    key_state[p] = (uint8_t)want[p];
+                    pad_set(p, want[p]);
+                    inputlog_record(frames, p, want[p]);
+                }
         }
 
         if (replaying) inputlog_replay_frame(frames);
