@@ -463,6 +463,14 @@ int main(int argc, char **argv) {
     invariant_report();
     pad_report();
     vdp_nt_report();
+    /* DB4A_VRAM=file writes VRAM followed by CRAM, for offline inspection of
+       what the game actually put in the tilemaps. */
+    { const char *vp = getenv("DB4A_VRAM");
+      if (vp) { FILE *vf = fopen(vp, "wb");
+                if (vf) { fwrite(VDP.vram, 1, sizeof VDP.vram, vf);
+                          fwrite(VDP.cram, 2, CRAM_SIZE, vf);
+                          fclose(vf);
+                          printf("dumped VRAM+CRAM to %s\n", vp); } } }
     vdp_dump();
     psg_report();
     ym_report();
