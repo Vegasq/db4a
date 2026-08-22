@@ -6,6 +6,7 @@
  * easier to verify against a reference.
  */
 #include <stdlib.h>
+#include <stdio.h>
 #include "vdp.h"
 #include "render.h"
 #include <string.h>

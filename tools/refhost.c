@@ -107,10 +107,62 @@ static void parse_script(const char *sp) {
     }
 }
 
+/* Replay a db4a recording (DB4A_REPLAY), the same file the native build
+   consumes. A recording carries exact press AND release frames, so unlike the
+   scripted form there is no HOLD approximation and both sides hold every
+   button for precisely the same frames. That is what makes a real playthrough
+   usable as an oracle comparison rather than only a crash test. */
+#define MAXREPLAY 8192
+static struct { unsigned at; unsigned id; unsigned char down; } rep[MAXREPLAY];
+static unsigned nrep, rep_next;
+static unsigned char rep_held[16];
+
+static int button_id(const char *name) {
+    if (!strcmp(name, "start")) return RETRO_DEVICE_ID_JOYPAD_START;
+    if (!strcmp(name, "a"))     return RETRO_DEVICE_ID_JOYPAD_Y;
+    if (!strcmp(name, "b"))     return RETRO_DEVICE_ID_JOYPAD_B;
+    if (!strcmp(name, "c"))     return RETRO_DEVICE_ID_JOYPAD_A;
+    if (!strcmp(name, "up"))    return RETRO_DEVICE_ID_JOYPAD_UP;
+    if (!strcmp(name, "down"))  return RETRO_DEVICE_ID_JOYPAD_DOWN;
+    if (!strcmp(name, "left"))  return RETRO_DEVICE_ID_JOYPAD_LEFT;
+    if (!strcmp(name, "right")) return RETRO_DEVICE_ID_JOYPAD_RIGHT;
+    return -1;
+}
+
+static void load_replay(const char *path) {
+    if (!path) return;
+    FILE *f = fopen(path, "r");
+    if (!f) { fprintf(stderr, "replay: cannot open %s\n", path); return; }
+    char line[256];
+    while (fgets(line, sizeof line, f) && nrep < MAXREPLAY) {
+        if (line[0] == '#' || line[0] == '\n') continue;
+        unsigned at, dn; char name[32];
+        if (sscanf(line, "%u %31s %u", &at, name, &dn) != 3) continue;
+        int id = button_id(name);
+        if (id < 0) { fprintf(stderr, "replay: unknown button '%s'\n", name); continue; }
+        rep[nrep].at = at; rep[nrep].id = (unsigned)id;
+        rep[nrep].down = (unsigned char)(dn != 0);
+        nrep++;
+    }
+    fclose(f);
+    printf("replaying %u input events from %s%s\n", nrep, path,
+           nrep == MAXREPLAY ? " (TRUNCATED)" : "");
+}
+
+/* Apply every event scheduled for this frame. Events are in frame order in the
+   file, so a single advancing cursor is enough. */
+static void replay_frame(unsigned frame) {
+    while (rep_next < nrep && rep[rep_next].at <= frame) {
+        rep_held[rep[rep_next].id & 15] = rep[rep_next].down;
+        rep_next++;
+    }
+}
+
 static void input_poll_cb(void) {}
 static int16_t input_state_cb(unsigned port, unsigned dev, unsigned idx, unsigned id) {
     (void)dev; (void)idx;
     if (port != 0) return 0;
+    if (nrep) return rep_held[id & 15] ? 1 : 0;
     for (unsigned i = 0; i < nscript; i++)
         if (script[i].id == id && cur_frame >= script[i].at && cur_frame < script[i].at + HOLD)
             return 1;
@@ -174,9 +226,16 @@ int main(int argc, char **argv) {
     printf("reference core: %ux%u, %.2f fps\n",
            av.geometry.base_width, av.geometry.base_height, av.timing.fps);
 
-    parse_script(getenv("DB4A_PRESS"));
-    if (nscript) printf("input script: %u events\n", nscript);
-    for (unsigned i = 0; i < frames; i++) { cur_frame = i; retro_run(); }
+    load_replay(getenv("DB4A_REPLAY"));
+    if (!nrep) {
+        parse_script(getenv("DB4A_PRESS"));
+        if (nscript) printf("input script: %u events\n", nscript);
+    }
+    for (unsigned i = 0; i < frames; i++) {
+        cur_frame = i;
+        if (nrep) replay_frame(i);
+        retro_run();
+    }
     printf("ran %u frames, last frame %ux%u, pixel format %s\n", frames, FBW, FBH,
            PIXFMT == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" :
            PIXFMT == RETRO_PIXEL_FORMAT_RGB565   ? "RGB565"   : "0RGB1555");
