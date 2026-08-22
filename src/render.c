@@ -5,6 +5,7 @@
  * mid-frame register changes need to be honoured, and a frame renderer is far
  * easier to verify against a reference.
  */
+#include <stdlib.h>
 #include "vdp.h"
 #include "render.h"
 #include <string.h>
@@ -183,6 +184,14 @@ void render_frame(void) {
 void render_sprites(void) {
     uint32_t sat = (uint32_t)(VDP.reg[5] & 0x7F) << 9;
     unsigned idx = 0;
+    /* Sprite-to-sprite priority is by position in the link list: the FIRST
+     * sprite with an opaque pixel at a position wins, and later sprites never
+     * paint over it. Drawing in link order without this mask gets it exactly
+     * backwards -- the last sprite wins. Dune stacks a button face (link 9)
+     * on top of its red selection border (link 2) at the same coordinates, so
+     * without the mask the border vanishes underneath the face. */
+    static uint8_t taken[FB_H][FB_W];
+    memset(taken, 0, sizeof taken);
     for (unsigned n = 0; n < 80; n++) {
         uint32_t e = sat + idx * 8u;
         const uint8_t *p = &VDP.vram[e & 0xFFFF];
@@ -208,7 +217,10 @@ void render_sprites(void) {
                         if (X < 0 || X >= FB_W || Y < 0 || Y >= FB_H) continue;
                         unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
                         unsigned c = tile_pixel(tc, ix, iy);
-                        if (c) cram_rgb(VDP.cram[(pal * 16 + c) & 0x3F], FB[Y][X]);
+                        if (c && !taken[Y][X]) {
+                            taken[Y][X] = 1;
+                            cram_rgb(VDP.cram[(pal * 16 + c) & 0x3F], FB[Y][X]);
+                        }
                     }
                 }
             }
