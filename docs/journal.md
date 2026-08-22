@@ -1710,3 +1710,42 @@ instructions parse, scripted route completes without crashing.
 Task 17 (infer stride from the scaling instruction) was filed on the wrong
 diagnosis and is no longer the issue here, though deriving the bound from
 `andi.w #$f` rather than only `cmpi` would still be an improvement.
+
+## Button sweeps: the coverage the scenarios were missing
+
+The `house` scenario only pressed Start and B, so it selected one dispatch arm
+and stopped at the briefing. Every crash reported from real play turned out to
+be a *later arm of a table whose first arm worked fine* — an arm is reached
+only if something selects it, and no amount of waiting selects arm 7.
+
+Added a `gameplay` scenario: through the menus into the mission, then sweep all
+eight inputs three times, the d-pad six times, and the action buttons four
+times. 82 inputs over 7476 frames, with `sweep()` alongside `mash()`.
+
+It reached a crash the menu route never approached on its first run
+(`$2E310`, 4283 distinct blocks against 3966).
+
+Driving bootstrap with it then **converged** — the first genuine convergence
+rather than an iteration cap:
+
+```
+iter 1: 4283 blocks -> 02E310
+iter 6: 4475 blocks -> converged, no unknown PC
+```
+
+Five new seeds, 36 tracked in total.
+
+Verified after a clean rebuild:
+
+```
+title screen   : 71680/71680 exact
+suites         : 3 green, 35739 instructions parse
+house route    : 3966 blocks, no crash
+gameplay route : 4462 blocks, no crash
+```
+
+The lesson is about test design rather than emulation. Chasing each reported
+address in turn was treating symptoms; the cause was that the automated route
+exercised a fraction of the input space while real play exercised much more.
+Pressing everything, then letting replay-based discovery converge, closed the
+whole family at once.
