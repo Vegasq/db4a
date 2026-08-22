@@ -25,47 +25,47 @@ def mash(button, gap, count):
 
 ALL_BUTTONS = ['up', 'down', 'left', 'right', 'a', 'b', 'c', 'start']
 
-def build_item(menu_moves, build_wait, place_downs, tag):
-    """Order one structure from the Construction Yard and place it.
-
-    The interface, established empirically:
-      a                       select the Construction Yard
-      down [+ right ...]      move onto the wanted item in the build list
-      a                       order it (credits drop)
-      <wait>                  construction runs
-      down, a                 enter placement mode, centred on the yard
-      down x N                walk the site clear of the yard -- two is the
-                              working distance, one leaves placement mode and
-                              three puts the site out of range (overlay red)
-      a                       confirm; refuses the site rather than doing
-                              nothing when it is invalid
-    """
-    steps = [('press', 'a'), ('wait', 90)]
-    for mv in menu_moves:
-        steps += [('press', mv), ('wait', 50)]
-    steps += [('press', 'a'), ('wait', 120), ('shot', tag + '-ordered')]
-    steps += [('wait', build_wait), ('shot', tag + '-built')]
-    steps += [('press', 'down'), ('wait', 50),
-              ('press', 'a'),    ('wait', 200)]
-    steps += mash('down', 45, place_downs)
-    steps += [('wait', 120),
-              ('press', 'a'), ('wait', 300), ('shot', tag + '-placed')]
-    return steps
-
-
-
 def sweep(buttons, gap, rounds=1):
     """Press each button in turn, `rounds` times over.
 
     Exercising every input is how dispatch tables get covered: an arm is only
     reached if something selects it, and a scenario that only presses Start
-    selects arm 0 forever. Most crashes found by hand have been later arms of
-    a table whose first arm worked fine.
+    selects arm 0 forever.
     """
     steps = []
     for _ in range(rounds):
         for b in buttons:
             steps.append(('mash', b, gap, 1))
+    return steps
+
+
+def build_item(menu_moves, build_wait, steps_down, tag):
+    """Order one structure from the Construction Yard, place it, and return.
+
+    The sequence, as performed by hand:
+
+        a                    enter the Construction Yard (cursor is on it)
+        down [right ...]     move to the wanted item in the build list
+        a                    order it
+        <wait>               construction runs
+        down x N             walk out to the placement site
+        a                    place it
+        up x N               walk back onto the yard, ready for the next order
+
+    The down and up counts are deliberately the same variable. An earlier
+    version moved down three but back up only two, leaving the cursor on the
+    slab instead of the yard -- `a` then selected a passing unit and nothing
+    was ordered, silently.
+    """
+    steps  = [('press', 'a'), ('wait', 120)]
+    for mv in menu_moves:
+        steps += [('press', mv), ('wait', 60)]
+    steps += [('press', 'a'), ('wait', 150), ('shot', tag + '-ordered')]
+    steps += [('wait', build_wait), ('shot', tag + '-built')]
+    steps += mash('down', 45, steps_down)
+    steps += [('wait', 90), ('press', 'a'), ('wait', 300), ('shot', tag + '-placed')]
+    steps += mash('up', 45, steps_down)
+    steps += [('wait', 120)]
     return steps
 
 SCENARIOS = {
@@ -160,9 +160,11 @@ SCENARIOS = {
          ('press', 'b'),     ('wait', 250)]
         + mash('b', 90, 18)
         + [('wait', 300), ('shot', '00-arrive')]
-        + build_item(['down'],                    900,  2, '01-slab')
-        + build_item(['down', 'right'],          1400,  2, '02-power')
-        + build_item(['down', 'right', 'right'], 1800,  2, '03-refinery')
+        # The power station is placed onto the slab, so it walks out the same
+        # distance the slab did.
+        + build_item(['down'],                    900, 3, '01-slab')
+        + build_item(['down', 'right'],          1800, 3, '02-power')
+        + build_item(['down', 'right', 'right'], 2400, 3, '03-refinery')
         + [('wait', 600), ('shot', '04-final')]
     ),
 
