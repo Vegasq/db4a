@@ -211,8 +211,9 @@ int main(int argc, char **argv) {
               mouse_steer(tx, ty);
               if ((frames % 20) == 0) {
                   int cx, cy; mouse_cursor_pos(&cx, &cy);
-                  printf("  frame %5u cursor=(%3d,%3d) target=(%3d,%3d)\n",
-                         frames, cx, cy, tx, ty);
+                  printf("  frame %5u cursor=(%3d,%3d) scene=%06X\n", frames, cx, cy,
+                         (unsigned)((hal_ram_ptr(0)[0xE002]<<24)|(hal_ram_ptr(0)[0xE003]<<16)
+                                   |(hal_ram_ptr(0)[0xE004]<<8)|hal_ram_ptr(0)[0xE005]));
               }
           } }
         end = system_frame(end);
