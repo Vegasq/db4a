@@ -32,7 +32,8 @@ unsigned long ym_writes, ym_keyons, dac_writes;
  * means "half as loud". logsin holds -log2(sin) in those units for a quarter
  * of a 1024-step sine; the other three quadrants come from mirroring. */
 static uint16_t logsin[256];
-/* 2^(-i/256) in 1.11 fixed point, so 2048 is unity. */
+/* 2^(-i/256) scaled so unity is 8192: the chip's operators are 14-bit
+ * signed, and the modulation depth below depends on that scale. */
 static uint16_t powtab[256];
 static int tables_done;
 
@@ -42,12 +43,12 @@ static void init_tables(void) {
         double s = sin((i + 0.5) * M_PI / 512.0);
         double v = -log(s) / log(2.0) * 256.0;
         logsin[i] = (uint16_t)(v + 0.5);
-        powtab[i] = (uint16_t)(pow(2.0, -i / 256.0) * 2048.0 + 0.5);
+        powtab[i] = (uint16_t)(pow(2.0, -i / 256.0) * 8192.0 + 0.5);
     }
     tables_done = 1;
 }
 
-/* Attenuation (1/256 halvings) to a signed linear amplitude, peak 2048. */
+/* Attenuation (1/256 halvings) to a signed linear amplitude, peak 8192. */
 static int32_t att_to_lin(uint32_t att) {
     if (att >= 0x1000) return 0;           /* 16 halvings is silence */
     return powtab[att & 0xFF] >> (att >> 8);
@@ -70,6 +71,20 @@ static const uint8_t inc_pat[4][8] = {
     {0,1,1,1,1,1,1,1},
 };
 
+/* LFO. One step every N FM samples, giving the eight documented rates from
+ * about 3.98 Hz up to 72.2 Hz. */
+static const uint8_t LFO_STEP[8] = {108, 77, 71, 67, 62, 44, 8, 5};
+
+/* Amplitude modulation depth: the LFO's 0..126 triangle is shifted right by
+ * this before being added to an operator's attenuation. 8 shifts it away
+ * entirely, which is the "no AM" case. */
+static const uint8_t AMS_SHIFT[4] = {8, 3, 1, 0};
+
+/* Frequency modulation depth, as a scale on the phase increment. The hardware
+ * depths are 0, 3.4, 6.7, 10, 14, 20, 40 and 80 cents; 80 cents is a ratio of
+ * 1.047, so the largest is about 4.7% and the rest are proportional. */
+static const uint16_t FMS_SCALE[8] = {0, 65, 129, 193, 270, 385, 770, 1540};
+
 /* Key-scaling: how much of the key code feeds the envelope rate. */
 static const uint8_t ks_shift[4] = {3, 2, 1, 0};
 
@@ -79,7 +94,7 @@ enum { EG_ATTACK, EG_DECAY, EG_SUSTAIN, EG_RELEASE, EG_OFF };
 
 typedef struct {
     /* register-backed */
-    uint8_t  dt, mul, tl, ks, ar, am, dr, sr, sl, rr, ssg;
+    uint8_t  dt, mul, tl, ks, ar, am, dr, sr, sl, rr, ssg, ams;
     /* running */
     uint32_t phase;
     uint32_t inc;
@@ -91,7 +106,7 @@ typedef struct {
 typedef struct {
     op_t     op[4];
     uint16_t fnum;
-    uint8_t  block, alg, fb, pan;
+    uint8_t  block, alg, fb, pan, ams, fms;
     uint8_t  keyed;
     int32_t  mem;        /* algorithm scratch */
 } ch_t;
@@ -109,6 +124,11 @@ static struct {
     int32_t  sum_l, sum_r;
     uint32_t sum_n;
     uint8_t  timer_ctrl;
+    uint8_t  lfo_on, lfo_rate;
+    uint8_t  lfo_cnt;        /* 0..127, the triangle position */
+    uint8_t  lfo_sub;        /* FM samples until the next LFO step */
+    uint8_t  lfo_am;         /* 0..126 */
+    int8_t   lfo_pm;         /* -32..31 */
     int32_t  dc_x_l, dc_y_l, dc_x_r, dc_y_r;   /* DC blocker history */
     /* Timers. A sound driver paces itself on these overflow flags, so leaving
        them at zero makes the music play at whatever slower rate the driver
@@ -213,9 +233,17 @@ static void eg_step(const ch_t *c, op_t *o) {
     if (o->env > 1023) o->env = 1023;
 }
 
-/* Operator output. `mod` is a phase offset from whatever feeds this operator. */
+/* Operator output. `mod` is the RAW output of whatever feeds this operator,
+ * not a pre-scaled phase offset.
+ *
+ * The hardware adds half the modulator's 14-bit output to the 10-bit phase
+ * index, so a full-scale modulator sweeps about four complete cycles. Passing
+ * a pre-halved value against a 12-bit operator scale, as this did, made
+ * modulation four times too shallow -- which flattens timbre and throws the
+ * relative loudness of different patches out, since how bright an FM voice is
+ * depends entirely on this depth. */
 static int32_t op_out(op_t *o, int32_t mod) {
-    uint32_t p = ((o->phase >> 10) + (uint32_t)mod) & 0x3FF;
+    uint32_t p = ((o->phase >> 10) + (uint32_t)(mod >> 1)) & 0x3FF;
     uint32_t i = p & 0xFF;
     if (p & 0x100) i ^= 0xFF;
     /* Both attenuations are converted into the log scale used here, which is
@@ -223,7 +251,10 @@ static int32_t op_out(op_t *o, int32_t mod) {
        unit is 4. Total level is 7 bits at 0.75 dB per step, so one unit is 32
        -- it was 16, which made every operator twice as loud as it should be
        and skewed the balance between carriers and modulators. */
-    uint32_t att = logsin[i] + (uint32_t)(o->env * 4) + (uint32_t)(o->tl * 32);
+    uint32_t env = (uint32_t)o->env;
+    if (o->am && o->ams < 4)                  /* tremolo */
+        env += (uint32_t)(Y.lfo_am >> AMS_SHIFT[o->ams]);
+    uint32_t att = logsin[i] + env * 4 + (uint32_t)(o->tl * 32);
     int32_t  v   = att_to_lin(att);
     return (p & 0x200) ? -v : v;
 }
@@ -237,26 +268,26 @@ static void fm_sample(int32_t *L, int32_t *R) {
         int32_t out;
 
         if (ci == 5 && Y.dac_on) {
-            out = Y.dac * 8;
+            out = Y.dac * 32;   /* 8-bit sample against 14-bit operators */
         } else {
             op_t *o0 = &c->op[0], *o1 = &c->op[1], *o2 = &c->op[2], *o3 = &c->op[3];
 
             /* Operator 1 is modulated by its own two previous outputs. */
             int32_t fb = 0;
             if (c->fb) fb = (o0->prev + o0->out) >> (10 - c->fb);
-            int32_t m1 = op_out(o0, fb >> 1);
+            int32_t m1 = op_out(o0, fb);
             o0->prev = o0->out; o0->out = m1;
 
             int32_t a, b, cc;
             switch (c->alg) {
-            case 0:  a = op_out(o1, m1 >> 1); b = op_out(o2, a >> 1); out = op_out(o3, b >> 1); break;
-            case 1:  a = op_out(o1, 0);       b = op_out(o2, (m1 + a) >> 1); out = op_out(o3, b >> 1); break;
-            case 2:  a = op_out(o1, 0);       b = op_out(o2, a >> 1); out = op_out(o3, (m1 + b) >> 1); break;
-            case 3:  a = op_out(o1, m1 >> 1); b = op_out(o2, 0);      out = op_out(o3, (a + b) >> 1); break;
-            case 4:  a = op_out(o1, m1 >> 1); b = op_out(o2, 0);      cc = op_out(o3, b >> 1); out = a + cc; break;
-            case 5:  a = op_out(o1, m1 >> 1); b = op_out(o2, m1 >> 1); cc = op_out(o3, m1 >> 1); out = a + b + cc; break;
-            case 6:  a = op_out(o1, m1 >> 1); b = op_out(o2, 0);      cc = op_out(o3, 0); out = a + b + cc; break;
-            default: a = op_out(o1, 0);       b = op_out(o2, 0);      cc = op_out(o3, 0); out = m1 + a + b + cc; break;
+            case 0:  a = op_out(o1, m1); b = op_out(o2, a);      out = op_out(o3, b); break;
+            case 1:  a = op_out(o1, 0);  b = op_out(o2, m1 + a); out = op_out(o3, b); break;
+            case 2:  a = op_out(o1, 0);  b = op_out(o2, a);      out = op_out(o3, m1 + b); break;
+            case 3:  a = op_out(o1, m1); b = op_out(o2, 0);      out = op_out(o3, a + b); break;
+            case 4:  a = op_out(o1, m1); b = op_out(o2, 0);      cc = op_out(o3, b); out = a + cc; break;
+            case 5:  a = op_out(o1, m1); b = op_out(o2, m1);     cc = op_out(o3, m1); out = a + b + cc; break;
+            case 6:  a = op_out(o1, m1); b = op_out(o2, 0);      cc = op_out(o3, 0); out = a + b + cc; break;
+            default: a = op_out(o1, 0);  b = op_out(o2, 0);      cc = op_out(o3, 0); out = m1 + a + b + cc; break;
             }
         }
 
@@ -284,14 +315,29 @@ static void timers_tick(void) {
     }
 }
 
+static void lfo_tick(void) {
+    if (!Y.lfo_on) { Y.lfo_am = 0; Y.lfo_pm = 0; return; }
+    if (Y.lfo_sub) { Y.lfo_sub--; return; }
+    Y.lfo_sub = LFO_STEP[Y.lfo_rate & 7];
+    Y.lfo_cnt = (uint8_t)((Y.lfo_cnt + 1) & 127);
+    /* Triangle up then down, so amplitude modulation has no discontinuity. */
+    Y.lfo_am = (uint8_t)((Y.lfo_cnt & 64) ? (127 - Y.lfo_cnt) * 2 : Y.lfo_cnt * 2);
+    Y.lfo_pm = (int8_t)((int)(Y.lfo_cnt & 63) - 32);
+}
+
 static void advance_chip(void) {
     /* One FM sample: run every operator's phase and envelope. */
     Y.eg_cnt++;
     timers_tick();
+    lfo_tick();
     for (int ci = 0; ci < 6; ci++) {
         ch_t *c = &Y.ch[ci];
         for (int i = 0; i < 4; i++) {
-            c->op[i].phase = (c->op[i].phase + c->op[i].inc) & 0xFFFFF;
+            uint32_t step = c->op[i].inc;
+            if (c->fms)                       /* vibrato */
+                step = (uint32_t)((int32_t)step +
+                       (((int32_t)step * Y.lfo_pm * FMS_SCALE[c->fms & 7]) >> 20));
+            c->op[i].phase = (c->op[i].phase + step) & 0xFFFFF;
             eg_step(c, &c->op[i]);
         }
     }
@@ -318,10 +364,9 @@ void ym_run(uint64_t cycles) {
         Y.out_acc += (uint64_t)PSG_RATE * FM_CLOCK_DIV;
         while (Y.out_acc >= M68K_HZ) {
             Y.out_acc -= M68K_HZ;
-            /* An operator here peaks at 2048 while the chip drives a 14-bit
-               DAC, so lift the mix to use the available range. */
-            int32_t ol = Y.sum_n ? (Y.sum_l * 4) / (int32_t)Y.sum_n : 0;
-            int32_t or_ = Y.sum_n ? (Y.sum_r * 4) / (int32_t)Y.sum_n : 0;
+            /* Operators are 14-bit now, so the mix already uses the range. */
+            int32_t ol = Y.sum_n ? Y.sum_l / (int32_t)Y.sum_n : 0;
+            int32_t or_ = Y.sum_n ? Y.sum_r / (int32_t)Y.sum_n : 0;
             /* Start the next averaging window. Losing this line makes sum_n
                grow without bound, so each output sample averages a longer and
                longer stretch of the waveform and the level decays as 1/n --
@@ -423,6 +468,11 @@ void ym_write(unsigned port, uint8_t v) {
             c->keyed = (v >> 4) & 15;
             break;
         }
+        case 0x22:
+            Y.lfo_on = (v >> 3) & 1;
+            Y.lfo_rate = v & 7;
+            if (!Y.lfo_on) { Y.lfo_cnt = 0; Y.lfo_am = 0; Y.lfo_pm = 0; }
+            break;
         case 0x2A: Y.dac = (int16_t)((int)v - 128); dac_writes++; break;
         case 0x2B: Y.dac_on = v >> 7; break;
         default: break;
@@ -455,7 +505,12 @@ void ym_write(unsigned port, uint8_t v) {
     case 0xA4: c->fnum = (uint16_t)((c->fnum & 0xFF) | ((v & 7) << 8));
                c->block = (v >> 3) & 7; refresh_channel(c); break;
     case 0xB0: c->fb = (v >> 3) & 7; c->alg = v & 7; break;
-    case 0xB4: c->pan = v & 0xC0; break;
+    case 0xB4:
+        c->pan = v & 0xC0;
+        c->ams = (v >> 4) & 3;
+        c->fms = v & 7;
+        for (int i = 0; i < 4; i++) c->op[i].ams = c->ams;
+        break;
     default: break;
     }
 }
@@ -500,8 +555,9 @@ void ym_report(void) {
     for (int c = 0; c < 6; c++) printf(" ch%d=%X", c, Y.ch[c].keyed);
     printf("\n");
 
-    printf("ym2612  writes=%lu keyons=%lu dacw=%lu dac=%s  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
+    printf("ym2612  writes=%lu keyons=%lu dacw=%lu dac=%s lfo=%u/%u  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
            ym_writes, ym_keyons, dac_writes, Y.dac_on ? "on" : "off",
+           Y.lfo_on, Y.lfo_rate,
            Y.ta_run ? "run" : "off", Y.ta_period,
            Y.tb_run ? "run" : "off", Y.tb_period, ym_available());
 }
