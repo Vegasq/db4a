@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play vectors clean
+.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play playthrough vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -43,6 +43,12 @@ check-z80: build/z80_zex
 build/z80_zex: tests/z80_zex.c build/z80.o include/z80.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) tests/z80_zex.c build/z80.o -o $@
+
+## playthrough - drive the game through a scripted route, capturing each screen
+##               usage: make playthrough SCENARIO=house
+SCENARIO ?= house
+playthrough: build/db4a
+	python3 tests/playthrough.py $(SCENARIO)
 
 ## check-operands - assert every operand in the corpus parses (needs analyse)
 check-operands: build/codemap.json

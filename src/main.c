@@ -46,6 +46,18 @@ int main(int argc, char **argv) {
     printf("reset SSP         : %08X\n", CPU.a[7]);
     printf("reset PC          : %06X\n", pc);
     printf("running %u frames (%.1f s of game time)...\n\n", max_frames, max_frames/50.0);
+
+    /* Capture frames mid-run, not just at the end: a playthrough needs to see
+       each screen it passes through, and the interesting one is rarely last. */
+    unsigned shot_at[32]; unsigned nshots = 0;
+    { const char *sp = getenv("DB4A_SHOTS");
+      char buf[256];
+      if (sp) {
+        snprintf(buf, sizeof buf, "%s", sp);
+        for (char *tok = strtok(buf, ","); tok && nshots < 32; tok = strtok(NULL, ","))
+            shot_at[nshots++] = (unsigned)strtoul(tok, NULL, 0);
+      } }
+    const char *shot_prefix = getenv("DB4A_PPM");
     m68k_profile_enable();
     { extern int hal_log_sr, hal_log_io;
       hal_log_sr = getenv("DB4A_LOG_SR") != NULL;
@@ -88,6 +100,16 @@ int main(int argc, char **argv) {
         }
         end = system_frame(end);
         if (m68k_last_unknown) break;
+
+        for (unsigned k = 0; k < nshots; k++) {
+            if (frames == shot_at[k] && shot_prefix) {
+                char path[512];
+                snprintf(path, sizeof path, "%s.%u.ppm", shot_prefix, frames);
+                render_frame();
+                if (render_write_ppm(path) == 0)
+                    printf("  [frame %5u] captured %s\n", frames, path);
+            }
+        }
     }
     printf("frames simulated  : %u  (%.2f s of game time)\n",
            frames, frames / 50.0);

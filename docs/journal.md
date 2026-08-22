@@ -1550,3 +1550,43 @@ Verified: title screen 100.00% exact, world map path no longer crashes
 **`unimplemented` turned out to be the useful signal throughout.** It is a
 proxy for "am I decoding data as code" that costs nothing to read, and it was
 what refuted attempts 1 and 2 within seconds each.
+
+## Scripted playthroughs
+
+Interactive play kept reaching states the automated tests never did, because
+those only ever pressed Start. `tests/playthrough.py` closes that gap: a
+scenario is a list of `wait` / `press` / `shot` / `mash` steps, compiled into
+an input script and a set of capture frames, run headlessly with a screenshot
+per screen and a report of exactly where it stopped.
+
+    make playthrough SCENARIO=house
+
+`main.c` gained `DB4A_SHOTS` for mid-run capture — a playthrough needs to see
+each screen it passes through, and the interesting one is rarely the last.
+
+The `house` scenario replays the reported route: title, Start, B to select a
+house, then repeated B through the advisor briefing. It captures the title,
+house-select and briefing screens, all rendering correctly.
+
+**The first version did not reproduce the crash**, which was itself
+informative. A sweep over press timing and count showed the trigger is the
+*count*, not the timing: 8 presses completes cleanly, 14 reaches the dispatch
+at `$49C14` reliably at every gap from 60 to 200 frames. The scenario now
+mashes properly and fails loudly.
+
+That is the real value here — a bug found by hand is now a one-command
+regression test that either crashes or does not.
+
+Current end state: 1651 distinct blocks, invariants clean, crash at `$49C14`.
+That address is reached through a computed dispatch:
+
+```
+049C08  suba.l #$49c0e, a0
+049C0E  lea.l  $49c0e(pc, a0.l), a0
+049C12  bra.b  $49c2c
+049C14  <dispatch arms start here>
+```
+
+A position-independent jump: normalise `a0`, re-add the PC-relative base, and
+the arms follow the branch. Same family as the A0-return idiom, different
+shape.
