@@ -35,8 +35,49 @@ def main(mine_path, ref_path, codemap='build/codemap.json'):
     filt = [(ref[i * 2], ref[i * 2 + 1]) for i in range(rn) if ref[i * 2] in mine_pcs]
     print("reference filtered to db4a block PCs: %d" % len(filt))
 
+    # Collapse spin loops before comparing.
+    #
+    # A wait loop runs a different number of times on the two sides for reasons
+    # that are not bugs -- a status flag observed a few cycles earlier or later.
+    # Because the comparison is positional, one extra iteration shifts every
+    # record after it and turns a benign timing difference into thousands of
+    # reported divergences, drowning any real one.
+    #
+    # Collapsing consecutive records that share a PC to a single entry removes
+    # that entirely: a loop spun 40 times and one spun 41 times both become one
+    # record, and the sequences stay aligned. The iteration counts are kept so a
+    # genuinely stuck loop -- one side spinning while the other moves on -- can
+    # still be reported, since that IS a bug.
+    #
+    # TRACEDIFF_RAW=1 compares without collapsing.
+    def collapse(seq):
+        out = []
+        for pc, h in seq:
+            if out and out[-1][0] == pc:
+                out[-1][2] += 1
+                out[-1][1] = h          # keep the state on leaving the loop
+            else:
+                out.append([pc, h, 1])
+        return out
+
+    raw = os.environ.get('TRACEDIFF_RAW')
+    mine_seq = [(mine[i * 2], mine[i * 2 + 1]) for i in range(mn)]
+    if not raw:
+        cm_ = collapse(mine_seq)
+        cf_ = collapse(filt)
+        print("after collapsing spin loops: db4a %d -> %d, reference %d -> %d"
+              % (mn, len(cm_), len(filt), len(cf_)))
+        mine_seq, filt = [(a, b) for a, b, _ in cm_], [(a, b) for a, b, _ in cf_]
+        mine_reps = [c for _, _, c in cm_]
+        ref_reps  = [c for _, _, c in cf_]
+    else:
+        mine_reps = ref_reps = None
+
+    mine = [v for pair in mine_seq for v in pair]
+    mn = len(mine_seq)
     lim = min(mn, len(filt))
     limit_reports = int(os.environ.get('TRACEDIFF_N', '10'))
+    stuck = []
 
     # Report several divergences, not just the first. A single benign
     # difference -- a scratch register left holding an open-bus value, say --
@@ -60,9 +101,21 @@ def main(mine_path, ref_path, codemap='build/codemap.json'):
             print("   reference PC=%06X reghash=%08X" % (rpc, rh))
             shown += 1
 
+    # A loop one side spins far longer in is a real difference, not the timing
+    # noise the collapse is there to hide. Report the worst offenders.
+    if mine_reps and ref_reps:
+        for i in range(lim):
+            a, b = mine_reps[i], ref_reps[i]
+            if max(a, b) >= 50 and max(a, b) > 4 * max(1, min(a, b)):
+                stuck.append((mine_seq[i][0], a, b))
+        if stuck:
+            print("\nloops with very different iteration counts (a real difference):")
+            for pc, a, b in stuck[:10]:
+                print("   %06X : db4a %d, reference %d" % (pc, a, b))
+
     if first is None:
         print("\nno divergence in the first %d compared records" % lim)
-        return 0
+        return 1 if stuck else 0
 
     total = sum(pc_counts.values())
     print("\n%d divergent records of %d compared (%.3f%%)" % (total, lim, 100.0 * total / lim))
