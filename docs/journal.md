@@ -1749,3 +1749,62 @@ address in turn was treating symptoms; the cause was that the automated route
 exercised a fraction of the input space while real play exercised much more.
 Pressing everything, then letting replay-based discovery converge, closed the
 whole family at once.
+
+## The house-select screen: the window plane was never implemented
+
+Reported as "looks broken while functioning just right" — the screen showed a
+handful of stray gold fragments, yet a house could still be selected and the
+game proceeded correctly.
+
+Added a `houseselect` scenario that stops on that screen, and
+`tools/compare_screen.sh`, which drives db4a **and** the reference emulator
+through the same input script and diffs the result. Both sides receive
+identical inputs, so any difference is ours.
+
+At frame 2750: 75.93% exact. The reference showed the full screen; ours was
+2% non-black. Sampling five frames over 700 showed it never filled in —
+oscillating between 1.1% and 2.1% — so not a loading delay.
+
+The VDP state pointed straight at it:
+
+```
+tile area 0000-B000     : 22.1% non-zero     <- graphics ARE loaded
+cram                    : 60/64              <- palette IS loaded
+nametable A @E000       : 68/4096
+nametable B @C000       : 0/4096
+window nametable @6000  : 334/4096           <- the screen is HERE
+grep window src/render.c: 0 matches          <- and we never drew it
+```
+
+The window is a third tilemap layer that replaces plane A over a rectangular
+region and does not scroll. `reg17=0x14` and `reg18=0x1E` put it over the whole
+display, so the game had legitimately drawn everything to it and plane A was
+correctly almost empty. Nothing was broken except that we never looked at the
+layer holding the picture — which is exactly why it *functioned* perfectly.
+
+Implemented `window_covers()` and `sample_window()` per the register semantics:
+reg17 bits 0-4 give the horizontal split in 2-cell units with bit 7 selecting
+which side, reg18 the vertical split in cell units, and the window nametable is
+always 64 entries wide in H40 regardless of the plane-size register.
+
+```
+house-select frame 2750 : 75.93% -> 100.00% exact (71680/71680)
+frames 2800, 2950, 3400 : 100.00%
+frames 2700, 3100       : 99.49%
+```
+
+The residual 368 pixels form an 80x16 rectangle outline at x=32-111,
+y=136-151 — the selection box around the first plaque, caught in opposite
+blink phases. Benign, and it vanishes at the frames where the phases align.
+
+No regressions: title screen still 71680/71680, three suites green, both
+scripted routes complete without crashing.
+
+**A note on my own analysis.** Localising that residual, I first compared raw
+bytes and got 15787 mismatches spanning a huge region — then remembered the
+comparison must be quantised through RGB565 to match the oracle's path, which
+gives 368 in a tight rectangle. I had made and documented that exact mistake
+earlier in the project and still repeated it. `framediff.py` already emits a
+quantised diff map; hand-rolling the comparison is what reintroduced the error.
+
+`make compare-screen SCENARIO=houseselect FRAME=2800` now wraps this up.

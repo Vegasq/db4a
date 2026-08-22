@@ -47,6 +47,53 @@ static uint8_t tile_pixel(unsigned tile, unsigned x, unsigned y) {
     return (x & 1) ? (b & 0x0F) : (b >> 4);
 }
 
+/* The window is a third tilemap layer that REPLACES plane A over a
+ * rectangular region, and does not scroll. Its extent comes from two
+ * registers:
+ *
+ *   reg17  bits 0-4 = horizontal position in 2-cell units, bit 7 = RIGT
+ *          RIGT=0 -> window spans columns [0, pos*2)
+ *          RIGT=1 -> window spans columns [pos*2, right edge)
+ *   reg18  bits 0-4 = vertical position in cell units, bit 7 = DOWN
+ *          DOWN=0 -> window spans rows [0, pos)
+ *          DOWN=1 -> window spans rows [pos, bottom)
+ *
+ * Its nametable rows are always 64 entries wide in H40 and 32 in H32,
+ * independent of the plane-size register.
+ *
+ * Missing this made the house-select screen render as a handful of stray
+ * tiles: the game had drawn the entire screen to the window, so plane A was
+ * legitimately almost empty and nothing was wrong except that we never looked
+ * at the layer holding the picture.
+ */
+static int window_covers(int cx, int cy) {
+    unsigned r17 = VDP.reg[17], r18 = VDP.reg[18];
+    unsigned hpos = (r17 & 0x1F) * 2;
+    unsigned vpos = (r18 & 0x1F);
+    int in_h = (r17 & 0x80) ? (cx >= (int)hpos) : (cx < (int)hpos);
+    int in_v = (r18 & 0x80) ? (cy >= (int)vpos) : (cy < (int)vpos);
+    return in_h && in_v;
+}
+
+static unsigned sample_window(int px, int py, int *prio) {
+    uint32_t base = (uint32_t)(VDP.reg[3] & 0x3E) << 10;
+    unsigned pitch = vdp_h40() ? 64u : 32u;
+    unsigned tx = (unsigned)px >> 3, ty = (unsigned)py >> 3;
+    uint32_t e = base + (ty * pitch + tx) * 2u;
+    uint16_t ent = (uint16_t)((VDP.vram[e & 0xFFFF] << 8) | VDP.vram[(e + 1) & 0xFFFF]);
+
+    unsigned tile = ent & 0x7FF;
+    unsigned fx = (ent >> 11) & 1, fy = (ent >> 12) & 1;
+    unsigned pal = (ent >> 13) & 3;
+    *prio = (ent >> 15) & 1;
+
+    unsigned ix = (unsigned)px & 7, iy = (unsigned)py & 7;
+    if (fx) ix = 7 - ix;
+    if (fy) iy = 7 - iy;
+    unsigned c = tile_pixel(tile, ix, iy);
+    return c ? (pal * 16 + c) : 0;
+}
+
 static unsigned plane_w(void) {
     switch (VDP.reg[16] & 3) { case 0: return 32; case 1: return 64; default: return 128; }
 }
@@ -109,8 +156,14 @@ void render_frame(void) {
             int16_t vs_a = vscroll_for((unsigned)x, 0);
             int16_t vs_b = vscroll_for((unsigned)x, 1);
             int pa, pb;
-            unsigned ca = sample_plane(nt_a, x - hs_a, y + vs_a, &pa);
-            unsigned cb = sample_plane(nt_b, x - hs_b, y + vs_b, &pb);
+            unsigned ca, cb;
+            /* Inside the window region the window replaces plane A entirely,
+               and is not scrolled. */
+            if (window_covers(x >> 3, y >> 3))
+                ca = sample_window(x, y, &pa);
+            else
+                ca = sample_plane(nt_a, x - hs_a, y + vs_a, &pa);
+            cb = sample_plane(nt_b, x - hs_b, y + vs_b, &pb);
 
             unsigned pick = 0;
             if      (pa && ca) pick = ca;      /* A, high priority */

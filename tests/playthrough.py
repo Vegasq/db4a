@@ -69,6 +69,16 @@ SCENARIOS = {
         + [('shot', '04-after-actions'), ('wait', 300), ('shot', '05-final')]
     ),
 
+    # Stop precisely on the house-select screen. Kept separate from "house"
+    # so the screen can be captured and diffed without anything after it.
+    "houseselect": [
+        ('wait', 2400), ('shot', '01-title'),
+        ('press', 'start'), ('wait', 200), ('shot', '02-transition'),
+        ('wait', 150),  ('shot', '03-house-select'),
+        ('wait', 150),  ('shot', '04-house-select-later'),
+        ('wait', 300),  ('shot', '05-house-select-settled'),
+    ],
+
     # Just the opening, as a fast regression check.
     "intro": [
         ('wait', 300),  ('shot', '01-logo'),

@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play playthrough vectors clean
+.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play playthrough compare-screen vectors clean
 all: test
 
 ## verify-rom - confirm the base ROM is the known-good dump
@@ -49,6 +49,17 @@ build/z80_zex: tests/z80_zex.c build/z80.o include/z80.h
 SCENARIO ?= house
 playthrough: build/db4a
 	python3 tests/playthrough.py $(SCENARIO)
+
+## compare-screen - capture one scripted moment from db4a and the reference,
+##                  then diff them.  usage: make compare-screen SCENARIO=houseselect FRAME=2800
+SCENARIO ?= house
+FRAME    ?= 2800
+compare-screen: build/db4a build/refhost
+	./tools/compare_screen.sh $(SCENARIO) $(FRAME)
+
+build/refhost: tools/refhost.c
+	@test -d ref/gpgx || { echo "missing ref/gpgx -- see docs/verification.md"; exit 1; }
+	$(CC) -O2 -Wall -I ref/gpgx/libretro/libretro-common/include $< -o $@ -ldl
 
 ## check-operands - assert every operand in the corpus parses (needs analyse)
 check-operands: build/codemap.json

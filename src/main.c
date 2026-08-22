@@ -184,6 +184,12 @@ int main(int argc, char **argv) {
       printf("nametable A @%04X: %u/4096 non-zero\n", na, ca);
       printf("nametable B @%04X: %u/4096 non-zero\n", nb, cb);
       printf("sprite tbl  @%04X: %u/640 bytes non-zero\n", sa, cs);
+      { uint32_t wn = (uint32_t)(VDP.reg[3] & 0x3E) << 10;
+        unsigned cw = 0;
+        for (unsigned i = 0; i < 4096; i++)
+          if (VDP.vram[(wn+i*2)&0xFFFF] || VDP.vram[(wn+i*2+1)&0xFFFF]) cw++;
+        printf("window nametable @%04X: %u/4096 non-zero  (regs 11=%02X 17=%02X 18=%02X)\n",
+               wn, cw, VDP.reg[11], VDP.reg[17], VDP.reg[18]); }
       printf("tile area 0000-B000: ");
       { unsigned nz=0; for(unsigned i=0;i<0xB000;i++) if(VDP.vram[i]) nz++;
         printf("%u/%u non-zero (%.1f%%)\n", nz, 0xB000, 100.0*nz/0xB000); } }
