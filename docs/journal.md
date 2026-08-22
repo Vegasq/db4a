@@ -1808,3 +1808,43 @@ earlier in the project and still repeated it. `framediff.py` already emits a
 quantised diff map; hand-rolling the comparison is what reintroduced the error.
 
 `make compare-screen SCENARIO=houseselect FRAME=2800` now wraps this up.
+
+## Attempting a concrete slab: infrastructure yes, sequence no
+
+Goal: script the first real gameplay action end to end.
+
+**Delivered.** Three scenarios — `mission` (reach the map and stop), `cursor`
+(step one input at a time with a capture after each), `slab` (drive the build
+interface) — plus `make compare-screen`, which drives db4a *and* the reference
+through identical inputs and diffs the result.
+
+**Found and fixed three silent harness defects** while trying to move the
+cursor. The button-name lookup had no `left` or `right`, so those presses
+parsed, matched nothing and were discarded; the script array held 16 entries
+and its buffer 256 bytes against a scenario of 82 inputs and ~700 bytes; and
+none of it warned. Every horizontal input ever scripted had been dropped.
+
+That invalidated an earlier claim: the "gameplay sweep converged" result was
+obtained without ever pressing left or right. Re-running bootstrap with a
+working d-pad converged again in 7 iterations, found 6 more seeds including
+`$7468` — the `jsr (a5)` dispatch reported from interactive play — and took the
+gameplay route from 4462 to **5260 distinct blocks**.
+
+**What the interface does**, read off the captures: `a` selects the
+Construction Yard and opens the side panel; `a` again opens the full build
+interface (EXIT/FIX/STOP tabs, two build thumbnails, preview pane); `down` and
+`right` move the selection within it; `a` exits. `b`, `c`, `start`, `up` and
+`left` do nothing there.
+
+**Not achieved: no slab was built.** No combination tried produced the credits
+change (990 -> 976) that marks a build starting.
+
+The useful part is *why*. Across the whole sequence db4a matches the reference
+at **99.58%–99.71%**, and the reference does not build a slab either. Both
+implementations behave the same; the input sequence is simply wrong. This is a
+gap in my knowledge of the game's interface, not a defect in the emulation —
+and having the oracle is what makes that distinction available at all rather
+than leaving it as "it doesn't work".
+
+Next step is to find the confirm action, most likely a press-and-hold or a
+two-button combination the single-press sweep cannot express.

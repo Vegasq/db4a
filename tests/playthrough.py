@@ -99,14 +99,35 @@ SCENARIOS = {
          ('press', 'start'), ('wait', 250),
          ('press', 'b'),     ('wait', 250)]
         + mash('b', 90, 18)
-        + [('wait', 300), ('shot', '00-start')]
-        + [('press', 'right'), ('wait', 40), ('shot', '01-right')]
-        + [('press', 'right'), ('wait', 40), ('shot', '02-right')]
-        + [('press', 'down'),  ('wait', 40), ('shot', '03-down')]
-        + [('press', 'down'),  ('wait', 40), ('shot', '04-down')]
-        + [('press', 'a'),     ('wait', 60), ('shot', '05-press-a')]
-        + [('press', 'b'),     ('wait', 60), ('shot', '06-press-b')]
-        + [('press', 'c'),     ('wait', 60), ('shot', '07-press-c')]
+        + [('wait', 300), ('shot', '00-arrive')]
+        + [('press', 'right'), ('wait', 50), ('shot', '01-right')]
+        + [('press', 'right'), ('wait', 50), ('shot', '02-right')]
+        + [('press', 'down'),  ('wait', 50), ('shot', '03-down')]
+        + [('press', 'left'),  ('wait', 50), ('shot', '04-left')]
+        + [('press', 'up'),    ('wait', 50), ('shot', '05-up')]
+        + [('press', 'a'),     ('wait', 80), ('shot', '06-a')]
+        + [('press', 'b'),     ('wait', 80), ('shot', '07-b')]
+        + [('press', 'c'),     ('wait', 80), ('shot', '08-c')]
+    ),
+
+    # Attempt to build a concrete slab. The interface is explored empirically:
+    # select the Construction Yard, then step through the build panel one input
+    # at a time with a capture after each, so the menu's behaviour can be read
+    # off the screenshots rather than assumed.
+    "slab": (
+        [('wait', 2400),
+         ('press', 'start'), ('wait', 250),
+         ('press', 'b'),     ('wait', 250)]
+        + mash('b', 90, 18)
+        + [('wait', 300),      ('shot', '00-arrive')]
+        + [('press', 'a'),     ('wait', 90), ('shot', '01-select-yard')]
+        + [('press', 'a'),     ('wait', 90), ('shot', '02-a-again')]
+        + [('press', 'down'),  ('wait', 60), ('shot', '03-down')]
+        + [('press', 'down'),  ('wait', 60), ('shot', '04-down')]
+        + [('press', 'a'),     ('wait', 90), ('shot', '05-a')]
+        + [('press', 'c'),     ('wait', 90), ('shot', '06-c')]
+        + [('press', 'b'),     ('wait', 90), ('shot', '07-b')]
+        + [('wait', 600),      ('shot', '08-wait')]
     ),
 
     # Just the opening, as a fast regression check.
