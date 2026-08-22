@@ -171,6 +171,69 @@ def areg_offset_tables(d, insns, md):
     return found
 
 
+
+RE_IMM_LONG = re.compile(r'^#\$([0-9a-f]+),')
+
+
+def immediate_code_pointers(d, insns, md):
+    """Seed handlers whose address is loaded as a 32-bit immediate.
+
+    The main state machine dispatches through a function pointer at $FFFFE002,
+    and an existing pass seeds immediates written STRAIGHT to that address. But
+    a handler address is just as often passed as an argument and stored by the
+    callee:
+
+        026A28  move.l #$b540, (a7)     ; 00B540 is a VBlank state handler
+        026A2E  jsr    $4792.l          ; which installs it
+
+    Nothing branches to 00B540, no table contains it, and the only reference in
+    the whole ROM is that immediate -- so recursive descent never reaches it and
+    the game dies in the VBlank dispatch the moment that state is entered.
+
+    Any long immediate that lands on a plausible instruction run is therefore a
+    candidate entry point, vetted the same way guard-less jump table entries
+    are. Targets that fall INSIDE an already-decoded instruction are rejected:
+    those are not entry points but misaligned readings of bytes already spoken
+    for, and recompiling from one corrupts the real block.
+    """
+    n = len(d)
+
+    def plausible(a, depth=8):
+        if a < 0x200 or a >= n or a & 1:
+            return False
+        off = a
+        for _ in range(depth):
+            ins = next(md.disasm(d[off:off + 12], off, 1), None)
+            if ins is None:
+                return False
+            base = ins.mnemonic.split('.')[0]
+            if base == 'dc':
+                return False
+            if base in ('rts', 'rte', 'rtr', 'jmp', 'bra', 'bsr', 'jsr'):
+                return True
+            off += ins.size
+        return True
+
+    interior = set()
+    for a, rec in insns.items():
+        for off in range(2, rec[0], 2):
+            interior.add(a + off)
+
+    found = {}
+    for a, (_sz, mn, op) in insns.items():
+        if mn not in ('move.l', 'movea.l'):
+            continue
+        m = RE_IMM_LONG.match(op.strip())
+        if not m:
+            continue
+        v = int(m.group(1), 16)
+        if v in insns or v in interior:
+            continue
+        if plausible(v):
+            found.setdefault(v, a)
+    return found
+
+
 _PTR_RUNS = {}
 
 
@@ -390,6 +453,10 @@ def main(path):
                 if tg not in t.insns:
                     added += 1
                 t.add(tg, site, True)
+        for tg, src in immediate_code_pointers(d, t.insns, t.md).items():
+            if tg not in t.insns:
+                added += 1
+                t.add(tg, src, True)
         for tg, tbl in areg_offset_tables(d, t.insns, t.md).items():
             if tg not in t.insns:
                 added += 1
