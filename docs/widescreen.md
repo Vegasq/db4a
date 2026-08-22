@@ -156,6 +156,32 @@ Steps 1 and 2 are implemented as a spike so the feel can be judged before the
 rest is built. The world widens and stays centred; the UI moves with it and so
 sits short of the right edge — pinning it there is step 3.
 
+### Display options
+
+All frontend-only; none of them touch emulation.
+
+| | |
+|---|---|
+| `DB4A_WIDE=398` | widescreen, gameplay only (see above) |
+| `DB4A_FULLSCREEN=1` | start fullscreen |
+| **F11** | toggle fullscreen at any time |
+| `DB4A_INTEGER=1` | whole-number pixel scaling |
+| `./build/db4a-sdl <rom> <scale>` | window scale, default 3 |
+
+Fullscreen uses SDL's *desktop* flavour: it keeps the monitor's current mode and
+scales into it rather than changing resolution, so there is no mode switch and
+alt-tab behaves. Aspect is preserved by letterboxing.
+
+On scaling: by default SDL scales fractionally to fill as much of the screen as
+the aspect allows, which means some source pixels cover more output pixels than
+others — on pixel art that shows as uneven edges, and it is most obvious in
+fullscreen where the factor is rarely a whole number. `DB4A_INTEGER=1` restricts
+it to whole multiples, which looks cleaner at the cost of a wider border. Which
+is better is a matter of taste, so it is a flag rather than a decision.
+
+F11 is the toggle rather than the more usual Alt+Enter because Alt is bound to
+the B button, so that chord would also press two game buttons.
+
 ### Picking a width
 
 The window is `fb_width * scale` by `224 * scale`, so its pixels are square.
