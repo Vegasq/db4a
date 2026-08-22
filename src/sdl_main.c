@@ -1,4 +1,4 @@
-/* Interactive frontend: SDL2 window, input, 50 Hz PAL pacing.
+/* Interactive frontend: SDL2 window, input, 49.70 Hz PAL pacing.
  *
  * The headless harness in main.c stays as the batch/diff tool; this is the
  * playable build.
@@ -248,8 +248,9 @@ int main(int argc, char **argv) {
         SDL_RenderPresent(ren);
         frames++;
 
-        /* Pace to 50 Hz when vsync is not doing it for us. */
-        Uint64 target = t0 + (Uint64)(frames * 1000.0 / 50.0);
+        /* Pace to PAL rate when vsync is not doing it for us. */
+        /* PAL is 49.7015 Hz, not 50: pacing at 50 runs the game 0.6% fast. */
+        Uint64 target = t0 + (Uint64)(frames * 1000.0 / PAL_HZ);
         Uint64 now = SDL_GetTicks64();
         if (now < target) SDL_Delay((Uint32)(target - now));
     }

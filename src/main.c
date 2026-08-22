@@ -173,7 +173,7 @@ int main(int argc, char **argv) {
         }
     }
     printf("frames simulated  : %u  (%.2f s of game time)\n",
-           frames, frames / 49.7015);
+           frames, frames / PAL_HZ);
     printf("cycles emulated   : %llu\n", (unsigned long long)CPU.cycles);
 
     printf("\nblocks executed   : %lu\n", m68k_blocks_run);

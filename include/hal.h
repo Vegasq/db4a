@@ -27,5 +27,6 @@ const uint8_t *hal_ram_ptr(size_t *len);
  * starves the CPU of 914 cycles every frame, about 0.6% less work than real
  * hardware does. Genesis-Plus-GX reports 49.70 fps for this ROM. */
 #define PAL_FRAME_CYCLES 152923u
+#define PAL_HZ           49.7015   /* 53203424 / (313 * 3420) */
 #define PAL_LINES        313u   /* total scanlines, 224 of them visible */
 #endif

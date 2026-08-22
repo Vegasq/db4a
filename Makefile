@@ -9,7 +9,10 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
 .PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play record replay playthrough compare-screen vectors clean
-all: test
+## all - build the emulator and run the unit tests (the default target)
+##       `make clean && make` must leave a playable build behind, which is
+##       v1 acceptance criterion 8; running only the tests did not.
+all: build/db4a build/db4a-sdl test
 
 ## verify-rom - confirm the base ROM is the known-good dump
 verify-rom:
