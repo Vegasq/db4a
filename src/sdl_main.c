@@ -9,6 +9,7 @@
 #include "render.h"
 #include "psg.h"
 #include "ym2612.h"
+#include "savestate.h"
 
 /* The FM mix peaks well below full scale; lift it to a usable level.
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
@@ -175,6 +176,7 @@ int main(int argc, char **argv) {
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
     printf("          remap with DB4A_KEYS=\"a=q,b=w,c=e\"\n");
+    printf("          F5 saves a state, F9 loads it (DB4A_STATE sets the path)\n");
     printf("          DB4A_LOG_PAD=1 names every key SDL reports\n");
 
     /* DB4A_RECORD=<file> captures play; DB4A_REPLAY=<file> plays it back. */
@@ -203,6 +205,27 @@ int main(int argc, char **argv) {
                    while the key was still held. Polling cannot see repeat at
                    all. Events are still used for quit and for diagnostics. */
                 if (e.key.keysym.sym == SDLK_ESCAPE) running = 0;
+                /* Save states. The cartridge has no SRAM, so without these a
+                   mission has to be played in one sitting. Emulation is
+                   unaffected either way -- this is convenience, not fidelity. */
+                if (e.type == SDL_KEYDOWN && !e.key.repeat) {
+                    const char *sp = getenv("DB4A_STATE");
+                    if (!sp) sp = "build/state.db4a";
+                    if (e.key.keysym.sym == SDLK_F5) {
+                        printf(savestate_write(sp, pc, frames) == 0
+                               ? "state saved to %s\n" : "could not save to %s\n", sp);
+                    } else if (e.key.keysym.sym == SDLK_F9) {
+                        uint32_t npc = 0;
+                        uint32_t nf = 0;
+                        int r = savestate_read(sp, &npc, &nf);
+                        if (r == 0) { pc = npc; frames = nf;
+                                      printf("state loaded from %s (frame %u)\n", sp, nf); }
+                        else printf("could not load %s (%s)\n", sp,
+                                    r == -2 ? "not a db4a state, or a different version"
+                                            : r == -3 ? "truncated or built by a different binary"
+                                                      : "no such file");
+                    }
+                }
                 if (e.type == SDL_KEYDOWN && !e.key.repeat && getenv("DB4A_LOG_PAD")) {
                     int known = 0;
                     for (int i = 0; i < NBINDINGS; i++)

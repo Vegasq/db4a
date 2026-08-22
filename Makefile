@@ -102,7 +102,7 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/psg.o build/ym2612.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/psg.o build/ym2612.o build/savestate.o \
                build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
@@ -155,6 +155,10 @@ build/ym2612.o: src/ym2612.c include/ym2612.h include/psg.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/savestate.o: src/savestate.c include/savestate.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/psg.o: src/psg.c include/psg.h include/hal.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -182,6 +186,14 @@ build/main.o: src/main.c include/m68k.h include/hal.h
 ## vectors - print the 68000 exception vector table
 vectors: verify-rom
 	python3 tools/vectors.py "$(ROM)"
+
+## check-state - save a state mid-run, resume from it, and require the same frame
+check-state: build/db4a
+	./tests/savestate.sh
+
+## check-houses - all three houses must select and load their mission
+check-houses: build/db4a
+	./tests/houses.sh
 
 ## test - build and run all unit tests
 test: build/test_flags build/test_ea build/test_sem build/test_psg build/test_ym build/test_z80_timing

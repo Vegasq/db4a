@@ -44,6 +44,8 @@ static struct {
 static int16_t ring[RING];
 static size_t  ring_w, ring_r;
 
+void *psg_state(size_t *len) { *len = sizeof P; return &P; }
+
 void psg_reset(void) {
     memset(&P, 0, sizeof P);
     for (int i = 0; i < 4; i++) { P.vol[i] = 15; P.period[i] = 1; P.counter[i] = 1; }

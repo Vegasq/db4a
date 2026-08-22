@@ -4,6 +4,7 @@
 #include "vdp.h"
 #include "psg.h"
 #include "ym2612.h"
+#include "savestate.h"
 #include "render.h"
 #include "input.h"
 #include "z80.h"
@@ -173,7 +174,27 @@ int main(int argc, char **argv) {
           }
       } }
 
-    for (frames = 0; frames < max_frames; frames++) {
+    /* DB4A_SAVE_AT=frame:path writes a state mid-run, DB4A_LOAD=path resumes
+       from one before the run starts. Together they let a round trip be tested
+       headlessly: save, keep going, then reload and check the same frame comes
+       out identical. */
+    unsigned save_at = 0; const char *save_path = NULL; unsigned resume_frame = 0;
+    { const char *sa = getenv("DB4A_SAVE_AT");
+      if (sa) { char buf[256];
+                if (sscanf(sa, "%u:%255s", &save_at, buf) == 2) {
+                    static char keep[256]; snprintf(keep, sizeof keep, "%s", buf);
+                    save_path = keep; } } }
+    { const char *lp = getenv("DB4A_LOAD");
+      if (lp) { uint32_t npc = 0;
+                uint32_t nf = 0;
+                int r = savestate_read(lp, &npc, &nf);
+                if (r == 0) { end = npc; resume_frame = nf;
+                              printf("resumed from %s at frame %u\n", lp, nf); }
+                else printf("could not load %s (code %d)\n", lp, r); } }
+
+    /* Continue the frame count from the state, so input replay and captures
+       line up with the original run rather than starting over. */
+    for (frames = resume_frame; frames < resume_frame + max_frames; frames++) {
         if (replaying) inputlog_replay_frame(frames);
         /* Hold length matters: a menu that advances on each press can consume
            one long hold twice. DB4A_HOLD tunes it. */
@@ -207,6 +228,12 @@ int main(int argc, char **argv) {
                 fwrite(st, sizeof st[0], 2, wav);
                 wav_samples++;
             }
+        }
+
+        if (save_path && frames == save_at) {
+            printf(savestate_write(save_path, end, frames + 1) == 0
+                   ? "  [frame %5u] state saved to %s\n"
+                   : "  [frame %5u] could not save to %s\n", frames, save_path);
         }
 
         for (unsigned k = 0; k < nshots; k++) {

@@ -34,6 +34,22 @@ void hal_z80_init(void) {
 
 int  hal_z80_running(void) { return !bus_granted && !z80_reset_held; }
 const uint8_t *hal_z80_ram(void) { return z80ram; }
+
+/* Bus state travels with the Z80's RAM: which side holds the bus, whether
+   reset is asserted, and the bank register are as much part of the machine as
+   the RAM itself, and a save state that omitted them would resume with the
+   sound CPU in the wrong state. */
+typedef struct { uint16_t bank; int granted; int held; } z80bus_t;
+size_t hal_z80_bus_size(void) { return sizeof(z80bus_t); }
+void hal_z80_bus_save(void *p) {
+    z80bus_t b = { bank, bus_granted, z80_reset_held };
+    memcpy(p, &b, sizeof b);
+}
+void hal_z80_bus_load(const void *p) {
+    z80bus_t b; memcpy(&b, p, sizeof b);
+    bank = b.bank; bus_granted = b.granted; z80_reset_held = b.held;
+}
+void *hal_z80_ram_state(size_t *len) { *len = sizeof z80ram; return z80ram; }
 void hal_dump_z80(const char *path);
 
 /* --- 68000 side --- */

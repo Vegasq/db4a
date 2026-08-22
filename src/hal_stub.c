@@ -32,6 +32,7 @@ int hal_log_io;
 void hal_set_rom(const uint8_t *d, size_t n) { rom = d; rom_len = n; }
 void hal_reset_ram(void) { memset(ram, 0, sizeof ram); }
 const uint8_t *hal_ram_ptr(size_t *len) { if (len) *len = sizeof ram; return ram; }
+void *hal_ram_state(size_t *len) { *len = sizeof ram; return ram; }
 
 /* Hardware reads.
  *

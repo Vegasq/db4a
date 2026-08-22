@@ -519,6 +519,8 @@ uint8_t ym_read_status(void) {
     return (uint8_t)((Y.ta_flag ? 1 : 0) | (Y.tb_flag ? 2 : 0));
 }
 
+void *ym_state(size_t *len) { *len = sizeof Y; return &Y; }
+
 void ym_reset(void) {
     init_tables();
     memset(&Y, 0, sizeof Y);
