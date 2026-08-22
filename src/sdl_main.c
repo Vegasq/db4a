@@ -299,6 +299,15 @@ int main(int argc, char **argv) {
             }
             if (frames_out)
                 SDL_QueueAudio(audio, mix, (Uint32)(frames_out * 2 * sizeof mix[0]));
+            if (getenv("DB4A_LOG_AUDIO")) {
+                static unsigned long tot, calls;
+                tot += frames_out; calls++;
+                if ((calls % 100) == 0)
+                    fprintf(stderr, "[audio] %lu frames queued over %lu video frames, "
+                            "queue=%u bytes, ym pending=%zu psg pending=%zu\n",
+                            tot, calls, SDL_GetQueuedAudioSize(audio),
+                            ym_available(), psg_available());
+            }
             /* Drop a backlog rather than let latency grow without bound. */
             if (SDL_GetQueuedAudioSize(audio) > PSG_RATE * 2 * sizeof(int16_t) / 4)
                 SDL_ClearQueuedAudio(audio);

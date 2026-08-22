@@ -24,7 +24,7 @@
 #define FM_CLOCK_DIV 144u
 #define M68K_HZ      7600489u
 
-unsigned long ym_writes, ym_keyons;
+unsigned long ym_writes, ym_keyons, dac_writes;
 
 /* ---------------------------------------------------------------- tables */
 
@@ -417,7 +417,7 @@ void ym_write(unsigned port, uint8_t v) {
             c->keyed = (v >> 4) & 15;
             break;
         }
-        case 0x2A: Y.dac = (int16_t)((int)v - 128); break;
+        case 0x2A: Y.dac = (int16_t)((int)v - 128); dac_writes++; break;
         case 0x2B: Y.dac_on = v >> 7; break;
         default: break;
         }
@@ -494,8 +494,8 @@ void ym_report(void) {
     for (int c = 0; c < 6; c++) printf(" ch%d=%X", c, Y.ch[c].keyed);
     printf("\n");
 
-    printf("ym2612  writes=%lu keyons=%lu dac=%s  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
-           ym_writes, ym_keyons, Y.dac_on ? "on" : "off",
+    printf("ym2612  writes=%lu keyons=%lu dacw=%lu dac=%s  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
+           ym_writes, ym_keyons, dac_writes, Y.dac_on ? "on" : "off",
            Y.ta_run ? "run" : "off", Y.ta_period,
            Y.tb_run ? "run" : "off", Y.tb_period, ym_available());
 }
