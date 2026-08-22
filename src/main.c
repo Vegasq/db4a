@@ -59,6 +59,31 @@ int main(int argc, char **argv) {
         for (char *tok = strtok(buf, ","); tok && nshots < 32; tok = strtok(NULL, ","))
             shot_at[nshots++] = (unsigned)strtoul(tok, NULL, 0);
       } }
+    /* DB4A_WAV=out.wav captures the PSG for the whole run. The header is
+       written with a placeholder length and patched at the end, since the
+       sample count is not known until the run finishes. */
+    FILE *wav = NULL;
+    unsigned long wav_samples = 0;
+    {
+        const char *wp = getenv("DB4A_WAV");
+        if (wp && (wav = fopen(wp, "wb"))) {
+            const uint32_t rate = PSG_RATE;
+            uint8_t hdr[44] = {0};
+            memcpy(hdr, "RIFF", 4); memcpy(hdr + 8, "WAVEfmt ", 8);
+            hdr[16] = 16;                     /* fmt chunk size */
+            hdr[20] = 1;  hdr[22] = 1;        /* PCM, mono */
+            hdr[24] = (uint8_t)rate; hdr[25] = (uint8_t)(rate >> 8);
+            hdr[26] = (uint8_t)(rate >> 16);  hdr[27] = (uint8_t)(rate >> 24);
+            uint32_t bps = rate * 2;
+            hdr[28] = (uint8_t)bps; hdr[29] = (uint8_t)(bps >> 8);
+            hdr[30] = (uint8_t)(bps >> 16); hdr[31] = (uint8_t)(bps >> 24);
+            hdr[32] = 2;                      /* block align */
+            hdr[34] = 16;                     /* bits per sample */
+            memcpy(hdr + 36, "data", 4);
+            fwrite(hdr, 1, 44, wav);
+        }
+    }
+
     const char *shot_prefix = getenv("DB4A_PPM");
     m68k_profile_enable();
     { extern int hal_log_sr, hal_log_io;
@@ -149,6 +174,15 @@ int main(int argc, char **argv) {
         end = system_frame(end);
         if (m68k_last_unknown) break;
 
+        if (wav) {
+            int16_t sbuf[8192];
+            size_t n;
+            while ((n = psg_read_samples(sbuf, 8192)) > 0) {
+                fwrite(sbuf, sizeof sbuf[0], n, wav);
+                wav_samples += n;
+            }
+        }
+
         for (unsigned k = 0; k < nshots; k++) {
             if (frames == shot_at[k] && shot_prefix) {
                 char path[512];
@@ -231,6 +265,16 @@ int main(int argc, char **argv) {
     pad_report();
     vdp_dump();
     psg_report();
+    if (wav) {
+        uint32_t data = (uint32_t)(wav_samples * 2), riff = data + 36;
+        uint8_t v[4];
+        v[0]=(uint8_t)riff; v[1]=(uint8_t)(riff>>8); v[2]=(uint8_t)(riff>>16); v[3]=(uint8_t)(riff>>24);
+        fseek(wav, 4, SEEK_SET);  fwrite(v, 1, 4, wav);
+        v[0]=(uint8_t)data; v[1]=(uint8_t)(data>>8); v[2]=(uint8_t)(data>>16); v[3]=(uint8_t)(data>>24);
+        fseek(wav, 40, SEEK_SET); fwrite(v, 1, 4, wav);
+        fclose(wav);
+        printf("wrote %lu samples (%.2f s of audio)\n", wav_samples, wav_samples / (double)PSG_RATE);
+    }
     render_frame();
     { const char *out = getenv("DB4A_PPM");
       if (out && render_write_ppm(out) == 0) printf("wrote framebuffer to %s\n", out); }
