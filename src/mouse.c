@@ -48,6 +48,10 @@ static int read_word(unsigned addr) {
  * (0,0), which is a perfectly plausible-looking coordinate, so a range check
  * passes and the steering happily drives towards the pointer -- holding right
  * and down forever and making the mentat screen impossible to get past. */
+static int in_gameplay(void);
+
+int mouse_steering_active(void) { return enabled && in_gameplay(); }
+
 static int in_gameplay(void) {
     uint32_t s = ((uint32_t)read_word(0xE002) << 16) | (uint32_t)read_word(0xE004);
     return s == 0x006D0Cu || s == 0x00608Eu || s == 0x00B540u;
