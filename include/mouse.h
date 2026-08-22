@@ -17,6 +17,9 @@ int  mouse_enabled(void);
 int  mouse_steer(int target_x, int target_y);
 
 /* Where the game thinks its cursor is, for diagnostics. */
+/* True when steering is on AND the game is in a scene that has a cursor. */
+int  mouse_steering_active(void);
+
 void mouse_cursor_pos(int *x, int *y);
 
 #endif
