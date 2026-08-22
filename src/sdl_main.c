@@ -112,6 +112,7 @@ int main(int argc, char **argv) {
     int running = 1;
     unsigned frames = 0;
     uint8_t key_state[PAD_COUNT] = {0};   /* what the keyboard asked for last frame */
+    static uint8_t held_scan[SDL_NUM_SCANCODES];   /* for the DB4A_LOG_PAD dump */
     Uint64 t0 = SDL_GetTicks64();
     while (running) {
         SDL_Event e;
@@ -150,14 +151,33 @@ int main(int argc, char **argv) {
            back down within one frame (exactly what auto-repeat does) reads as
            held, which is correct: the user never let go. */
         if (!replaying) {
-            const Uint8 *ks = SDL_GetKeyboardState(NULL);
+            int nks = 0;
+            const Uint8 *ks = SDL_GetKeyboardState(&nks);
             int want[PAD_COUNT];
             for (int p = 0; p < PAD_COUNT; p++) want[p] = 0;
-            for (int i = 0; i < NBINDINGS; i++) {
-                SDL_Scancode sc = SDL_GetScancodeFromKey(BINDINGS[i].key);
-                if (ks[BINDINGS[i].scan] || (sc != SDL_SCANCODE_UNKNOWN && ks[sc]))
-                    want[BINDINGS[i].pad] = 1;
+            /* Walk the keys that are actually down and ask SDL what symbol each
+               one produces, rather than guessing which scancode a symbol lives
+               on. SDL_GetScancodeFromKey answers that second question and can
+               disagree with what the key event reported, which is how a key
+               that worked event-driven stopped matching when polled. Matching
+               on either the produced symbol or the physical position covers
+               every layout. */
+            for (int i = 0; i < nks && i < SDL_NUM_SCANCODES; i++) {
+                if (!ks[i]) continue;
+                SDL_Keycode k = SDL_GetKeyFromScancode((SDL_Scancode)i);
+                for (int j = 0; j < NBINDINGS; j++)
+                    if (BINDINGS[j].scan == (SDL_Scancode)i || BINDINGS[j].key == k)
+                        want[BINDINGS[j].pad] = 1;
             }
+            if (getenv("DB4A_LOG_PAD"))
+                for (int i = 0; i < nks && i < SDL_NUM_SCANCODES; i++) {
+                    if (ks[i] == held_scan[i]) continue;
+                    held_scan[i] = ks[i];
+                    fprintf(stderr, "[key] %-4s scancode=%s sym=%s\n",
+                            ks[i] ? "down" : "up",
+                            SDL_GetScancodeName((SDL_Scancode)i),
+                            SDL_GetKeyName(SDL_GetKeyFromScancode((SDL_Scancode)i)));
+                }
             for (int p = 0; p < PAD_COUNT; p++)
                 if (want[p] != key_state[p]) {
                     key_state[p] = (uint8_t)want[p];
