@@ -12,6 +12,7 @@
 #include <string.h>
 
 uint8_t FB[FB_H][FB_W][3];
+int fb_width = 320;
 
 /* Set by the plane pass: 1 where the visible plane pixel came from a
  * high-priority pattern. Read by the sprite pass, which is why it is file
@@ -184,6 +185,12 @@ static int16_t vscroll_latched(unsigned line, unsigned col, int plane_b) {
     return (int16_t)LATCH[line].vsram[idx % VSRAM_SIZE];
 }
 
+/* Widescreen shifts the world left by half the extra width, so the original
+   320-pixel view stays exactly where it was and the new pixels are added
+   symmetrically. Without this every existing screenshot and recording would
+   appear to jump sideways. See docs/widescreen.md. */
+int render_world_offset(void) { return (fb_width - 320) / 2; }
+
 void render_frame(void) {
     uint32_t nt_a = (uint32_t)(VDP.reg[2] & 0x38) << 10;
     uint32_t nt_b = (uint32_t)(VDP.reg[4] & 0x07) << 13;
@@ -192,7 +199,7 @@ void render_frame(void) {
 
     if (!vdp_display_enabled()) {
         for (int y = 0; y < FB_H; y++)
-            for (int x = 0; x < FB_W; x++)
+            for (int x = 0; x < fb_width; x++)
                 memset(FB[y][x], 0, 3);
         return;
     }
@@ -203,20 +210,21 @@ void render_frame(void) {
         int have = ((unsigned)y < latched);
         int16_t hs_a = have ? LATCH[y].hs_a : hscroll_for((unsigned)y, 0);
         int16_t hs_b = have ? LATCH[y].hs_b : hscroll_for((unsigned)y, 1);
-        for (int x = 0; x < FB_W; x++) {
-            int16_t vs_a = have ? vscroll_latched((unsigned)y, (unsigned)x, 0)
+        for (int x = 0; x < fb_width; x++) {
+            int16_t vs_a = have ? vscroll_latched((unsigned)y, (unsigned)(x - render_world_offset()), 0)
                                 : vscroll_for((unsigned)x, 0);
-            int16_t vs_b = have ? vscroll_latched((unsigned)y, (unsigned)x, 1)
+            int16_t vs_b = have ? vscroll_latched((unsigned)y, (unsigned)(x - render_world_offset()), 1)
                                 : vscroll_for((unsigned)x, 1);
             int pa, pb;
             unsigned ca, cb;
             /* Inside the window region the window replaces plane A entirely,
                and is not scrolled. */
-            if (window_covers(x >> 3, y >> 3))
-                ca = sample_window(x, y, &pa);
+            int wx = x - render_world_offset();
+            if (window_covers(wx >> 3, y >> 3))
+                ca = sample_window(wx, y, &pa);
             else
-                ca = sample_plane(nt_a, x - hs_a, y + vs_a, &pa);
-            cb = sample_plane(nt_b, x - hs_b, y + vs_b, &pb);
+                ca = sample_plane(nt_a, wx - hs_a, y + vs_a, &pa);
+            cb = sample_plane(nt_b, wx - hs_b, y + vs_b, &pb);
 
             unsigned pick = 0;
             int hi = 0;
@@ -272,9 +280,9 @@ void render_sprites(void) {
                                    + (fy ? (hh - 1 - cy) : cy);
                 for (unsigned py = 0; py < 8; py++) {
                     for (unsigned px = 0; px < 8; px++) {
-                        int X = sx + (int)(cx * 8 + px);
+                        int X = sx + (int)(cx * 8 + px) + render_world_offset();
                         int Y = sy + (int)(cy * 8 + py);
-                        if (X < 0 || X >= FB_W || Y < 0 || Y >= FB_H) continue;
+                        if (X < 0 || X >= fb_width || Y < 0 || Y >= FB_H) continue;
                         unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
                         unsigned c = tile_pixel(tc, ix, iy);
                         if (c && !taken[Y][X]) {
@@ -319,8 +327,9 @@ void render_sprites(void) {
 int render_write_ppm(const char *path) {
     FILE *f = fopen(path, "wb");
     if (!f) return -1;
-    fprintf(f, "P6\n%d %d\n255\n", FB_W, FB_H);
-    fwrite(FB, 1, sizeof FB, f);
+    fprintf(f, "P6\n%d %d\n255\n", fb_width, FB_H);
+    /* Row by row: FB is allocated at FB_W but only fb_width is live. */
+    for (int y = 0; y < FB_H; y++) fwrite(FB[y], 3, (size_t)fb_width, f);
     fclose(f);
     return 0;
 }

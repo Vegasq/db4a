@@ -139,6 +139,15 @@ int main(int argc, char **argv) {
     uint8_t *rom = load_rom(argv[1], &romlen);
     if (!rom) return 1;
 
+    /* Widescreen (docs/widescreen.md). Off unless asked for: menus and
+       cutscenes are 320-wide compositions, and every comparison against the
+       reference runs at 320. */
+    { const char *w = getenv("DB4A_WIDE");
+      if (w) { int v = atoi(w);
+               if (v >= 320 && v <= FB_W) { fb_width = v;
+                   printf("widescreen: %dx%d (UI is not yet repositioned)\n", fb_width, FB_H); }
+               else printf("DB4A_WIDE must be 320..%d\n", FB_W); } }
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1;
     }
@@ -156,14 +165,18 @@ int main(int argc, char **argv) {
        size or screen shape. It scales FRACTIONALLY though, which on pixel art
        shows as uneven edges -- most obvious in fullscreen, where the factor is
        rarely whole. DB4A_INTEGER=1 restricts it to whole multiples: cleaner,
-       at the cost of a wider border. */
-SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
+       at the cost of a wider border.
+
+       fb_width, not FB_W: FB_W is the ALLOCATION width (the widest view we
+       support), so sizing from it letterboxes the real content inside a
+       permanently 512-wide window. */
+    SDL_RenderSetLogicalSize(ren, fb_width, FB_H);
     if (cfg("DB4A_INTEGER")) {
         SDL_RenderSetIntegerScale(ren, SDL_TRUE);
         printf("integer scaling: on\n");
-    }        /* integer-ish scaling */
+    }
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGB24,
-        SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
+        SDL_TEXTUREACCESS_STREAMING, fb_width, FB_H);
 
     SDL_GameController *gc = NULL;
     for (int i = 0; i < SDL_NumJoysticks(); i++)
@@ -249,6 +262,15 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
     uint8_t key_state[PAD_COUNT] = {0};   /* what the keyboard asked for last frame */
     int paused = 0;
     static uint8_t held_scan[SDL_NUM_SCANCODES];   /* for the DB4A_LOG_PAD dump */
+    /* Resume a state at startup, so a session can begin mid-mission rather
+       than replaying from boot. */
+    { const char *lp = getenv("DB4A_LOAD");
+      if (lp) { uint32_t npc = 0, nf = 0;
+                int r = savestate_read(lp, &npc, &nf);
+                if (r == 0) { pc = npc; frames = nf;
+                              printf("resumed %s at frame %u\n", lp, nf); }
+                else printf("could not load %s (code %d)\n", lp, r); } }
+
     Uint64 t0 = SDL_GetTicks64();
     while (running) {
         SDL_Event e;
@@ -486,7 +508,7 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
         }
 
         render_frame();
-        SDL_UpdateTexture(tex, NULL, FB, FB_W * 3);
+        SDL_UpdateTexture(tex, NULL, FB, FB_W * 3);   /* pitch is the allocation */
         SDL_RenderClear(ren);
         SDL_RenderCopy(ren, tex, NULL, NULL);
         SDL_RenderPresent(ren);

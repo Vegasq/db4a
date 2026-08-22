@@ -108,6 +108,22 @@ COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o
 build/db4a: $(COMMON_OBJS) build/main.o
 	$(CC) $^ -o $@ -lm
 
+## explore - resume mid-mission and play live, optionally in widescreen
+##           usage: make explore              (320, from frame 6000)
+##                  make explore WIDE=400     (widescreen spike)
+##                  make explore STATE=<file>
+STATE ?= data/states/mission1-f6000.state
+WIDE  ?=
+explore: build/db4a-sdl
+	@test -f "$(STATE)" || $(MAKE) --no-print-directory $(STATE)
+	DB4A_LOAD="$(STATE)" $(if $(WIDE),DB4A_WIDE=$(WIDE),) ./build/db4a-sdl "$(ROM)"
+
+## the state itself is reproducible from the recorded playthrough
+data/states/mission1-f6000.state: build/db4a data/recordings/level1atredis.txt
+	@mkdir -p data/states
+	DB4A_REPLAY=data/recordings/level1atredis.txt \
+	    DB4A_SAVE_AT="6000:$@" ./build/db4a "$(ROM)" 6010 >/dev/null
+
 ## play - build and run the interactive SDL build
 play: build/db4a-sdl
 	./build/db4a-sdl "$(ROM)"

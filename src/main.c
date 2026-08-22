@@ -132,6 +132,11 @@ int main(int argc, char **argv) {
         }
     }
 
+    { const char *w = getenv("DB4A_WIDE");
+      if (w) { int v = atoi(w);
+               if (v >= 320 && v <= FB_W) { fb_width = v;
+                   printf("widescreen: %dx%d\n", fb_width, FB_H); } } }
+
     const char *shot_prefix = getenv("DB4A_PPM");
     m68k_profile_enable();
     { extern int hal_log_sr, hal_log_io;
