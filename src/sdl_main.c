@@ -37,17 +37,63 @@ static binding_t BINDINGS[] = {
     { SDLK_DOWN,   SDL_SCANCODE_DOWN,   PAD_DOWN,  "Down"  },
     { SDLK_LEFT,   SDL_SCANCODE_LEFT,   PAD_LEFT,  "Left"  },
     { SDLK_RIGHT,  SDL_SCANCODE_RIGHT,  PAD_RIGHT, "Right" },
+    { SDLK_q,      SDL_SCANCODE_Q,      PAD_A,     "A"     },
+    { SDLK_w,      SDL_SCANCODE_W,      PAD_B,     "B"     },
+    { SDLK_e,      SDL_SCANCODE_E,      PAD_C,     "C"     },
+    { SDLK_RETURN, SDL_SCANCODE_RETURN, PAD_START, "Start" },
+    /* Alternates. Several, deliberately: Z and C went unrecognised on one
+       machine while X on the same row worked, and the cause was never pinned
+       down, so no single key is allowed to be the only way to press a button. */
     { SDLK_z,      SDL_SCANCODE_Z,      PAD_A,     "A"     },
     { SDLK_x,      SDL_SCANCODE_X,      PAD_B,     "B"     },
     { SDLK_c,      SDL_SCANCODE_C,      PAD_C,     "C"     },
-    { SDLK_RETURN, SDL_SCANCODE_RETURN, PAD_START, "Start" },
-    /* Alternates, so there is always a reachable key for the action buttons
-       whatever the layout does to Z/X/C. */
     { SDLK_SPACE,  SDL_SCANCODE_SPACE,  PAD_A,     "A"     },
     { SDLK_LALT,   SDL_SCANCODE_LALT,   PAD_B,     "B"     },
     { SDLK_LSHIFT, SDL_SCANCODE_LSHIFT, PAD_C,     "C"     },
+    { SDLK_TAB,    SDL_SCANCODE_TAB,    PAD_START, "Start" },
 };
 #define NBINDINGS ((int)(sizeof BINDINGS / sizeof BINDINGS[0]))
+
+static const char *PADNAME[PAD_COUNT] = {
+    "up", "down", "left", "right", "a", "b", "c", "start"
+};
+
+/* DB4A_KEYS="a=q,b=w,start=space" replaces the default key for those buttons.
+   Any button named here drops its built-in bindings entirely, so a key that
+   the machine will not deliver can be routed around without a rebuild. */
+static void apply_key_overrides(void) {
+    const char *spec = getenv("DB4A_KEYS");
+    if (!spec) return;
+    char buf[512];
+    snprintf(buf, sizeof buf, "%s", spec);
+    for (char *tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {
+        char *eq = strchr(tok, '=');
+        if (!eq) { fprintf(stderr, "DB4A_KEYS: ignoring '%s'\n", tok); continue; }
+        *eq = 0;
+        while (*tok == ' ') tok++;
+        int pad = -1;
+        for (int p = 0; p < PAD_COUNT; p++)
+            if (SDL_strcasecmp(tok, PADNAME[p]) == 0) pad = p;
+        if (pad < 0) { fprintf(stderr, "DB4A_KEYS: unknown button '%s'\n", tok); continue; }
+        SDL_Keycode k = SDL_GetKeyFromName(eq + 1);
+        if (k == SDLK_UNKNOWN) {
+            fprintf(stderr, "DB4A_KEYS: unknown key '%s'\n", eq + 1);
+            continue;
+        }
+        for (int i = 0; i < NBINDINGS; i++)
+            if (BINDINGS[i].pad == pad) {          /* clear the defaults */
+                BINDINGS[i].key  = SDLK_UNKNOWN;
+                BINDINGS[i].scan = SDL_SCANCODE_UNKNOWN;
+            }
+        for (int i = 0; i < NBINDINGS; i++)
+            if (BINDINGS[i].pad == pad) {
+                BINDINGS[i].key  = k;
+                BINDINGS[i].scan = SDL_GetScancodeFromKey(k);
+                break;
+            }
+        printf("binding %s -> %s\n", PADNAME[pad], SDL_GetKeyName(k));
+    }
+}
 
 static const struct { SDL_GameControllerButton b; int pad; } GC_MAP[] = {
     { SDL_CONTROLLER_BUTTON_DPAD_UP,    PAD_UP    },
@@ -97,9 +143,11 @@ int main(int argc, char **argv) {
 
     uint32_t pc = system_reset(rom, romlen);
 
-    printf("controls: arrows = D-pad, Z/X/C = A/B/C, Enter = Start, Esc = quit\n");
-    printf("          alternates: Space = A, Alt = B, Shift = C\n");
-    printf("          (set DB4A_LOG_PAD=1 to name any key that is not bound)\n");
+    apply_key_overrides();
+    printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
+    printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
+    printf("          remap with DB4A_KEYS=\"a=q,b=w,c=e\"\n");
+    printf("          DB4A_LOG_PAD=1 names every key SDL reports\n");
 
     /* DB4A_RECORD=<file> captures play; DB4A_REPLAY=<file> plays it back. */
     const char *recpath = getenv("DB4A_RECORD");
