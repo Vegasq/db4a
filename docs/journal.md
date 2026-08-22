@@ -1635,3 +1635,45 @@ and the remaining ones are runtime-computed by construction. Continuing to
 chase them individually is whack-a-mole; the answer is to discover them
 automatically by replay, which `tools/bootstrap.sh` already does — it just
 needs to be driven by a realistic playthrough rather than a single Start press.
+
+## Bootstrap: runtime discovery driven by a playthrough
+
+`$19DB8` was reached by `jsr (a2)` with the pointer loaded at run time. Nothing
+in the ROM references it, so static analysis cannot find it — and the same is
+true of the family behind it. Chasing these one at a time was whack-a-mole.
+
+`tools/bootstrap.sh` already learned unknown PCs by replay, but drove the game
+with no input, so it only ever explored the title screen. It now replays a
+scripted playthrough via `playthrough.py --emit-press`.
+
+**Its stall detector was wrong first time round.** It compared seed-file counts
+before and after a run, so a seed left behind by an earlier interrupted run
+looked like "no progress" and stopped the loop after one iteration. A seed
+being *already recorded* is not the same as it being *already applied*. The
+correct condition is narrower: the same address still unknown after
+regenerating with it.
+
+```
+iter  1: 2997 blocks
+iter  5: 3203  -> 02E30E     (the address reported from play)
+iter 25: 3937  -> 044C78
+31 seeds
+```
+
+**It hit the 25-iteration cap, not convergence** — new entries were still
+appearing on the final iteration. More runs are needed.
+
+Verified after a clean rebuild: title screen 71680/71680 exact, three suites
+green, all 35546 instructions parse, and the reported route now completes
+without crashing (3966 distinct blocks, up from 2538).
+
+### Seeds are discovered data, not derived output
+
+Ground rule 2 says everything in `build/` is reproducible and therefore not
+tracked. These seeds sit awkwardly against that: reproducing them costs a
+25-iteration bootstrap run, and losing them means doing it again. They are the
+*output of an experiment*, not a function of the ROM.
+
+Moved to `data/seeds.txt` and tracked, with the reasoning in the file header.
+`build/seeds.txt` remains the scratch file a running build appends to; the
+tracer reads both.

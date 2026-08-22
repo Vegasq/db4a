@@ -70,6 +70,14 @@ def compile_scenario(steps, hold):
 
 def main(argv):
     name = next((a for a in argv if not a.startswith('--')), 'house')
+    # --emit-press prints the compiled input script and frame count, so the
+    # bootstrap loop can replay a realistic route instead of a single press.
+    if '--emit-press' in argv:
+        if name not in SCENARIOS:
+            raise SystemExit("unknown scenario %s" % name)
+        presses, shots, names, last = compile_scenario(SCENARIOS[name], 6)
+        print("%s\n%d" % (",".join(presses), last + 400))
+        return 0
     keep = '--keep-ppm' in argv
     frames = None
     for i, a in enumerate(argv):

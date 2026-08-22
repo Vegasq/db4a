@@ -205,9 +205,15 @@ def main(path):
     # dispatches through RAM function pointers, so these are PCs no static
     # pass could predict; feeding them back is how coverage grows past the
     # static plateau.
-    seeds_path = os.path.join(ROOT, "build", "seeds.txt")
+    # Tracked under data/ because these are discovered, not derived: see the
+    # header of that file. build/seeds.txt is the scratch file the running
+    # build appends to during a bootstrap run.
+    seed_files = [os.path.join(ROOT, "data", "seeds.txt"),
+                  os.path.join(ROOT, "build", "seeds.txt")]
     nseeds = 0
-    if os.path.exists(seeds_path):
+    for seeds_path in seed_files:
+        if not os.path.exists(seeds_path):
+            continue
         for line in open(seeds_path):
             line = line.split('#')[0].strip()
             if not line:
