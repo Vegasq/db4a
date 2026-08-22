@@ -189,6 +189,33 @@ preceding the dispatch. Without a guard we stop at the first implausible entry.
 
 ---
 
+## Why there is no fallback interpreter
+
+The original plan called for one, because the state machine dispatches through
+a function pointer at `$FFFFE002` and execution can reach a PC no static pass
+predicted. That reasoning was sound; the conclusion turned out to be
+unnecessary. Four seeding passes closed the gap instead:
+
+| Pass | What it recovers |
+|------|------------------|
+| `lea`/`pea` return-address idiom | hand-written routines entered by branch, returning via `jmp (a0)` |
+| state-pointer immediates | handlers written straight to `$FFFFE002` |
+| `immediate_code_pointers` | handlers passed as an argument and installed by the callee |
+| `areg_offset_tables` | script-interpreter handlers behind `jsr (aN, dM.w)` |
+| anchored pointer tables | tables of absolute addresses nothing branches to |
+
+Mission 1 played to Victory, mission 2 to Defeat, and 40000-frame soaks of all
+three houses now run with **no unknown PC at all**.
+
+The remaining insurance is cheaper than an interpreter: an unknown PC appends
+itself to `build/seeds.txt` and prints how to fix it, so `make analyse && make`
+covers it. An interpreter would also have had to be generated from
+`tools/semantics.py` to avoid two implementations disagreeing, which is a large
+amount of machinery for a case that no longer occurs.
+
+If a future title needs one, generate it from the semantics table -- never
+hand-write a second implementation.
+
 ## Shared instruction semantics
 
 Decided 2026-08-21. `tools/semantics.py` is the **single source of truth** for

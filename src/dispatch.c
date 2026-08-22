@@ -102,6 +102,26 @@ void m68k_dump_crash(uint32_t pc) {
         fprintf(stderr, "   %08X: %08X\n", a, m68k_read32(a));
     }
 
+    /* Record the address so the next `make analyse` picks it up. Discovery
+     * reaches everything the game has been played through, but the RAM
+     * dispatch at $FFFFE002 means a state nobody has entered yet can always
+     * produce a PC no static pass predicted. Appending it here turns that from
+     * "parse the crash by hand" into one rebuild. DB4A_SEEDS overrides the
+     * path; trace.py reads build/seeds.txt as scratch alongside the tracked
+     * data/seeds.txt. */
+    {
+        const char *sp = getenv("DB4A_SEEDS");
+        if (!sp) sp = "build/seeds.txt";
+        FILE *sf = fopen(sp, "a");
+        if (sf) {
+            fprintf(sf, "%06X   # unknown PC, reached from %06X\n",
+                    pc, trail_n ? trail[(trail_n - 1) % TRAIL] : 0);
+            fclose(sf);
+            fprintf(stderr, "\nrecorded %06X in %s -- `make analyse && make` will cover it\n",
+                    pc, sp);
+        }
+    }
+
     unsigned n = trail_n < TRAIL ? trail_n : TRAIL;
     fprintf(stderr, "\nlast %u blocks executed (most recent last):\n", n);
     for (unsigned i = 0; i < n; i++) {
