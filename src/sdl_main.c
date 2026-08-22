@@ -145,7 +145,7 @@ int main(int argc, char **argv) {
     { const char *w = getenv("DB4A_WIDE");
       if (w) { int v = atoi(w);
                if (v >= 320 && v <= FB_W) { fb_width = v;
-                   printf("widescreen: %dx%d (UI is not yet repositioned)\n", fb_width, FB_H); }
+                   printf("widescreen: %dx%d window %dx%d\n", fb_width, FB_H, fb_width * scale, FB_H * scale); }
                else printf("DB4A_WIDE must be 320..%d\n", FB_W); } }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
@@ -153,7 +153,11 @@ int main(int argc, char **argv) {
     }
     SDL_Window *win = SDL_CreateWindow("Dune: The Battle for Arrakis",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        FB_W * scale, FB_H * scale, SDL_WINDOW_RESIZABLE);
+        /* fb_width, NOT FB_W: the latter is the ALLOCATION width (512, enough
+           for the widest supported view), so sizing the window from it left a
+           fixed 512-wide window on every setting with the real content
+           letterboxed inside. */
+        fb_width * scale, FB_H * scale, SDL_WINDOW_RESIZABLE);
     /* Fullscreen uses the DESKTOP flavour: it keeps the current display mode
        and scales into it rather than changing the monitor's resolution, so
        there is no mode switch and alt-tab behaves. */

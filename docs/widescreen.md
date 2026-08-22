@@ -156,6 +156,27 @@ Steps 1 and 2 are implemented as a spike so the feel can be judged before the
 rest is built. The world widens and stays centred; the UI moves with it and so
 sits short of the right edge — pinning it there is step 3.
 
+### Picking a width
+
+The window is `fb_width * scale` by `224 * scale`, so its pixels are square.
+
+| Want | `DB4A_WIDE` |
+|---|---|
+| **16:9** | **398**, or 400 — 400 is 1.786:1 against 16:9's 1.778:1, a 0.4% error nobody can see |
+| 16:10 | 358 |
+| Original 4:3 | 320 (the default; see the note below) |
+
+A caveat on the 320 default: the Mega Drive showed 320×224 stretched to 4:3, so
+its pixels were slightly taller than wide (0.933). We render square pixels, so
+the default view is already 1.429:1 rather than the 1.333:1 a TV gave — the
+whole image is a little wide compared to original hardware. Correcting that is
+a separate question from widescreen, and would mean scaling the window's height
+rather than changing `DB4A_WIDE`.
+
+If you *did* want 16:9 with the original pixel shape preserved, the width would
+be 427 — but our square-pixel window would then show it at 1.906:1, which is
+wider still. 398 is the right answer for the renderer as it stands.
+
 ```bash
 make explore                 # 320, resumed mid-mission at frame 6000
 make explore WIDE=400        # the same, widescreen
