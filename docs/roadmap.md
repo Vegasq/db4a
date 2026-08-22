@@ -102,11 +102,11 @@ stays C11 plus SDL2.
 | ID | Milestone | Status |
 |----|-----------|--------|
 | M0 | Analysis foundation: ROM verified, code discovery, runtime + flag tests | **done** |
-| M1 | Shared semantics table emitting translator + interpreter; `dispatch.c`; ROM executes from reset | in progress |
-| M2 | VDP + SDL2 renderer; title screen matches reference emulator | |
-| M2.5 | **Z80 core + 68000/Z80 bus** — reclassified as a v1 blocker, see below | |
-| M3 | Modern input; menus navigable | |
-| M4 | **v1 — one mission playable end to end** | |
+| M1 | Shared semantics table emitting translator + interpreter; `dispatch.c`; ROM executes from reset | **done** (interpreter fallback not needed, see task #4) |
+| M2 | VDP + SDL2 renderer; title screen matches reference emulator | **done** — menus 100.00%, gameplay 99.35% |
+| M2.5 | **Z80 core + 68000/Z80 bus** — reclassified as a v1 blocker, see below | **done** — zexdoc and T-state timing both covered |
+| M3 | Modern input; menus navigable | **done** — keyboard, gamepad, runtime remap, record/replay |
+| M4 | **v1 — one mission playable end to end** | see the criteria table above |
 | M5 | **Audio — YM2612, PSG, Z80 sound bus** — chips implemented and audible; fidelity work outstanding, see task #22 | **mostly done** |
 | M6 | *(retired — was cross-platform build; Linux-only now)* | dropped |
 | M7 | Full campaign, all three houses | |

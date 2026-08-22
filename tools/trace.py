@@ -501,7 +501,14 @@ def main(path):
     print("function entry points: %d" % len(t.starts))
     print("jump tables resolved : %d" % len(tables))
     print("still unresolved     : %d" % len(unres))
-    print("failed decodes       : %d" % len(t.bad))
+    # A "failed decode" is a path that stopped because the bytes are not code:
+    # capstone could not decode them, or produced its `dc` data marker, or
+    # produced a 68020 addressing mode that cannot exist on a 68000. Most are
+    # speculative seeds -- immediates and pointer-table entries -- being
+    # correctly REJECTED, which is the validity oracle working rather than a
+    # problem. Only one reached from a jump table would be suspicious, and that
+    # is reported separately below.
+    print("seeds rejected as data: %d" % len(t.bad))
     if t.bad:
         badset = set(t.bad)
         blame = {}
