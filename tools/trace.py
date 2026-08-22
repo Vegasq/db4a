@@ -106,6 +106,86 @@ class Tracer:
                     break
                 pc += ins.size
 
+_PTR_RUNS = {}
+
+
+def pointer_tables(d, insns, md, min_entries=4):
+    """Recover entry points from tables of 32-bit ROM pointers.
+
+    Genesis code routinely dispatches through a table of absolute addresses
+    that nothing branches to directly, so recursive descent never sees the
+    targets and execution dies there at runtime.
+
+    A run of >=4 consecutive aligned ROM-range values that each decode as a
+    plausible instruction run is the signal. On its own that still matches
+    plenty of data -- 16 of the candidate tables in this ROM contain no known
+    code at all. So a table only counts when at least one of its entries is
+    ALREADY discovered code: that anchor is what separates a real dispatch
+    table from four integers that happen to look like addresses.
+
+    Returns {target: table offset} for the undiscovered targets of anchored
+    tables, so each seed carries a real xref back to the table that names it.
+
+    The scan itself is expensive -- a decode probe at every aligned ROM offset
+    -- so it is cached: only the anchoring check re-runs as discovery grows.
+    """
+    n = len(d)
+
+    def plausible(a, depth=8):
+        if a < 0x200 or a >= n or a & 1:
+            return False
+        off = a
+        for _ in range(depth):
+            ins = next(md.disasm(d[off:off + 12], off, 1), None)
+            if ins is None:
+                return False
+            base = ins.mnemonic.split('.')[0]
+            if base == 'dc':
+                return False
+            if base in ('rts', 'rte', 'rtr', 'jmp', 'bra', 'bsr', 'jsr'):
+                return True
+            off += ins.size
+        return True
+
+    runs = _PTR_RUNS.get(min_entries)
+    if runs is None:
+        ptrs = {}
+        for off in range(0x200, n - 4, 2):
+            v = struct.unpack_from('>I', d, off)[0]
+            if 0x200 <= v < n and not (v & 1) and plausible(v):
+                ptrs[off] = v
+        runs = []
+        srcs = sorted(ptrs)
+        i = 0
+        while i < len(srcs):
+            j = i
+            while j + 1 < len(srcs) and srcs[j + 1] - srcs[j] == 4:
+                j += 1
+            if j - i + 1 >= min_entries:
+                runs.append((srcs[i], [ptrs[o] for o in srcs[i:j + 1]]))
+            i = j + 1
+        _PTR_RUNS[min_entries] = runs
+
+    # A seed that lands strictly INSIDE an already-decoded instruction is not a
+    # new entry point, it is a misaligned reading of bytes that are already
+    # spoken for. Recompiling from there splits the real block at a boundary
+    # that is not an instruction boundary and corrupts it -- which is how an
+    # earlier version of this pass broke a working playthrough by seeding
+    # 000400 in the middle of the 4-byte instruction at 0003FE.
+    interior = set()
+    for a, rec in insns.items():
+        for off in range(2, rec[0], 2):
+            interior.add(a + off)
+
+    found = {}
+    for base, tg in runs:
+        if any(t in insns for t in tg):              # anchored in known code
+            for t in tg:
+                if t not in insns and t not in interior:
+                    found.setdefault(t, base)
+    return found
+
+
 def main(path):
     d = open(path, "rb").read()
     t = Tracer(d)
@@ -245,15 +325,37 @@ def main(path):
                 if tg not in t.insns:
                     added += 1
                 t.add(tg, site, True)
+        for tg, tbl in ({} if os.environ.get('NO_PTR') else pointer_tables(d, t.insns, t.md)).items():
+            if tg not in t.insns:
+                added += 1
+                t.add(tg, tbl, True)
         before = len(t.insns)
         if t.pending:
             t.trace(t.pending.pop())
         while t.pending:
             t.trace(t.pending.pop())
         grown = len(t.insns) - before
-        print("round %2d: +%d tables, +%d instructions" % (rnd, len(new_sites), grown))
+        print("round %2d: +%d tables, +%d seeds, +%d instructions"
+              % (rnd, len(new_sites), added, grown))
         if not new_sites and grown == 0:
             break
+
+    # Overlapping decodes: an instruction address that lands strictly inside
+    # another means two instruction streams claim the same bytes. A few are
+    # expected (data reached by more than one path), but a jump in this number
+    # means a seeding pass is inventing misaligned entry points -- recompiling
+    # from one splits a real block at a non-instruction boundary and corrupts
+    # it. This is reported because a pointer-table pass once pushed it from 25
+    # to 58 and broke a working playthrough with no other visible signal.
+    _addrs = sorted(t.insns)
+    _ov = 0
+    for _i, _a in enumerate(_addrs):
+        _end = _a + t.insns[_a][0]
+        _j = _i + 1
+        while _j < len(_addrs) and _addrs[_j] < _end:
+            _ov += 1
+            _j += 1
+    print("overlapping decodes  : %d" % _ov)
 
     covered = sum(sz for sz, _, _ in t.insns.values())
     unres = [(a, s) for a, s in t.indirect if a not in tables]
