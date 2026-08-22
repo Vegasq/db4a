@@ -13,7 +13,13 @@
 # Regenerate/extend with:  SCENARIO=house ./tools/bootstrap.sh 40
 
 0008C0
+00097E
 006E78
+007468
+007504
+0075B0
+00764E
+008534
 00C652
 00C7CC
 00D012
