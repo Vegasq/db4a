@@ -179,7 +179,61 @@ while scrolling, sprites appearing or vanishing at the new boundaries, and
 whether the wider view makes the cursor's inability to reach the new area feel
 wrong.
 
+## Result: it works, but only while the camera is still
+
+Implemented and flag-gated. Gameplay anchors the HUD flush right with its
+backdrop aligned, menus are centred and pillarboxed, and the 320 path is
+byte-identical to before.
+
+**And it is not shippable, for a reason no amount of design would have found.**
+
+While the camera scrolls, the extra columns show **stale tilemap** — content
+left over from where the camera used to be. Driving the cursor hard left and
+then right from the mid-mission state puts a building fragment at the far left
+edge that does not belong there.
+
+This was measured at four widths, and every one of them shows it:
+
+| Extra width | Result while scrolling |
+|---|---|
+| +16 px | sliver of stale content at the left edge |
+| +32 px | clearly visible |
+| +48 px | clearly visible |
+| +80 px | a whole building fragment |
+
+**The game maintains no usable margin.** The planes are 512 px wide, but the
+game only writes tiles for the 320 px it believes are visible, leaving the rest
+as whatever was there when the camera was somewhere else. The 192 px of "slack"
+that made this look easy is a ring buffer, not spare map.
+
+It looks correct at frame 6000 because the camera has been stationary long
+enough for the surrounding columns to be whatever was last drawn there. That is
+luck, not a property to build on.
+
+### Where that leaves it
+
+Three ways forward, none of them small:
+
+1. **Repurpose the extra width for the HUD** rather than for more map. The world
+   keeps its valid 320 columns and the HUD moves out of them, so the player
+   gains the map currently hidden *underneath* the HUD. Artifact-free, because
+   nothing new is sampled from the tilemap. The catch is plane B's black
+   rectangle behind the minimap, which stays in the map area and would need
+   filling or leaving as a hole.
+2. **Make the game maintain a wider tilemap** by patching its update routine.
+   This is real reverse engineering, and it crosses from presentation into
+   modifying the game, which breaks the reference oracle.
+3. **Reconstruct the edge columns** from the game's own map data in RAM, which
+   needs the map format worked out first.
+
+Option 1 is the only one that stays on the presentation side of the line.
+
+The current implementation is kept, behind `DB4A_WIDE`, because it is the
+evidence for all of the above and because it is genuinely fine in a static
+scene. It should not become a default or be advertised as working.
+
 ## Plan
+
 
 1. `fb_width` as a runtime value; `FB_W` becomes the maximum. Verify 320 output
    is byte-identical to before — `make compare-screen` and the mission replay.

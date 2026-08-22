@@ -271,7 +271,12 @@ int main(int argc, char **argv) {
                               printf("resumed %s at frame %u\n", lp, nf); }
                 else printf("could not load %s (code %d)\n", lp, r); } }
 
-    Uint64 t0 = SDL_GetTicks64();
+    /* Anchor pacing to the frame we are STARTING from, not to zero. The frame
+       delay is computed as t0 + frames/PAL_HZ, so resuming a state at frame
+       6001 without this puts the first target two minutes in the future and
+       the window sleeps instead of running -- which looks exactly like a
+       hang. */
+    Uint64 t0 = SDL_GetTicks64() - (Uint64)(frames * 1000.0 / PAL_HZ);
     while (running) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -312,6 +317,7 @@ int main(int argc, char **argv) {
                         uint32_t nf = 0;
                         int r = savestate_read(sp, &npc, &nf);
                         if (r == 0) { pc = npc; frames = nf;
+                                      t0 = SDL_GetTicks64() - (Uint64)(frames * 1000.0 / PAL_HZ);
                                       printf("state loaded from %s (frame %u)\n", sp, nf); }
                         else printf("could not load %s (%s)\n", sp,
                                     r == -2 ? "not a db4a state, or a different version"

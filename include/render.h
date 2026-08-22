@@ -11,6 +11,7 @@
 extern uint8_t FB[FB_H][FB_W][3];
 extern int fb_width;      /* live width, <= FB_W */
 int render_world_offset(void);
+int render_widescreen_gameplay(void);
 /* Scroll state is latched per scanline while the frame executes, because the
    game changes vertical scroll mid-frame and a real VDP uses the value in
    effect at each line. Call render_line_latch(line) at the START of each
