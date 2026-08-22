@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include "vdp.h"
 #include "render.h"
+#include "hal.h"
 #include <string.h>
 
 uint8_t FB[FB_H][FB_W][3];
@@ -202,26 +203,50 @@ static int16_t vscroll_latched(unsigned line, unsigned col, int plane_b) {
  * for a high-priority sprite in the sidebar region. That is a direct
  * observation of the thing that matters rather than a guess from scroll values
  * or the window registers, which are identical on every screen in this game. */
-#define HUD_X 240
+/* Which scene are we in?
+ *
+ * The game's main loop dispatches through a function pointer at $FFFFE002, so
+ * that pointer IS the scene identifier -- far more reliable than inferring the
+ * scene from what happens to be on screen. Observed across a full playthrough
+ * and all three houses:
+ *
+ *     006D0C  gameplay                 017C32  publisher logos
+ *     00608E  gameplay, placing a building   024724  mentat / world map
+ *     00B540  gameplay                 024812  house select
+ *     000000  cutscenes and transitions      004500  transitions
+ *
+ * All three houses use 006D0C, so this is not Atreides-specific.
+ *
+ * DB4A_WIDE_SCENES overrides the gameplay set as comma-separated hex, for a
+ * mission or a house that turns out to use a handler not listed here. */
+static uint32_t scene_id(void) {
+    size_t rl;
+    const uint8_t *r = hal_ram_ptr(&rl);
+    if (!r || rl < 0x10000) return 0;
+    return ((uint32_t)r[0xE002] << 24) | ((uint32_t)r[0xE003] << 16)
+         | ((uint32_t)r[0xE004] << 8)  |  (uint32_t)r[0xE005];
+}
 
-static int hud_present(void) {
-    uint32_t sat = (uint32_t)(VDP.reg[5] & 0x7F) << 9;
-    unsigned idx = 0;
-    for (unsigned n = 0; n < 80; n++) {
-        const uint8_t *p = &VDP.vram[(sat + idx * 8u) & 0xFFFF];
-        int sy = (int)(((p[0] << 8) | p[1]) & 0x3FF) - 128;
-        uint16_t att = (uint16_t)((p[4] << 8) | p[5]);
-        int sx = (int)(((p[6] << 8) | p[7]) & 0x1FF) - 128;
-        unsigned link = p[3] & 0x7F;
-        if ((att >> 15) & 1 && sx >= HUD_X && sx < 320 && sy >= 0 && sy < FB_H)
-            return 1;
-        if (!link) break;
-        idx = link;
+static int scene_is_gameplay(void) {
+    static uint32_t list[16];
+    static int n = -1;
+    if (n < 0) {
+        const char *e = getenv("DB4A_WIDE_SCENES");
+        n = 0;
+        if (e) {
+            char buf[128];
+            snprintf(buf, sizeof buf, "%s", e);
+            for (char *t = strtok(buf, ","); t && n < 16; t = strtok(NULL, ","))
+                list[n++] = (uint32_t)strtoul(t, NULL, 16);
+        }
+        if (!n) { list[0] = 0x006D0Cu; list[1] = 0x00608Eu; list[2] = 0x00B540u; n = 3; }
     }
+    uint32_t s = scene_id();
+    for (int i = 0; i < n; i++) if (s == list[i]) return 1;
     return 0;
 }
 
-int render_widescreen_gameplay(void) { return fb_width > 320 && hud_present(); }
+int render_widescreen_gameplay(void) { return fb_width > 320 && scene_is_gameplay(); }
 
 int render_world_offset(void) {
     int extra = fb_width - 320;
