@@ -11,8 +11,18 @@ cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
 P=$(python3 tests/playthrough.py mission --emit-press | head -1)
 
-env DB4A_MOUSE_TARGET=160,110 DB4A_PRESS="$P" DB4A_HOLD=6 \
-    DB4A_SHOTS=6000 DB4A_PPM=build/mousetest ./build/db4a "$ROM" 6100 >/dev/null
+# Aim inside the map. A target in the sidebar steers the cursor onto the HUD,
+# which legitimately changes what the game does and is not what this tests.
+out=$(env DB4A_MOUSE_TARGET=160,110 DB4A_PRESS="$P" DB4A_HOLD=6 \
+    DB4A_SHOTS=6000 DB4A_PPM=build/mousetest ./build/db4a "$ROM" 6100)
+
+# Steering must never touch the d-pad outside gameplay: menus, briefings and
+# the construction-yard build list are all navigated with it.
+if echo "$out" | grep -q FAIL; then
+    echo "$out" | grep FAIL | head -3
+    exit 1
+fi
+echo "  steering never held the d-pad outside gameplay"
 
 python3 - <<'PY'
 from PIL import Image, ImageStat

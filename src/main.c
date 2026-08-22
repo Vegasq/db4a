@@ -259,7 +259,30 @@ int main(int argc, char **argv) {
                         mt = (e && sscanf(e, "%d,%d", &tx, &ty) == 2) ? 1 : 0;
                         if (mt) mouse_enable(1); }
           if (mt) {
-              mouse_steer(tx, ty);
+              /* Steering runs unconditionally here.
+               *
+               * The SDL frontend gates it on the KEYBOARD state, which is the
+               * correct signal: it distinguishes the player asking for a
+               * direction from steering's own output. Gating on the pad
+               * instead -- as this harness first did -- self-locks, because
+               * steering presses a direction, then sees a direction held and
+               * declines to run, so it never releases it and the pad sticks
+               * for the rest of the session. */
+              {
+                  mouse_steer(tx, ty);
+                  /* In a scene steering does not recognise it must leave the
+                     pad completely alone, or menus become unusable. */
+                  extern int pad_dir_held(void);
+                  uint32_t sc = ((uint32_t)hal_ram_ptr(0)[0xE002] << 24)
+                              | ((uint32_t)hal_ram_ptr(0)[0xE003] << 16)
+                              | ((uint32_t)hal_ram_ptr(0)[0xE004] << 8)
+                              |  hal_ram_ptr(0)[0xE005];
+                  int gameplay = (sc == 0x006D0Cu || sc == 0x00608Eu || sc == 0x00B540u);
+                  if (!gameplay && pad_dir_held()) {
+                      printf("  FAIL frame %u: steering held the d-pad in scene %06X\n",
+                             frames, sc);
+                  }
+              }
               if ((frames % 20) == 0) {
                   int cx, cy; mouse_cursor_pos(&cx, &cy);
                   printf("  frame %5u cursor=(%3d,%3d) scene=%06X\n", frames, cx, cy,
