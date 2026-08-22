@@ -1917,3 +1917,46 @@ difference. The slab itself is pixel-identical.
 
 `make playthrough SCENARIO=slab` now drives an entire gameplay action —
 select, order, build, position, place — and captures every stage.
+
+### Extending to power station and refinery: partial
+
+Extended the scenario with `build_item()` covering all three structures --
+`down` for the slab, `down right` for the power station, `down right right` for
+the refinery.
+
+Running it exposed `$2E314`, another slot of the table at `$2E30E`. The
+slot-seeding added earlier only covers `BRA_B`/`BRA_W` tables and this one's
+first arm is `rts`, so it was not recognised as an instruction table at all.
+The dispatch states the answer outright:
+
+```
+andi.w #$c000, d0      2 bits set -> 4 possible values
+rol.w  #$3, d0         -> offsets 0, 2, 4, 6
+jmp    $2e30e(pc, d0.w)
+```
+
+`enumerate_offsets()` now walks back for a mask bound and the scaling applied
+to that register, enumerates every value the mask allows, and pushes each
+through the scaling. That gives the reachable offsets directly with no guess
+about entry format or size. This closes task 17, which had been filed as
+"infer the stride" -- the fix is enumeration, not a better guess.
+
+Replay discovery then converged in 6 iterations (5 seeds, 47 tracked), and the
+route runs all eleven stages without crashing.
+
+**But only the slab is actually built.** The final frame shows the 2x2 concrete
+block and credits at 976 -- the same value as after the slab alone. No power
+station or refinery appears.
+
+Worth recording how nearly I got this wrong. A credits-hash proxy showed
+changes at the power and refinery stages, which reads as "purchases happened".
+The frame shows otherwise: those were transient display changes. **Four times
+in this task an ad-hoc pixel proxy has given a confident wrong answer** -- a
+progress bar identical across three wait lengths, a stripe detector that missed
+a visible overlay, a stale-file glob, and now this. The reliable moves have
+been looking at the frame and running `compare_screen.sh`.
+
+Likely cause for the missing structures: `build_item()` re-selects the yard
+with `a` for each item, but the interface state after a placement is not the
+same as after arrival, so `down right a` probably does not land on the intended
+item. Needs the same empirical stepping used to find the slab sequence.
