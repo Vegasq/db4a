@@ -77,12 +77,14 @@ def main():
             if addr != cur:
                 break                      # gap: data between instructions
             sz, mn, op = insns[addr]
-            if ROM_BYTES and capstone_misdecodes(ROM_BYTES, addr, mn):
-                raise SystemExit(
-                    "refusing to generate: capstone mis-decodes the register-count "
-                    "ROX form at %06X (%s %s). See tools/recomp.py." % (addr, mn, op))
             try:
-                parsed = ea.parse(op)
+                _raw = ROM_BYTES[addr:addr + sz] if ROM_BYTES else b''
+                parsed = ea.fix_brief(ea.parse(op), _raw)
+                # Corrects the register-count ROX form capstone gets wrong; a
+                # no-op for every other instruction. This used to be a hard
+                # refusal to generate.
+                mn, parsed = ea.fix_shift(mn, parsed, _raw)
+                mn, parsed = ea.fix_btst_imm(mn, parsed, _raw)
                 _, isz = semantics.split_mnemonic(mn)
                 timed.append((mn, parsed, isz or 'w'))
                 stmts = semantics.emit(mn, parsed, semantics.Ctx(addr, sz, addr + sz))

@@ -344,12 +344,20 @@ def _shift(name):
 
 def _bitop(kind):
     """btst/bset/bclr/bchg. Bit number is mod 32 on a data register and mod 8
-    on memory -- a real 68000 rule, since memory bit ops address one byte."""
+    otherwise -- a real 68000 rule, since non-register bit ops address one byte.
+
+    The width follows the DESTINATION REGISTER-ness, not its memory-ness: BTST
+    also accepts an immediate operand, which is neither a register nor memory
+    and is byte-sized. Keying the width off is_mem() alone put that case on the
+    32-bit path and tested the wrong bit. `mem` still gates address generation,
+    which an immediate does not need.
+    """
     def f(mn, sz, ops, ctx):
         src, dst = ops
         mem = ea.is_mem(dst)
-        width = 8 if mem else 32
-        osz = 'b' if mem else 'l'
+        reg = isinstance(dst, ea.DReg)
+        width = 32 if reg else 8
+        osz = 'l' if reg else 'b'
         out = []
         if isinstance(src, ea.Imm):
             bit = "0x%Xu" % (src.v % width)
@@ -381,6 +389,16 @@ def i_movem(mn, sz, ops, ctx):
     a, b = ops
     step = 2 if sz == 'w' else 4
     out = []
+    # MOVEM carries its register mask in the word between the opcode and any
+    # extension word, so a PC-relative source is displaced from instr+4, not
+    # instr+2. Capstone resolves it as instr+2 and lands one word short, which
+    # makes every register load from one slot below where it should.
+    def _pcfix(op):
+        if isinstance(op, ea.PCDisp):
+            return ea.PCDisp(base=op.base + 2)
+        if isinstance(op, ea.PCIdx):
+            return ea.PCIdx(base=op.base + 2, xn=op.xn, xa=op.xa, xl=op.xl)
+        return op
     # A single-register MOVEM prints as a bare register rather than a list.
     def as_list(x):
         if isinstance(x, ea.RegList):
@@ -398,10 +416,21 @@ def i_movem(mn, sz, ops, ctx):
         regs, dst = a.regs, b
         if isinstance(dst, ea.PreDec):
             an = dst.an
+            # If An is itself in the list, the value stored for it is its
+            # ORIGINAL contents, not the running decremented pointer. Reading
+            # the register as the loop goes writes a value that is short by
+            # however far the pointer has already moved.
+            # Only needed when An is in its own list; emitting it
+            # unconditionally leaves an unused variable in most blocks.
+            self_ref = ("a%d" % an) in regs
+            orig = ctx.tmp("mo") if self_ref else None
+            if self_ref:
+                out.append("uint32_t %s = CPU.a[%d];" % (orig, an))
             for r in reversed(_movem_order(regs)):
                 out.append("CPU.a[%d] -= %d;" % (an, step))
+                src = orig if (self_ref and r == ("a%d" % an)) else _reg_c(r)
                 out.append("m68k_write%d(CPU.a[%d], (%s)%s);"
-                           % (BITS[sz], an, ea.CAST[sz], _reg_c(r)))
+                           % (BITS[sz], an, ea.CAST[sz], src))
             return out
         t = _addr(dst, sz, ctx, out)
         for i, r in enumerate(_movem_order(regs)):
@@ -412,19 +441,19 @@ def i_movem(mn, sz, ops, ctx):
     if isinstance(src, ea.PostInc):
         an = src.an
         order = _movem_order(regs)
-        # Walk a temporary cursor rather than An itself: if An appears in the
-        # register list it is loaded from memory, and that loaded value must
-        # survive. Incrementing An after loading it would destroy it.
+        # Walk a temporary cursor, then write it back unconditionally. When An
+        # is in the list the final increment WINS over the value loaded into
+        # it: the vectors show An ending at base + count*size, not holding the
+        # word read from memory. An earlier version preserved the loaded value
+        # instead, which was backwards.
         cur = ctx.tmp("mv")
         out.append("uint32_t %s = CPU.a[%d];" % (cur, an))
-        loads_an = ("a%d" % an) in order
         for r in order:
             out.append("%s = %s;" % (_reg_c(r), _movem_load(sz, cur)))
             out.append("%s += %d;" % (cur, step))
-        if not loads_an:
-            out.append("CPU.a[%d] = %s;" % (an, cur))
+        out.append("CPU.a[%d] = %s;" % (an, cur))
         return out
-    t = _addr(src, sz, ctx, out)
+    t = _addr(_pcfix(src), sz, ctx, out)
     for i, r in enumerate(_movem_order(regs)):
         out.append("%s = %s;" % (_reg_c(r), _movem_load(sz, "%s + %d" % (t, i*step))))
     return out

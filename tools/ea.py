@@ -245,3 +245,102 @@ def post(op, sz):
 
 def is_mem(op):
     return isinstance(op, MEM)
+
+
+def fix_brief(ops, raw):
+    """Correct indexed operands that capstone decoded as 68020 full-format.
+
+    Bit 8 of an extension word selects the full format on the 68020, but on the
+    68000 it is reserved and ignored: the word is ALWAYS brief format with a
+    signed 8-bit displacement in bits 7-0. Capstone honours bit 8 even in
+    M68K_000 mode, swallowing following words and reporting a displacement far
+    outside the 8-bit range.
+
+    A real assembler never sets the bit, so no instruction in the Dune ROM is
+    affected (all 816 indexed operands there decode correctly). Randomly
+    generated test vectors do set it, and so may other games' code.
+
+    Only operands whose extension word really has bit 8 set are touched.
+    """
+    out = []
+    for op in ops:
+        # Capstone's displacement is unreliable whenever bit 8 is set, not just
+        # when it lands outside the 8-bit range: it often renders 0 for what is
+        # really a nonzero brief displacement. Always re-derive from the raw
+        # word. _brief_disp only substitutes when it actually finds a matching
+        # extension word with bit 8 set, so correct decodes are left alone.
+        if isinstance(op, Idx):
+            op = Idx(an=op.an, xn=op.xn, xa=op.xa, xl=op.xl,
+                     d=_brief_disp(raw, op.xn, op.xa, op.xl, op.d))
+        out.append(op)
+    return out
+
+
+def _brief_disp(raw, xn, xa, xl, fallback):
+    """Recover the 8-bit displacement from the real extension word."""
+    want = (int(bool(xa)) << 15) | ((xn & 7) << 12) | (int(bool(xl)) << 11)
+    for j in range(2, len(raw) - 1, 2):
+        ext = (raw[j] << 8) | raw[j + 1]
+        if ext & 0x0100 and (ext & 0xF800) == want:
+            d = ext & 0xFF
+            return d - 0x100 if d & 0x80 else d
+    return fallback
+
+
+_SHIFT_SZ = {0: 'b', 1: 'w', 2: 'l'}
+_SHIFT_TY = {0: 'as', 1: 'ls', 2: 'rox', 3: 'ro'}
+
+
+def fix_shift(mn, ops, raw):
+    """Decode the register-destination shift/rotate family from raw bytes.
+
+    Capstone mis-decodes the register-count ROXR.b form, reporting it as
+    'roxr.l #<n>' -- wrong size AND wrong count source, so it rotates the full
+    longword by an immediate instead of the low byte by a register. That is
+    roughly half of the ROXR.b vectors.
+
+    The encoding here is entirely regular, so rather than diff against capstone
+    and patch up disagreements, decode it outright:
+
+        1110 ccc d ss i tt rrr
+
+    ccc = count (register number when i=1, else immediate with 0 meaning 8),
+    d = direction (1 left), ss = size, i = count source, tt = type,
+    rrr = destination register. Returns (mnemonic, operands) unchanged for
+    anything outside this family, including the ss=3 memory form, which is a
+    different encoding entirely.
+    """
+    if len(raw) < 2:
+        return mn, ops
+    w = (raw[0] << 8) | raw[1]
+    if (w & 0xF000) != 0xE000 or ((w >> 6) & 3) == 3:
+        return mn, ops
+    ccc = (w >> 9) & 7
+    name = "%s%s.%s" % (_SHIFT_TY[(w >> 3) & 3],
+                        'l' if (w >> 8) & 1 else 'r',
+                        _SHIFT_SZ[(w >> 6) & 3])
+    count = DReg(n=ccc) if (w >> 5) & 1 else Imm(v=ccc or 8)
+    return name, [count, DReg(n=w & 7)]
+
+
+def fix_btst_imm(mn, ops, raw):
+    """BTST with an immediate operand is byte-sized.
+
+    BTST is the only bit instruction that accepts an immediate as its operand,
+    and an immediate operand is a byte: one extension word carrying the data in
+    its low half, with the bit number taken modulo 8. Capstone reports the form
+    as 'btst.l' and swallows a full longword, so it tests the wrong bit of the
+    wrong value.
+
+    Only the destination position is considered. In the static form the FIRST
+    operand is also an Imm -- that one is the bit number and must be left alone.
+    """
+    if mn.split('.')[0] != 'btst' or not ops or not isinstance(ops[-1], Imm):
+        return mn, ops
+    w = (raw[0] << 8) | raw[1] if len(raw) >= 2 else 0
+    if (w & 0x3F) != 0x3C:            # destination is not immediate
+        return mn, ops
+    off = 3 if (w & 0x0100) else 5    # dynamic: one word in; static: two
+    if len(raw) <= off:
+        return mn, ops
+    return 'btst.b', ops[:-1] + [Imm(v=raw[off])]

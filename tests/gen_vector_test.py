@@ -37,7 +37,7 @@ void m68k_unimplemented(uint32_t pc){(void)pc;}
 
 static unsigned pass_n, fail_n, run_n;
 static const char *cur_group;
-static unsigned group_fail, this_fail;
+static unsigned group_fail, this_fail, group_bad, group_run;
 
 static void bad(const char *name, const char *what, uint32_t got, uint32_t want) {
     fail_n++; this_fail++;
@@ -49,10 +49,12 @@ static void bad(const char *name, const char *what, uint32_t got, uint32_t want)
     } while (0)
 '''
 
-def emit_test(fn_name, t, insn_addr, insn_size, mnemonic, op_str):
+def emit_test(fn_name, t, insn_addr, insn_size, mnemonic, op_str, raw=b''):
     """C for one vector, or None if we cannot generate code for it."""
     try:
-        ops = ea.parse(op_str)
+        ops = ea.fix_brief(ea.parse(op_str), raw)
+        mnemonic, ops = ea.fix_shift(mnemonic, ops, raw)
+        mnemonic, ops = ea.fix_btst_imm(mnemonic, ops, raw)
         # The real instruction length matters: BSR/JSR push the address of the
         # NEXT instruction, so a hardcoded size gives a wrong return address.
         stmts = semantics.emit(mnemonic, ops,
@@ -95,7 +97,7 @@ def emit_test(fn_name, t, insn_addr, insn_size, mnemonic, op_str):
     for addr, val in sorted(f['ram'].items()):
         out.append('  CKR(N, "mem%06X", MEM[0x%Xu], 0x%02Xu);'
                    % (addr & 0xFFFFFF, addr & 0xFFFFFF, val))
-    out.append("  run_n++; if (!this_fail) pass_n++;")
+    out.append("  run_n++; group_run++; if (!this_fail) pass_n++; else group_bad++;")
     out.append("}")
     return "\n".join(out)
 
@@ -136,7 +138,7 @@ def main():
                 skipped_trap[group] = skipped_trap.get(group, 0) + 1
                 continue
             fn = "t_%s_%d" % (group.replace('.', '_').replace('-', '_'), k)
-            body = emit_test(fn, t, addr, ins.size, ins.mnemonic, ins.op_str)
+            body = emit_test(fn, t, addr, ins.size, ins.mnemonic, ins.op_str, ins.bytes)
             if body is None:
                 skipped[group] = skipped.get(group, 0) + 1
                 continue
@@ -149,12 +151,21 @@ def main():
     src += bodies
     src.append("int main(void) {")
     last = None
+    # Printed failures are capped at 3 per group, so report each group's true
+    # failing-vector count as well -- otherwise a saturated cap reads exactly
+    # like a group with only three problems.
+    tally = ('  if (group_bad) printf("   .. %s: %u/%u vectors failed\\n",'
+             ' cur_group, group_bad, group_run);')
     for group, fn in calls:
         if group != last:
-            src.append('  cur_group = "%s"; group_fail = 0;' % group)
+            if last is not None:
+                src.append(tally)
+            src.append('  cur_group = "%s"; group_fail = 0; group_bad = 0; group_run = 0;' % group)
             src.append('  printf("-- %s\\n");' % group)
             last = group
         src.append("  memset(MEM, 0, sizeof MEM); %s();" % fn)
+    if last is not None:
+        src.append(tally)
     src.append('  printf("\\nvectors: %u/%u passed, %u mismatches\\n", pass_n, run_n, fail_n);')
     src.append("  return fail_n != 0;")
     src.append("}")
