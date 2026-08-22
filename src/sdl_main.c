@@ -10,6 +10,7 @@
 #include "psg.h"
 #include "ym2612.h"
 #include "savestate.h"
+#include "mouse.h"
 
 /* The FM mix peaks well below full scale; lift it to a usable level.
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
@@ -172,6 +173,12 @@ int main(int argc, char **argv) {
     }
 
     { const char *g = getenv("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
+    if (getenv("DB4A_MOUSE")) {
+        mouse_enable(1);
+        SDL_ShowCursor(SDL_ENABLE);
+        printf("mouse control: on -- left=A, right=B, middle=C\n");
+    }
+
     apply_key_overrides();
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
@@ -245,6 +252,20 @@ int main(int argc, char **argv) {
                                 SDL_GetKeyName(e.key.keysym.sym),
                                 SDL_GetScancodeName(e.key.keysym.scancode));
                 }
+            } else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
+                /* Left is A, right is B, middle is C -- the arrangement a modern
+                   RTS player expects, mapped onto the three-button pad. */
+                if (mouse_enabled() && !replaying) {
+                    int down = (e.type == SDL_MOUSEBUTTONDOWN);
+                    int pad = -1;
+                    if (e.button.button == SDL_BUTTON_LEFT)   pad = PAD_A;
+                    else if (e.button.button == SDL_BUTTON_RIGHT)  pad = PAD_B;
+                    else if (e.button.button == SDL_BUTTON_MIDDLE) pad = PAD_C;
+                    if (pad >= 0) {
+                        pad_set(pad, down);
+                        inputlog_record(frames, pad, down);
+                    }
+                }
             } else if (e.type == SDL_CONTROLLERBUTTONDOWN || e.type == SDL_CONTROLLERBUTTONUP) {
                 int down = (e.type == SDL_CONTROLLERBUTTONDOWN);
                 for (int i = 0; i < NGC; i++)
@@ -286,6 +307,13 @@ int main(int argc, char **argv) {
                             SDL_GetScancodeName((SDL_Scancode)i),
                             SDL_GetKeyName(SDL_GetKeyFromScancode((SDL_Scancode)i)));
                 }
+            /* With the mouse driving, it owns the d-pad: the keyboard's
+               direction keys would otherwise fight it every frame. Buttons
+               still work from either. */
+            if (mouse_enabled()) {
+                want[PAD_UP] = want[PAD_DOWN] = want[PAD_LEFT] = want[PAD_RIGHT] = 0;
+                for (int p = 0; p < 4; p++) key_state[p] = 0;
+            }
             for (int p = 0; p < PAD_COUNT; p++)
                 if (want[p] != key_state[p]) {
                     key_state[p] = (uint8_t)want[p];
@@ -301,6 +329,16 @@ int main(int argc, char **argv) {
         int fast = ks_ff[SDL_SCANCODE_GRAVE] || ks_ff[SDL_SCANCODE_F];
 
         if (paused) { SDL_Delay(16); continue; }
+
+        if (mouse_enabled() && !replaying) {
+            /* Window pixels to game pixels, so the mapping survives any window
+               size, scale factor or fullscreen letterboxing. */
+            int wx, wy;
+            SDL_GetMouseState(&wx, &wy);
+            float gx = 0, gy = 0;
+            SDL_RenderWindowToLogical(ren, wx, wy, &gx, &gy);
+            mouse_steer((int)gx, (int)gy);
+        }
 
         if (replaying) inputlog_replay_frame(frames);
         pc = system_frame(pc);
