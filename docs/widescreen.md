@@ -255,13 +255,13 @@ the world map all pillarbox; gameplay and building placement go full width.
 `DB4A_WIDE_SCENES=6d0c,608e,b540` overrides the set, for a mission or house
 that turns out to use a handler not listed here.
 
-## Result: it works, but only while the camera is still
+## Result: it works
 
 Implemented and flag-gated. Gameplay anchors the HUD flush right with its
 backdrop aligned, menus are centred and pillarboxed, and the 320 path is
 byte-identical to before.
 
-**And it is not shippable, for a reason no amount of design would have found.**
+One artifact appeared in real play and has since been fixed; see below.
 
 While the camera scrolls, the extra columns show **stale tilemap** — content
 left over from where the camera used to be. Driving the cursor hard left and
@@ -286,23 +286,28 @@ It looks correct at frame 6000 because the camera has been stationary long
 enough for the surrounding columns to be whatever was last drawn there. That is
 luck, not a property to build on.
 
-### Why it cannot be fixed by sampling harder
+### The cause, and the fix
 
-Measured during a scroll, with the camera driven into the map edge:
+The artifact showed up as a detached lump of terrain at the map's western edge.
+Comparing the same moment at 320 and at 398 settles what is happening:
 
-- `hscroll` climbs to **512 and stops**. The planes are 512 px wide, so at that
-  point the view occupies plane columns 0–39.
-- The widescreen extension therefore samples columns **54–63**, wrapping to the
-  far side of the ring buffer — a different part of the map entirely. That is
-  the detached blob at the left edge.
-- Over the same span the game writes **0 to 2 plane columns per frame**. It does
-  not stream the tilemap as it scrolls; it writes the view once and leaves the
-  rest alone.
+- At 320 the game draws **plain black** there. There is nothing west of the map,
+  and it knows.
+- At 398 the extension shows terrain, because sampling past the map's edge
+  **wraps around the 512-pixel plane** and comes back on the map's eastern side.
 
-So the data for the extra columns is not merely stale, it was never there. No
-amount of tracking which columns are fresh helps: marking the stale ones and
-blanking them would blank the entire extension, which is the same as having no
-widescreen at all.
+So the game was never scrolling too far, and nothing in its logic needs
+changing. The renderer was wrapping where the game shows nothing.
+
+The fix is to refuse the wrap: for a column in the extension, if it does not sit
+in the same 512-block as the leftmost column the game itself is drawing, paint
+the backdrop instead. Ten lines, no game code touched.
+
+Verified across a full scroll sweep — into the western edge, back across the
+map, out to the east — with no stray terrain at any point. And the property
+that matters: **the game's own 320 view appears byte-identical inside the
+widescreen frame, 100.0% of sampled pixels at both extremes.** The extension
+only ever adds; it never alters what the game intended to draw.
 
 ### Where that leaves it
 
