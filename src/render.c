@@ -288,6 +288,25 @@ void render_frame(void) {
             /* Inside the window region the window replaces plane A entirely,
                and is not scrolled. */
             int wx = x - render_world_offset();
+
+            /* Do not let the widescreen extension WRAP around the plane.
+             *
+             * The planes are a 512-pixel ring. The game's own 320 view uses
+             * that wrap legitimately, but the extra columns we add can fall off
+             * the left of the map and reappear as the map's far side -- which
+             * is the stray lump of terrain reported at the map edge. The game
+             * shows plain backdrop there, because there is nothing to the west
+             * of the map, and so should we.
+             *
+             * The test is whether this column sits in the same 512-block as the
+             * leftmost column the game itself is drawing. */
+            if (x < render_world_offset()) {
+                int hs = ((hs_b % 512) + 512) % 512;
+                if (x - render_world_offset() + hs < 0) {
+                    memcpy(FB[y][x], backdrop, 3);
+                    continue;
+                }
+            }
             if (window_covers(wx >> 3, y >> 3))
                 ca = sample_window(wx, y, &pa);
             else
