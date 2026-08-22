@@ -1495,3 +1495,58 @@ reached that screen, whereas the ROM had the answer in an immediate all along.
 
 House-select is still 981 blocks and 68 nametable entries, so it remains its
 own separate fault.
+
+### The A0-return idiom, and three attempts at the right heuristic
+
+Second crash from interactive play: `BAD PC 00049B1E`, reached by pressing B on
+house selection. The trail showed ~60 blocks of a new subsystem executing
+cleanly first.
+
+The cause is a hand-written calling convention:
+
+```
+049B18  lea.l $49b1e(pc), a0     ; load the return address
+049B1C  bra.b $49b4c             ; enter the routine
+049B1E  ...                      ; routine returns here via jmp (a0)
+```
+
+Nothing *branches* to the return point, so recursive descent never reached it.
+(The routine itself is a 32-bit divide built from 16-bit `DIVU`, branching on
+the V flag — the overflow semantics fixed earlier the same day.)
+
+Getting the heuristic right took three goes, each corrected by measurement:
+
+1. **Seed every `lea` target** (validated). +6455 instructions, but
+   `unimplemented` went 0 → **3112**. Real code in this ROM is 100% emittable,
+   so that number is a direct measure of data being decoded as code. Too loose.
+2. **Restrict to nearby PC-relative targets.** Better — 3112 → 771 — but still
+   far from clean.
+3. **Match the idiom exactly**: a PC-relative `lea` whose *immediately
+   following* instruction is an unconditional transfer. **3 seeds.**
+
+Then a second bug surfaced: 769 instructions still would not emit, all of them
+`dc` — capstone's marker for data it could not decode. Unlike a failed decode,
+`dc` "succeeds", so the tracer walked straight through data tables. Added it as
+a stop condition.
+
+That fix appeared to do nothing, because the mnemonic is `dc.w`, not `dc` — and
+the check I wrote to *verify* the fix had the identical blind spot, so it
+reported "dc count: 0" while 769 sat there. Comparing the base mnemonic fixed
+both.
+
+Final state — precise rather than merely larger:
+
+```
+instructions   : 33147   (+10 over the pre-lea baseline)
+lea seeds      : 3
+state seeds    : 4
+failed decodes : 0
+unimplemented  : 0
+```
+
+Verified: title screen 100.00% exact, world map path no longer crashes
+(1287 blocks, 2094 nametable entries), three suites green, vectors 4666/4710.
+
+**`unimplemented` turned out to be the useful signal throughout.** It is a
+proxy for "am I decoding data as code" that costs nothing to read, and it was
+what refuted attempts 1 and 2 within seconds each.

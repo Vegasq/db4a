@@ -80,8 +80,12 @@ class Tracer:
                     self.bad.append(pc)
                     break
                 m, op = ins.mnemonic, ins.op_str
-                if jumptab.is_impossible(op):
-                    # 68020+ addressing cannot occur here; these bytes are data.
+                if m.split('.')[0] == 'dc' or jumptab.is_impossible(op):
+                    # 'dc' is capstone's marker for data it could not decode,
+                    # and 68020+ addressing cannot occur on this CPU. Either way
+                    # these bytes are not code, so stop following this path --
+                    # 'dc' in particular "decodes successfully", so without an
+                    # explicit stop it walks straight through a data table.
                     self.bad.append(pc)
                     break
                 self.insns[pc] = (ins.size, m, op)
@@ -109,6 +113,46 @@ def main(path):
         v = struct.unpack(">I", d[i*4:i*4+4])[0]
         if v < ROM_END:
             t.trace(v)
+
+    # Hand-written routines in this ROM use an A0-return convention:
+    #     lea.l $49b1e(pc), a0     ; load the return address
+    #     bra.b $49b4c             ; enter the routine
+    #     049b1e: ...              ; which returns via jmp (a0)
+    # Nothing branches to the return point, so recursive descent never reaches
+    # it and execution dies there at runtime. Every lea target is therefore a
+    # candidate entry point, vetted with the same validity probe used for
+    # guard-less jump tables. Over-discovery is cheap -- a block that is really
+    # data is simply never entered -- whereas under-discovery is a crash.
+    lea_seeds = 0
+    order = sorted(t.insns)
+    for idx, a in enumerate(order):
+        sz, mn, op = t.insns[a]
+        if not mn.startswith('lea'):
+            continue
+        # Match the idiom exactly rather than approximately: a PC-relative lea
+        # IMMEDIATELY followed by an unconditional transfer.
+        #     lea.l $49b1e(pc), a0
+        #     bra.b $49b4c
+        # Distance heuristics were too loose -- seeding every nearby lea target
+        # dragged in data tables, leaving 771 instructions the generator could
+        # not emit where real code here is 100% emittable.
+        nxt = a + sz
+        if nxt not in t.insns:
+            continue
+        nmn = t.insns[nxt][1].split('.')[0]
+        if nmn not in ('bra', 'jmp', 'bsr', 'jsr'):
+            continue
+        m = re.match(r'^\$([0-9a-f]+)\(pc\), a[0-7]$', op.strip())
+        if not m:
+            continue
+        tgt = int(m.group(1), 16)
+        if not (0 < tgt < ROM_END) or (tgt & 1) or tgt in t.insns:
+            continue
+        if jumptab.probe_valid(t.md, d, tgt):
+            t.trace(tgt)
+            lea_seeds += 1
+    if lea_seeds:
+        print("lea targets seeded    : %d" % lea_seeds)
 
     # The game's state machine dispatches through a function pointer in RAM
     # ($FFFFE002), and several handlers are installed with a literal address:

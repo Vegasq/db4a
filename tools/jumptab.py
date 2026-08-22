@@ -80,7 +80,7 @@ def probe_valid(md, d, addr, depth=8):
             ins = next(md.disasm(d[pc:pc+16], pc, 1))
         except StopIteration:
             return pc != addr          # ok if we decoded at least one
-        if is_impossible(ins.op_str):
+        if ins.mnemonic.split('.')[0] == 'dc' or is_impossible(ins.op_str):
             return False
         m = ins.mnemonic.split('.')[0]
         if m in ("rts", "rte", "rtr", "bra", "jmp", "illegal"):
