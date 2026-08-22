@@ -185,11 +185,49 @@ static int16_t vscroll_latched(unsigned line, unsigned col, int plane_b) {
     return (int16_t)LATCH[line].vsram[idx % VSRAM_SIZE];
 }
 
-/* Widescreen shifts the world left by half the extra width, so the original
-   320-pixel view stays exactly where it was and the new pixels are added
-   symmetrically. Without this every existing screenshot and recording would
-   appear to jump sideways. See docs/widescreen.md. */
-int render_world_offset(void) { return (fb_width - 320) / 2; }
+/* Widescreen anchoring.
+ *
+ * In GAMEPLAY the HUD is right-anchored and its backdrop lives in plane B: the
+ * credits, portraits and minimap frame are sprites at x >= 240, and plane B has
+ * a black rectangle punched behind the minimap. Shifting everything right by
+ * the FULL extra width keeps the HUD flush against the edge with its backdrop
+ * aligned underneath, because sprites and planes move together. The new view
+ * then appears on the left, which is what a right-anchored HUD wants.
+ *
+ * MENUS are 320-wide compositions with nothing to anchor. Shifting them right
+ * just leaves them lopsided, so they are centred and the surplus is left as
+ * pillarbox, which reads as deliberate rather than broken.
+ *
+ * Telling the two apart: gameplay is exactly when the HUD is on screen, so look
+ * for a high-priority sprite in the sidebar region. That is a direct
+ * observation of the thing that matters rather than a guess from scroll values
+ * or the window registers, which are identical on every screen in this game. */
+#define HUD_X 240
+
+static int hud_present(void) {
+    uint32_t sat = (uint32_t)(VDP.reg[5] & 0x7F) << 9;
+    unsigned idx = 0;
+    for (unsigned n = 0; n < 80; n++) {
+        const uint8_t *p = &VDP.vram[(sat + idx * 8u) & 0xFFFF];
+        int sy = (int)(((p[0] << 8) | p[1]) & 0x3FF) - 128;
+        uint16_t att = (uint16_t)((p[4] << 8) | p[5]);
+        int sx = (int)(((p[6] << 8) | p[7]) & 0x1FF) - 128;
+        unsigned link = p[3] & 0x7F;
+        if ((att >> 15) & 1 && sx >= HUD_X && sx < 320 && sy >= 0 && sy < FB_H)
+            return 1;
+        if (!link) break;
+        idx = link;
+    }
+    return 0;
+}
+
+int render_widescreen_gameplay(void) { return fb_width > 320 && hud_present(); }
+
+int render_world_offset(void) {
+    int extra = fb_width - 320;
+    if (extra <= 0) return 0;
+    return render_widescreen_gameplay() ? extra : extra / 2;
+}
 
 void render_frame(void) {
     uint32_t nt_a = (uint32_t)(VDP.reg[2] & 0x38) << 10;
@@ -210,7 +248,12 @@ void render_frame(void) {
         int have = ((unsigned)y < latched);
         int16_t hs_a = have ? LATCH[y].hs_a : hscroll_for((unsigned)y, 0);
         int16_t hs_b = have ? LATCH[y].hs_b : hscroll_for((unsigned)y, 1);
+        int pillar = render_widescreen_gameplay() ? 0 : (fb_width - 320) / 2;
         for (int x = 0; x < fb_width; x++) {
+            if (pillar && (x < pillar || x >= pillar + 320)) {
+                memset(FB[y][x], 0, 3);      /* bars, not stretched content */
+                continue;
+            }
             int16_t vs_a = have ? vscroll_latched((unsigned)y, (unsigned)(x - render_world_offset()), 0)
                                 : vscroll_for((unsigned)x, 0);
             int16_t vs_b = have ? vscroll_latched((unsigned)y, (unsigned)(x - render_world_offset()), 1)
