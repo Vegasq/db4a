@@ -76,8 +76,51 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch) {
         }
     }
 }
-static void audio_cb(int16_t l, int16_t r) { (void)l; (void)r; }
-static size_t audio_batch_cb(const int16_t *d, size_t f) { (void)d; return f; }
+/* DB4A_WAV=out.wav captures the reference core's audio, so our output can be
+   compared against it directly instead of judged by ear. The core emits
+   interleaved stereo at its own rate, reported in retro_system_av_info. */
+static FILE *AWAV;
+static unsigned long AWAV_FRAMES;
+
+static void wav_open(const char *path, unsigned rate) {
+    AWAV = fopen(path, "wb");
+    if (!AWAV) return;
+    uint8_t h[44] = {0};
+    memcpy(h, "RIFF", 4); memcpy(h + 8, "WAVEfmt ", 8);
+    h[16] = 16; h[20] = 1; h[22] = 2;
+    h[24] = (uint8_t)rate; h[25] = (uint8_t)(rate >> 8);
+    h[26] = (uint8_t)(rate >> 16); h[27] = (uint8_t)(rate >> 24);
+    uint32_t bps = rate * 4;
+    h[28] = (uint8_t)bps; h[29] = (uint8_t)(bps >> 8);
+    h[30] = (uint8_t)(bps >> 16); h[31] = (uint8_t)(bps >> 24);
+    h[32] = 4; h[34] = 16;
+    memcpy(h + 36, "data", 4);
+    fwrite(h, 1, 44, AWAV);
+}
+
+static void wav_close(void) {
+    if (!AWAV) return;
+    uint32_t data = (uint32_t)(AWAV_FRAMES * 4), riff = data + 36;
+    uint8_t v[4];
+    v[0]=(uint8_t)riff; v[1]=(uint8_t)(riff>>8); v[2]=(uint8_t)(riff>>16); v[3]=(uint8_t)(riff>>24);
+    fseek(AWAV, 4, SEEK_SET);  fwrite(v, 1, 4, AWAV);
+    v[0]=(uint8_t)data; v[1]=(uint8_t)(data>>8); v[2]=(uint8_t)(data>>16); v[3]=(uint8_t)(data>>24);
+    fseek(AWAV, 40, SEEK_SET); fwrite(v, 1, 4, AWAV);
+    fclose(AWAV); AWAV = NULL;
+    printf("wrote %lu audio frames\n", AWAV_FRAMES);
+}
+
+static void audio_cb(int16_t l, int16_t r) {
+    if (!AWAV) return;
+    int16_t f[2] = { l, r };
+    fwrite(f, sizeof f[0], 2, AWAV);
+    AWAV_FRAMES++;
+}
+
+static size_t audio_batch_cb(const int16_t *d, size_t f) {
+    if (AWAV && d) { fwrite(d, sizeof(int16_t) * 2, f, AWAV); AWAV_FRAMES += f; }
+    return f;
+}
 /* Scripted input, same "frame:button" syntax as the native build's
    DB4A_PRESS, so both sides can be driven identically. Comparing anything
    past the title screen is meaningless unless the reference receives the
@@ -227,8 +270,11 @@ int main(int argc, char **argv) {
 
     struct retro_system_av_info av;
     retro_get_system_av_info(&av);
-    printf("reference core: %ux%u, %.2f fps\n",
-           av.geometry.base_width, av.geometry.base_height, av.timing.fps);
+    printf("reference core: %ux%u, %.2f fps, %.0f Hz audio\n",
+           av.geometry.base_width, av.geometry.base_height,
+           av.timing.fps, av.timing.sample_rate);
+    { const char *wp = getenv("DB4A_WAV");
+      if (wp) wav_open(wp, (unsigned)av.timing.sample_rate); }
 
     load_replay(getenv("DB4A_REPLAY"));
     if (!nrep) {
@@ -287,6 +333,7 @@ int main(int argc, char **argv) {
            PIXFMT == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" :
            PIXFMT == RETRO_PIXEL_FORMAT_RGB565   ? "RGB565"   : "0RGB1555");
 
+    wav_close();
     if (argc > 4 && have_frame) {
         FILE *o = fopen(argv[4], "wb");
         fprintf(o, "P6\n%u %u\n255\n", FBW, FBH);

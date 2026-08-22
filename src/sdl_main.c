@@ -8,6 +8,12 @@
 #include "vdp.h"
 #include "render.h"
 #include "psg.h"
+#include "ym2612.h"
+
+/* The FM mix peaks well below full scale; lift it to a usable level.
+   DB4A_GAIN overrides for anyone who wants it louder or quieter. */
+#define AUDIO_GAIN audio_gain
+static int audio_gain = 4;
 #include "input.h"
 #include "system.h"
 #include "invariant.h"
@@ -153,7 +159,7 @@ int main(int argc, char **argv) {
         SDL_zero(want);
         want.freq     = PSG_RATE;
         want.format   = AUDIO_S16SYS;
-        want.channels = 1;
+        want.channels = 2;
         want.samples  = 1024;
         audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
         if (!audio)
@@ -164,6 +170,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    { const char *g = getenv("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
     apply_key_overrides();
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
@@ -266,11 +273,34 @@ int main(int argc, char **argv) {
            window was dragged, or a frame took too long -- drop the backlog
            rather than let latency grow without bound. */
         if (audio) {
-            int16_t buf[4096];
-            size_t n;
-            while ((n = psg_read_samples(buf, 4096)) > 0)
-                SDL_QueueAudio(audio, buf, (Uint32)(n * sizeof buf[0]));
-            if (SDL_GetQueuedAudioSize(audio) > PSG_RATE / 4 * sizeof(int16_t))
+            /* Mix both chips, same as the headless WAV path. The YM2612 is
+               stereo with per-channel panning; the PSG is mono and goes to
+               both sides. Reading only the PSG -- which this did at first --
+               plays silence, because Dune mutes it and drives everything
+               through the FM chip. */
+            int16_t ybuf[8192], pbuf[4096], mix[8192];
+            size_t yn = ym_read_samples(ybuf, 8192);
+            size_t pn = psg_read_samples(pbuf, 4096);
+            size_t frames_out = yn / 2;
+            if (pn > frames_out) frames_out = pn;
+            if (frames_out > 4096) frames_out = 4096;
+            for (size_t i = 0; i < frames_out; i++) {
+                int32_t l = (i * 2 + 1 < yn) ? ybuf[i * 2]     : 0;
+                int32_t r = (i * 2 + 1 < yn) ? ybuf[i * 2 + 1] : 0;
+                int32_t p = (i < pn) ? pbuf[i] : 0;
+                l = (l + p) * AUDIO_GAIN;
+                r = (r + p) * AUDIO_GAIN;
+                if (l >  32767) l =  32767;
+                if (l < -32768) l = -32768;
+                if (r >  32767) r =  32767;
+                if (r < -32768) r = -32768;
+                mix[i * 2]     = (int16_t)l;
+                mix[i * 2 + 1] = (int16_t)r;
+            }
+            if (frames_out)
+                SDL_QueueAudio(audio, mix, (Uint32)(frames_out * 2 * sizeof mix[0]));
+            /* Drop a backlog rather than let latency grow without bound. */
+            if (SDL_GetQueuedAudioSize(audio) > PSG_RATE * 2 * sizeof(int16_t) / 4)
                 SDL_ClearQueuedAudio(audio);
         }
 
