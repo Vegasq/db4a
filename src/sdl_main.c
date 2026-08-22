@@ -141,8 +141,23 @@ int main(int argc, char **argv) {
     SDL_Window *win = SDL_CreateWindow("Dune: The Battle for Arrakis",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         FB_W * scale, FB_H * scale, SDL_WINDOW_RESIZABLE);
+    /* Fullscreen uses the DESKTOP flavour: it keeps the current display mode
+       and scales into it rather than changing the monitor's resolution, so
+       there is no mode switch and alt-tab behaves. */
+    if (getenv("DB4A_FULLSCREEN"))
+        SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
+
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    SDL_RenderSetLogicalSize(ren, FB_W, FB_H);        /* integer-ish scaling */
+    /* Logical size makes SDL scale and letterbox, so aspect holds at any window
+       size or screen shape. It scales FRACTIONALLY though, which on pixel art
+       shows as uneven edges -- most obvious in fullscreen, where the factor is
+       rarely whole. DB4A_INTEGER=1 restricts it to whole multiples: cleaner,
+       at the cost of a wider border. */
+SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
+    if (getenv("DB4A_INTEGER")) {
+        SDL_RenderSetIntegerScale(ren, SDL_TRUE);
+        printf("integer scaling: on\n");
+    }        /* integer-ish scaling */
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGB24,
         SDL_TEXTUREACCESS_STREAMING, FB_W, FB_H);
 
@@ -221,6 +236,12 @@ int main(int argc, char **argv) {
                    while the key was still held. Polling cannot see repeat at
                    all. Events are still used for quit and for diagnostics. */
                 if (e.key.keysym.sym == SDLK_ESCAPE) running = 0;
+                if (e.type == SDL_KEYDOWN && !e.key.repeat &&
+                    e.key.keysym.sym == SDLK_F11) {
+                    Uint32 fs = SDL_GetWindowFlags(win) & SDL_WINDOW_FULLSCREEN_DESKTOP;
+                    SDL_SetWindowFullscreen(win, fs ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                    printf(fs ? "windowed\n" : "fullscreen\n");
+                }
                 if (e.type == SDL_KEYDOWN && !e.key.repeat) {
                     if (e.key.keysym.sym == SDLK_p) {
                         paused = !paused;
@@ -314,13 +335,6 @@ int main(int argc, char **argv) {
                             SDL_GetScancodeName((SDL_Scancode)i),
                             SDL_GetKeyName(SDL_GetKeyFromScancode((SDL_Scancode)i)));
                 }
-            /* With the mouse driving, it owns the d-pad: the keyboard's
-               direction keys would otherwise fight it every frame. Buttons
-               still work from either. */
-            if (mouse_enabled()) {
-                want[PAD_UP] = want[PAD_DOWN] = want[PAD_LEFT] = want[PAD_RIGHT] = 0;
-                for (int p = 0; p < 4; p++) key_state[p] = 0;
-            }
             for (int p = 0; p < PAD_COUNT; p++)
                 if (want[p] != key_state[p]) {
                     key_state[p] = (uint8_t)want[p];
@@ -337,14 +351,29 @@ int main(int argc, char **argv) {
 
         if (paused) { SDL_Delay(16); continue; }
 
+
+        /* Mouse steering runs after the keyboard has been applied, and only
+           when the keyboard is not asking for a direction. The keyboard always
+           wins: menus the steering does not recognise -- the construction yard
+           build list, for one -- are navigated with the d-pad, and suppressing
+           it whenever mouse mode was on made those unusable. */
         if (mouse_enabled() && !replaying) {
-            /* Window pixels to game pixels, so the mapping survives any window
-               size, scale factor or fullscreen letterboxing. */
-            int wx, wy;
-            SDL_GetMouseState(&wx, &wy);
-            float gx = 0, gy = 0;
-            SDL_RenderWindowToLogical(ren, wx, wy, &gx, &gy);
-            mouse_steer((int)gx, (int)gy);
+            const Uint8 *kd = SDL_GetKeyboardState(NULL);
+            int kbd_dir = 0;
+            for (int i = 0; i < NBINDINGS; i++) {
+                int p = BINDINGS[i].pad;
+                if (p > PAD_RIGHT) continue;
+                SDL_Scancode sc = SDL_GetScancodeFromKey(BINDINGS[i].key);
+                if (kd[BINDINGS[i].scan] ||
+                    (sc != SDL_SCANCODE_UNKNOWN && kd[sc])) { kbd_dir = 1; break; }
+            }
+            if (!kbd_dir) {
+                int wx, wy;
+                SDL_GetMouseState(&wx, &wy);
+                float gx = 0, gy = 0;
+                SDL_RenderWindowToLogical(ren, wx, wy, &gx, &gy);
+                mouse_steer((int)gx, (int)gy);
+            }
         }
 
         if (replaying) inputlog_replay_frame(frames);

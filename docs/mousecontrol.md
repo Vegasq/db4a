@@ -68,12 +68,29 @@ Measured convergence from the mid-mission save state, cursor starting at
 | (250, 60) | (244, 67) | ~200 |
 | (160, 110) | (164, 104) | immediate |
 
-While the mouse is driving, it owns the d-pad — the keyboard's direction keys
-are ignored, since otherwise they fight it every frame. Buttons still work from
-either.
+**The keyboard always wins the d-pad.** Steering only runs when no direction key
+is held. An earlier version suppressed the keyboard's directions whenever mouse
+mode was on, which made every menu the steering does not drive — the
+construction-yard build list among them — impossible to navigate.
+
+That build list is scene `004500`, so steering already declined there; the fault
+was purely that the frontend had taken the arrow keys away.
 
 Outside gameplay the cursor variable holds nothing sensible, so a position far
 off screen is taken as "no cursor in this scene" and the pad is left alone.
+
+## Display
+
+Fullscreen and scaling live here too, since they are wanted regardless of the
+mouse:
+
+```bash
+DB4A_FULLSCREEN=1 make play    # start fullscreen; F11 toggles any time
+DB4A_INTEGER=1 make play       # whole-number pixel scaling
+```
+
+Fullscreen keeps the monitor's current mode and scales into it, so there is no
+mode switch. F11 rather than Alt+Enter, because Alt is bound to the B button.
 
 ## Limits
 
