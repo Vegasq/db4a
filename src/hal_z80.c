@@ -14,6 +14,7 @@
  */
 #include "z80.h"
 #include "psg.h"
+#include "ym2612.h"
 #include "m68k.h"
 #include <stdio.h>
 #include <string.h>
@@ -60,7 +61,7 @@ void hal_z80_write68k(uint32_t a, uint8_t v) {
 /* --- Z80 side --- */
 uint8_t z80_read(uint16_t a) {
     if (a < 0x4000) return z80ram[a & 0x1FFF];
-    if (a < 0x6000) return 0;                       /* YM2612 status: not busy */
+    if (a < 0x6000) return ym_read_status();        /* YM2612 status */
     if (a < 0x8000) return 0;
     /* Banked window into the 68000 bus. */
     uint32_t phys = ((uint32_t)bank << 15) | (a & 0x7FFF);
@@ -73,7 +74,7 @@ void z80_write(uint16_t a, uint8_t v) {
         if ((a & 0x1FF0) == 0x1B20) z80_writes_1b2x++;
         z80ram[a & 0x1FFF] = v; return;
     }
-    if (a < 0x6000) return;                          /* YM2612 -- silent for now */
+    if (a < 0x6000) { ym_write(a & 3, v); return; }  /* YM2612 */
     if (a < 0x6100) {                                /* bank register */
         bank = (uint16_t)(((bank >> 1) | ((v & 1) << 8)) & 0x1FF);
         return;

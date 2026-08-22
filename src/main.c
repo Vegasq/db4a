@@ -3,6 +3,7 @@
 #include "hal.h"
 #include "vdp.h"
 #include "psg.h"
+#include "ym2612.h"
 #include "render.h"
 #include "input.h"
 #include "z80.h"
@@ -71,13 +72,13 @@ int main(int argc, char **argv) {
             uint8_t hdr[44] = {0};
             memcpy(hdr, "RIFF", 4); memcpy(hdr + 8, "WAVEfmt ", 8);
             hdr[16] = 16;                     /* fmt chunk size */
-            hdr[20] = 1;  hdr[22] = 1;        /* PCM, mono */
+            hdr[20] = 1;  hdr[22] = 2;        /* PCM, stereo */
             hdr[24] = (uint8_t)rate; hdr[25] = (uint8_t)(rate >> 8);
             hdr[26] = (uint8_t)(rate >> 16);  hdr[27] = (uint8_t)(rate >> 24);
-            uint32_t bps = rate * 2;
+            uint32_t bps = rate * 4;
             hdr[28] = (uint8_t)bps; hdr[29] = (uint8_t)(bps >> 8);
             hdr[30] = (uint8_t)(bps >> 16); hdr[31] = (uint8_t)(bps >> 24);
-            hdr[32] = 2;                      /* block align */
+            hdr[32] = 4;                      /* block align */
             hdr[34] = 16;                     /* bits per sample */
             memcpy(hdr + 36, "data", 4);
             fwrite(hdr, 1, 44, wav);
@@ -175,11 +176,27 @@ int main(int argc, char **argv) {
         if (m68k_last_unknown) break;
 
         if (wav) {
-            int16_t sbuf[8192];
-            size_t n;
-            while ((n = psg_read_samples(sbuf, 8192)) > 0) {
-                fwrite(sbuf, sizeof sbuf[0], n, wav);
-                wav_samples += n;
+            /* Mix both chips. The YM2612 is stereo with per-channel panning;
+               the PSG is mono and goes to both sides. Both produce at the same
+               rate off the same cycle count, so a frame's worth from each lines
+               up without any resampling here. */
+            int16_t ybuf[8192], pbuf[4096];
+            size_t yn = ym_read_samples(ybuf, 8192);
+            size_t pn = psg_read_samples(pbuf, 4096);
+            size_t frames_out = yn / 2;
+            if (pn > frames_out) frames_out = pn;
+            for (size_t i = 0; i < frames_out; i++) {
+                int32_t l = (i * 2 + 1 < yn) ? ybuf[i * 2]     : 0;
+                int32_t r = (i * 2 + 1 < yn) ? ybuf[i * 2 + 1] : 0;
+                int32_t p = (i < pn) ? pbuf[i] : 0;
+                l += p; r += p;
+                if (l >  32767) l =  32767;
+                if (l < -32768) l = -32768;
+                if (r >  32767) r =  32767;
+                if (r < -32768) r = -32768;
+                int16_t st[2] = { (int16_t)l, (int16_t)r };
+                fwrite(st, sizeof st[0], 2, wav);
+                wav_samples++;
             }
         }
 
@@ -265,8 +282,9 @@ int main(int argc, char **argv) {
     pad_report();
     vdp_dump();
     psg_report();
+    ym_report();
     if (wav) {
-        uint32_t data = (uint32_t)(wav_samples * 2), riff = data + 36;
+        uint32_t data = (uint32_t)(wav_samples * 4), riff = data + 36;
         uint8_t v[4];
         v[0]=(uint8_t)riff; v[1]=(uint8_t)(riff>>8); v[2]=(uint8_t)(riff>>16); v[3]=(uint8_t)(riff>>24);
         fseek(wav, 4, SEEK_SET);  fwrite(v, 1, 4, wav);

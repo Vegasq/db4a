@@ -102,18 +102,18 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/psg.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/psg.o build/ym2612.o \
                build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
-	$(CC) $^ -o $@
+	$(CC) $^ -o $@ -lm
 
 ## play - build and run the interactive SDL build
 play: build/db4a-sdl
 	./build/db4a-sdl "$(ROM)"
 
 build/db4a-sdl: $(COMMON_OBJS) build/sdl_main.o
-	$(CC) $^ -o $@ $(shell pkg-config --libs sdl2)
+	$(CC) $^ -o $@ $(shell pkg-config --libs sdl2) -lm
 
 build/sdl_main.o: src/sdl_main.c include/render.h include/input.h include/hal.h
 	@mkdir -p build
@@ -142,6 +142,10 @@ build/hal_z80.o: src/hal_z80.c include/z80.h include/m68k.h
 build/test_psg: tests/test_psg.c src/psg.c include/psg.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+
+build/ym2612.o: src/ym2612.c include/ym2612.h include/psg.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
 
 build/psg.o: src/psg.c include/psg.h include/hal.h
 	@mkdir -p build

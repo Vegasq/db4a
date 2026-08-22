@@ -4,6 +4,7 @@
 #include "m68k.h"
 #include "hal.h"
 #include "psg.h"
+#include "ym2612.h"
 #include "vdp.h"
 #include "input.h"
 #include <stdio.h>
@@ -75,6 +76,8 @@ static uint8_t io_read8(uint32_t a) {
 
     case 0xA10003: v = pad_read_data(0); break;
     case 0xA10005: v = pad_read_data(1); break;
+    case 0xA04000: case 0xA04001: case 0xA04002: case 0xA04003:
+                   v = ym_read_status(); break;
     case 0xC00004: v = (uint8_t)(vdp_read_status() >> 8); break;
     case 0xC00005: v = (uint8_t)(vdp_read_status() & 0xFF); break;
     case 0xC00006: v = (uint8_t)(vdp_read_status() >> 8); break;
@@ -131,6 +134,8 @@ void m68k_write8(uint32_t a, uint8_t v) {
     case 0xA10009: pad_write_ctrl(0, v); hal_io_writes++; io_tally(a,1); return;
     case 0xA1000B: pad_write_ctrl(1, v); hal_io_writes++; return;
     case 0xC00011: psg_write(v); hal_io_writes++; return;   /* PSG */
+    case 0xA04000: case 0xA04001: case 0xA04002: case 0xA04003:
+        ym_write(a & 3, v); hal_io_writes++; return;              /* YM2612 */
     default: break;
     }
     if (a >= 0xA00000) { hal_io_writes++; return; }

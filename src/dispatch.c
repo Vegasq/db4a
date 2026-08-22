@@ -10,6 +10,7 @@
 #include "invariant.h"
 #include "vdp.h"
 #include "psg.h"
+#include "ym2612.h"
 #include "render.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -216,6 +217,7 @@ uint32_t m68k_run_frame(uint32_t pc) {
         }
     }
     psg_run(CPU.cycles);
+    ym_run(CPU.cycles);
     /* A frame cut short (unknown PC, or a slice that ran long) can leave later
        lines unlatched; fill them so the renderer never mixes latched and live
        state within one frame. */
