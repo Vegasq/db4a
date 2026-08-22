@@ -255,7 +255,28 @@ the world map all pillarbox; gameplay and building placement go full width.
 `DB4A_WIDE_SCENES=6d0c,608e,b540` overrides the set, for a mission or house
 that turns out to use a handler not listed here.
 
-## Result: it works
+## Status: PARKED, still broken in play
+
+Two rounds of fixes made the captured frames look right — the map-edge wrap is
+genuinely gone and the game's own 320 view is provably unaltered inside the
+widescreen frame — but **it still looks wrong in actual play**. Whatever remains
+is not visible in the still frames I was checking against, which is exactly the
+trap this whole feature kept falling into.
+
+Parked deliberately rather than patched further. The renderer is reconstructing
+what the game meant from a tilemap that only ever describes 320 pixels, and each
+fix so far has addressed one symptom of that without changing the underlying
+position. Revisit when more of the game is converted to readable C and the
+camera and tilemap code can be understood directly rather than inferred from
+VRAM, at which point the honest version of this feature — the game itself
+maintaining a wider view — becomes possible.
+
+What is worth keeping from the attempt, all of it independent of widescreen:
+save states, `make explore`, fullscreen, integer scaling, the SDL pacing fix,
+and the scene identifier at `$FFFFE002`, which turned out to be the reliable way
+to know which screen the game is on.
+
+## What working looked like on paper
 
 Implemented and flag-gated. Gameplay anchors the HUD flush right with its
 backdrop aligned, menus are centred and pillarboxed, and the 320 path is
