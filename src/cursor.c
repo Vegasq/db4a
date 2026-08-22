@@ -59,6 +59,8 @@
  */
 #include "native.h"
 #include "m68k.h"
+#include "mouse.h"
+#include "cursor.h"
 #include <stdlib.h>
 
 #define CUR_X    0xFFBF12u
@@ -229,15 +231,64 @@ done:
     CPU.d[0] = d0; CPU.d[1] = d1; CPU.d[2] = d2;
 }
 
+/* Modern mode: scroll only near the screen edge, and ramp the speed with how
+ * far into the margin the pointer is, so easing into the edge creeps and
+ * shoving into it runs. The band has to be wider than the cursor's own clamp
+ * box or there is no room left to generate a distance at all -- see
+ * mouse_clamp_margin(). */
+int cursor_scroll_band(void) {
+    static int v = -1;
+    if (v < 0) {
+        const char *e = getenv("DB4A_MOUSE_EDGE");
+        v = e ? atoi(e) : 24;
+        if (v < 2)  v = 2;
+        if (v > 96) v = 96;
+    }
+    return v;
+}
+
+static int32_t max_speed(void) {
+    static int32_t v = -1;
+    if (v < 0) {
+        const char *e = getenv("DB4A_SCROLL_MAX");
+        /* The cartridge caps at 3 px/frame, which suits a cursor nudged by a
+           d-pad. Mouse control is already a modern mode, and 6 crosses a
+           screen of map in about a second, which is what an RTS feels like. */
+        int px = e ? atoi(e) : 6;
+        if (px < 1)  px = 1;
+        if (px > 15) px = 15;
+        v = (int32_t)px << 16;
+    }
+    return v;
+}
+
 uint32_t native_cursor_scroll(void) {
     CPU.a[0] = CUR_X;                          /* the lea the block opens with */
 
+    int     modern = mouse_enabled();
+    int     m      = cursor_scroll_band();
+    int32_t cap    = modern ? max_speed() : ROM_CAP;
+    int32_t snap   = modern ? cap : ROM_SNAP;
+    int     shift  = ROM_SHIFT;
+
+    if (modern) {
+        /* Pick the gain so that shoving the pointer right into the corner
+           reaches the speed cap, given how deep the cursor is allowed to get.
+           A fixed gain would either crawl with a narrow band or slam with a
+           wide one. */
+        int reach = m - mouse_clamp_margin();
+        if (reach < 1) reach = 1;
+        while (shift > 0 && ((int64_t)reach << (16 - shift)) < cap) shift--;
+    }
+
     struct axis x = { CUR_X, SUB_X, OUT_X, CAM_X, CAM_XMIN, CAM_XMAX,
-                      ROM_X_LO, ROM_X_HI, ROM_SNAP, ROM_CAP, ROM_SHIFT,
-                      58, 72, 30, 20 };
+                      modern ? (int16_t)m : ROM_X_LO,
+                      modern ? (int16_t)(SCREEN_W - m) : ROM_X_HI,
+                      snap, cap, shift, 58, 72, 30, 20 };
     struct axis y = { CUR_Y, SUB_Y, OUT_Y, CAM_Y, CAM_YMIN, CAM_YMAX,
-                      ROM_Y_LO, ROM_Y_HI, ROM_SNAP, ROM_CAP, ROM_SHIFT,
-                      42, 80, 34, 24 };
+                      modern ? (int16_t)m : ROM_Y_LO,
+                      modern ? (int16_t)(SCREEN_H - m) : ROM_Y_HI,
+                      snap, cap, shift, 42, 80, 34, 24 };
     scroll_axis(&x);
     scroll_axis(&y);
 
