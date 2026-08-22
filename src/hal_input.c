@@ -62,6 +62,12 @@ void pad_write_data(int port, uint8_t v) {
     if (ctrl[port] & 0x40) th[port] = (v >> 6) & 1;
 }
 
+/* Is anything currently asking for a direction? Used to let scripted or
+   keyboard input take precedence over mouse steering. */
+int pad_dir_held(void) {
+    return held[PAD_UP] || held[PAD_DOWN] || held[PAD_LEFT] || held[PAD_RIGHT];
+}
+
 uint8_t pad_read_data(int port) {
     pad_reads++;
     if (port != 0) return 0x7F;            /* no pad in port 2 */
