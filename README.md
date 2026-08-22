@@ -106,6 +106,23 @@ make play       # play
 | **`** or **F** | fast-forward while held |
 | Esc | quit |
 
+### Mouse control
+
+```bash
+DB4A_MOUSE=1 make play        # left = A, right = B, middle = C
+```
+
+The cursor goes exactly where you point, and the outer 24 pixels of the screen
+scroll the map. Both are off by default: the cartridge moves its cursor at
+three pixels a frame and starts scrolling a quarter of the way in from each
+edge, which suits a d-pad and cannot be made to follow a mouse.
+
+| | |
+|---|---|
+| `DB4A_MOUSE_EDGE=24` | how deep the scroll band is |
+| `DB4A_SCROLL_MAX=6` | top scroll speed, px/frame (the cartridge's is 3) |
+| `DB4A_SYSCURSOR=1` | keep the system pointer visible over the window |
+
 Gamepads are supported. Any button can be remapped without rebuilding:
 
 ```bash
@@ -151,6 +168,14 @@ immediate, script-interpreter tables reached through an address register,
 anchored tables of absolute pointers. Currently 41107 instructions across 11977
 generated blocks.
 
+**Some game logic is ours.** `src/cursor.c` reimplements the cartridge's
+cursor edge-scrolling in C, so its thresholds are variables rather than
+instruction immediates. A *native override* replaces one basic block with a C
+function that does the same job and returns the same next PC; `make
+check-native` runs both implementations on every call and diffs RAM, registers,
+flags, cycles and the exit PC. `docs/natives.md` covers the method, how to pick
+the next routine, and what an override costs.
+
 **Verification** runs at four levels, described in `docs/verification.md`:
 instruction vectors, machine invariants, frame and memory comparison against
 Genesis-Plus-GX, and the Z80 exercisers.
@@ -166,6 +191,7 @@ make check-z80        # zexdoc
 make check-operands   # every discovered instruction parses
 make check-state      # save a state, resume from it, require an identical frame
 make check-houses     # all three houses load
+make check-native     # C overrides match the cartridge code they replace
 make analyse          # regenerate code discovery from the ROM
 
 # against the reference emulator (needs ref/gpgx, see docs/verification.md)
@@ -189,6 +215,7 @@ src/gen/             generated code (not committed; reproducible)
 src/                 dispatch loop, HAL, VDP, Z80, PSG, YM2612, frontends
 tests/               unit tests and scripted playthroughs
 docs/roadmap.md      goals, acceptance criteria, milestones
+docs/natives.md      replacing cartridge code with C
 docs/verification.md how correctness is established
 docs/journal.md      chronological record, including what went wrong
 CLAUDE.md            working notes and hard-won gotchas
