@@ -83,21 +83,28 @@ static void do_cb(hlctx *x, unsigned *cyc) {
     /* An indexed CB always addresses memory, even when z names a register. */
     if (x->indexed) v = z80_read(xaddr(x));
 
-    if (xx == 0) {
-        uint8_t r = rot(y, v);
-        if (x->indexed) { z80_write(xaddr(x), r); if (z != 6) *REG8[z] = r; }
-        else wr_r(z, x, r);
-        *cyc += (z == 6) ? 15 : 8;
-    } else if (xx == 1) {                       /* BIT */
+    /* Cycle costs here EXCLUDE the fetch z80_step already charged, and for an
+     * indexed form the extra 4 the DD/FD loop charged as well. Adding the full
+     * documented totals on top of those made every non-indexed CB op 4 cycles
+     * heavy -- bit 0,(hl) came to 16 rather than 12. That matters more than it
+     * looks: Dune's sound driver is CPU-bound on the Z80 and spins on exactly
+     * that instruction, so the error slowed the music directly.
+     *
+     *   bit b,r  8    bit b,(hl)  12    bit b,(ix+d)  20
+     *   rot r    8    rot (hl)    15    rot (ix+d)    23   (res/set likewise)
+     */
+    if (xx == 1) {                              /* BIT */
         uint8_t r = (uint8_t)(v & (1u << y));
         Z80.f = (uint8_t)((r ? (r & ZF_S) : (ZF_Z | ZF_P)) | ZF_H | (Z80.f & ZF_C)
               | ((z == 6 || x->indexed) ? 0 : (v & (ZF_Y | ZF_X))));
-        *cyc += (z == 6) ? 12 : 8;
+        *cyc += x->indexed ? 12 : (z == 6 ? 8 : 4);
     } else {
-        uint8_t r = (xx == 2) ? (uint8_t)(v & ~(1u << y)) : (uint8_t)(v | (1u << y));
+        uint8_t r = (xx == 0) ? rot(y, v)
+                  : (xx == 2) ? (uint8_t)(v & ~(1u << y))
+                              : (uint8_t)(v | (1u << y));
         if (x->indexed) { z80_write(xaddr(x), r); if (z != 6) *REG8[z] = r; }
         else wr_r(z, x, r);
-        *cyc += (z == 6) ? 15 : 8;
+        *cyc += x->indexed ? 15 : (z == 6 ? 11 : 4);
     }
 }
 
@@ -290,7 +297,10 @@ unsigned z80_step(void) {
                   xset(&x, h); cyc += 2; break; }
         case 4: wr_r(y, &x, inc8(rd_r(y, &x))); if (y == 6) cyc += 7; break;
         case 5: wr_r(y, &x, dec8(rd_r(y, &x))); if (y == 6) cyc += 7; break;
-        case 6: { uint8_t n = fetch(); wr_r(y, &x, n); cyc += (y == 6) ? 7 : 3; break; }
+        /* LD r,n is 7 and LD (HL),n is 10, both on top of the 4 already
+           charged; the indexed LD (IX+d),n is 19 total. */
+        case 6: { uint8_t n = fetch(); wr_r(y, &x, n);
+                  cyc += (y == 6) ? (x.indexed ? 11 : 6) : 3; break; }
         default:
             switch (y) {
             case 0: case 1: case 2: case 3: {

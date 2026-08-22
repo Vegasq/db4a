@@ -24,7 +24,9 @@
 #define FM_CLOCK_DIV 144u
 #define M68K_HZ      7600489u
 
-unsigned long ym_writes, ym_keyons, dac_writes;
+unsigned long ym_writes, ym_keyons, dac_writes, ta_overflows, ta_polls;
+unsigned long tick_calls, ta_ticks;
+unsigned long ctrl_hist[64];
 
 /* ---------------------------------------------------------------- tables */
 
@@ -298,10 +300,12 @@ static void fm_sample(int32_t *L, int32_t *R) {
 }
 
 static void timers_tick(void) {
+    tick_calls++;
+    if (Y.ta_run) ta_ticks++;
     if (Y.ta_run) {
         if (++Y.ta_count >= 1024u) {
             Y.ta_count = Y.ta_period;
-            if (Y.timer_ctrl & 0x04) Y.ta_flag = 1;
+            if (Y.timer_ctrl & 0x04) { Y.ta_flag = 1; ta_overflows++; }
         }
     }
     if (Y.tb_run) {
@@ -435,12 +439,7 @@ void ym_write(unsigned port, uint8_t v) {
         case 0x25: Y.ta_period = (uint16_t)((Y.ta_period & 0x3FC) | (v & 3)); break;
         case 0x26: Y.tb_period = v; break;
         case 0x27:
-            if (getenv("DB4A_TIMERLOG")) {
-                static unsigned long n;
-                if (n++ < 30)
-                    fprintf(stderr, "[t] 27 <- %02X  loadA=%d enA=%d rstA=%d (period %u)\n",
-                            v, v & 1, (v >> 2) & 1, (v >> 4) & 1, Y.ta_period);
-            }
+            ctrl_hist[v & 0x3F]++;
             Y.timer_ctrl = v;
             if (v & 0x10) Y.ta_flag = 0;          /* reset the overflow flags */
             if (v & 0x20) Y.tb_flag = 0;
@@ -516,6 +515,7 @@ void ym_write(unsigned port, uint8_t v) {
 }
 
 uint8_t ym_read_status(void) {
+    ta_polls++;
     return (uint8_t)((Y.ta_flag ? 1 : 0) | (Y.tb_flag ? 2 : 0));
 }
 
@@ -545,6 +545,9 @@ size_t ym_read_samples(int16_t *out, size_t max) {
 }
 
 void ym_report(void) {
+    printf("ym 0x27 values written:");
+    for (int i = 0; i < 64; i++) if (ctrl_hist[i]) printf(" %02X=%lu", i, ctrl_hist[i]);
+    printf("\n");
     static const char *SN[5] = {"att","dec","sus","rel","off"};
     int cnt[5] = {0,0,0,0,0};
     for (int c = 0; c < 6; c++)
@@ -555,8 +558,8 @@ void ym_report(void) {
     for (int c = 0; c < 6; c++) printf(" ch%d=%X", c, Y.ch[c].keyed);
     printf("\n");
 
-    printf("ym2612  writes=%lu keyons=%lu dacw=%lu dac=%s lfo=%u/%u  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
-           ym_writes, ym_keyons, dac_writes, Y.dac_on ? "on" : "off",
+    printf("ym2612  fmsamples=%lu taticks=%lu overflowsA=%lu polls=%lu writes=%lu keyons=%lu dacw=%lu dac=%s lfo=%u/%u  timerA=%s(%u) timerB=%s(%u)  frames=%zu\n",
+           tick_calls, ta_ticks, ta_overflows, ta_polls, ym_writes, ym_keyons, dac_writes, Y.dac_on ? "on" : "off",
            Y.lfo_on, Y.lfo_rate,
            Y.ta_run ? "run" : "off", Y.ta_period,
            Y.tb_run ? "run" : "off", Y.tb_period, ym_available());
