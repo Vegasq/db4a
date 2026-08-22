@@ -3,6 +3,7 @@
    see what the ROM asks for. Replaced by hal_mem.c / hal_vdp.c at M2. */
 #include "m68k.h"
 #include "hal.h"
+#include "psg.h"
 #include "vdp.h"
 #include "input.h"
 #include <stdio.h>
@@ -129,6 +130,7 @@ void m68k_write8(uint32_t a, uint8_t v) {
     case 0xA10005: pad_write_data(1, v); hal_io_writes++; return;
     case 0xA10009: pad_write_ctrl(0, v); hal_io_writes++; io_tally(a,1); return;
     case 0xA1000B: pad_write_ctrl(1, v); hal_io_writes++; return;
+    case 0xC00011: psg_write(v); hal_io_writes++; return;   /* PSG */
     default: break;
     }
     if (a >= 0xA00000) { hal_io_writes++; return; }

@@ -102,7 +102,7 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/psg.o \
                build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
@@ -139,6 +139,14 @@ build/hal_z80.o: src/hal_z80.c include/z80.h include/m68k.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/test_psg: tests/test_psg.c src/psg.c include/psg.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+
+build/psg.o: src/psg.c include/psg.h include/hal.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/hal_input.o: src/hal_input.c include/input.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -164,10 +172,11 @@ vectors: verify-rom
 	python3 tools/vectors.py "$(ROM)"
 
 ## test - build and run all unit tests
-test: build/test_flags build/test_ea build/test_sem
+test: build/test_flags build/test_ea build/test_sem build/test_psg
 	./build/test_flags
 	./build/test_ea
 	./build/test_sem
+	./build/test_psg
 
 build/test_flags: tests/test_flags.c include/m68k.h
 	@mkdir -p build

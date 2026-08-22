@@ -2,6 +2,7 @@
 #include "m68k.h"
 #include "hal.h"
 #include "vdp.h"
+#include "psg.h"
 #include "z80.h"
 #include "invariant.h"
 
@@ -11,6 +12,7 @@ uint32_t system_reset(const uint8_t *rom, size_t len) {
     hal_set_rom(rom, len);
     hal_reset_ram();
     vdp_reset();
+    psg_reset();
     hal_z80_init();
     invariant_init();
 

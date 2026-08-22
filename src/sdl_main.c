@@ -7,6 +7,7 @@
 #include "hal.h"
 #include "vdp.h"
 #include "render.h"
+#include "psg.h"
 #include "input.h"
 #include "system.h"
 #include "invariant.h"
@@ -125,7 +126,7 @@ int main(int argc, char **argv) {
     uint8_t *rom = load_rom(argv[1], &romlen);
     if (!rom) return 1;
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1;
     }
     SDL_Window *win = SDL_CreateWindow("Dune: The Battle for Arrakis",
@@ -142,6 +143,26 @@ int main(int argc, char **argv) {
     if (gc) printf("gamepad: %s\n", SDL_GameControllerName(gc));
 
     uint32_t pc = system_reset(rom, romlen);
+
+    /* Audio is queued rather than pulled from a callback: the emulator already
+       produces samples in frame-sized bursts, and queueing keeps all the state
+       on this thread. DB4A_MUTE=1 skips opening the device entirely. */
+    SDL_AudioDeviceID audio = 0;
+    if (!getenv("DB4A_MUTE")) {
+        SDL_AudioSpec want, have;
+        SDL_zero(want);
+        want.freq     = PSG_RATE;
+        want.format   = AUDIO_S16SYS;
+        want.channels = 1;
+        want.samples  = 1024;
+        audio = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+        if (!audio)
+            fprintf(stderr, "audio: %s (continuing silent)\n", SDL_GetError());
+        else {
+            SDL_PauseAudioDevice(audio, 0);
+            printf("audio: %d Hz, %d channel(s)\n", have.freq, have.channels);
+        }
+    }
 
     apply_key_overrides();
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
@@ -239,6 +260,18 @@ int main(int argc, char **argv) {
         if (m68k_last_unknown) {
             fprintf(stderr, "no block for PC %06X -- stopping\n", m68k_last_unknown);
             running = 0;
+        }
+
+        /* Drain the chip into the device. If the queue runs long -- the
+           window was dragged, or a frame took too long -- drop the backlog
+           rather than let latency grow without bound. */
+        if (audio) {
+            int16_t buf[4096];
+            size_t n;
+            while ((n = psg_read_samples(buf, 4096)) > 0)
+                SDL_QueueAudio(audio, buf, (Uint32)(n * sizeof buf[0]));
+            if (SDL_GetQueuedAudioSize(audio) > PSG_RATE / 4 * sizeof(int16_t))
+                SDL_ClearQueuedAudio(audio);
         }
 
         render_frame();

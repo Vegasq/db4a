@@ -13,6 +13,7 @@
  *                bank register one bit at a time (9 writes to set a bank)
  */
 #include "z80.h"
+#include "psg.h"
 #include "m68k.h"
 #include <stdio.h>
 #include <string.h>
@@ -77,7 +78,10 @@ void z80_write(uint16_t a, uint8_t v) {
         bank = (uint16_t)(((bank >> 1) | ((v & 1) << 8)) & 0x1FF);
         return;
     }
-    if (a < 0x8000) return;                          /* PSG */
+    if (a < 0x8000) {                                /* PSG at $7F11 */
+        if ((a & 0xFFFF) == 0x7F11) psg_write(v);
+        return;
+    }
     uint32_t phys = ((uint32_t)bank << 15) | (a & 0x7FFF);
     m68k_write8(phys, v);
 }

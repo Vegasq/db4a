@@ -2,6 +2,7 @@
 #include "m68k.h"
 #include "hal.h"
 #include "vdp.h"
+#include "psg.h"
 #include "render.h"
 #include "input.h"
 #include "z80.h"
@@ -229,6 +230,7 @@ int main(int argc, char **argv) {
     invariant_report();
     pad_report();
     vdp_dump();
+    psg_report();
     render_frame();
     { const char *out = getenv("DB4A_PPM");
       if (out && render_write_ppm(out) == 0) printf("wrote framebuffer to %s\n", out); }
