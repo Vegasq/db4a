@@ -316,6 +316,10 @@ int main(int argc, char **argv) {
     printf("cycles emulated   : %llu\n", (unsigned long long)CPU.cycles);
 
     printf("\nblocks executed   : %lu\n", m68k_blocks_run);
+    { extern unsigned long z80_irq_taken, z80_irq_dropped;
+      printf("z80 IRQ taken/dropped: %lu / %lu  (%.1f%% dropped)\n",
+             z80_irq_taken, z80_irq_dropped,
+             100.0 * z80_irq_dropped / (double)(z80_irq_taken + z80_irq_dropped + 1)); }
     { extern unsigned long z80_instructions, z80_pchist[65536];
       printf("z80 instructions  : %lu\n", z80_instructions);
       if (getenv("DB4A_Z80HIST")) {

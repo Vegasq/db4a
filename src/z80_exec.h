@@ -397,14 +397,29 @@ unsigned long z80_pchist[65536];  /* full PC, to find the exact loop */
 
 void z80_run(uint64_t until) {
     while (Z80.cycles < until) {
+        /* Checked before every instruction, because the whole point of a level
+           is that the driver can accept it at any moment while it is held. */
+        if (Z80.irq_line) {
+            if (Z80.cycles >= Z80.irq_until) Z80.irq_line = false;
+            else if (Z80.iff1)               z80_irq();
+        }
         z80_pchist[Z80.pc & 0xFFFF]++;
         z80_step();
         z80_instructions++;
     }
 }
 
+void z80_irq_assert(uint64_t until) {
+    Z80.irq_line  = true;
+    Z80.irq_until = until;
+}
+
+unsigned long z80_irq_taken, z80_irq_dropped;
+
 void z80_irq(void) {
-    if (!Z80.iff1) return;
+    if (!Z80.iff1) { z80_irq_dropped++; return; }
+    z80_irq_taken++;
+    Z80.irq_line = false;                 /* acknowledged */
     Z80.halted = false;
     Z80.iff1 = Z80.iff2 = false;
     push16(Z80.pc);

@@ -202,7 +202,63 @@ So: our sound driver takes 631 more frames to get through its first ~20,520 YM
 writes, and then runs at the correct rate. Whatever gates that first phase is
 the bug.
 
-### What is left
+### Solved: the Z80 interrupt was an edge, not a level
+
+`z80_irq()` was called once per frame from `system_frame` and began:
+
+```c
+if (!Z80.iff1) return;      /* dropped outright */
+```
+
+On hardware the VDP **asserts** the Z80 INT line at the start of the VBlank
+line and releases it at the end of that line -- the reference does exactly this
+in `core/system.c`, `Z80.irq_state = ASSERT_LINE` ... `CLEAR_LINE`. It is a
+level held for a window, so a driver that has interrupts disabled when VBlank
+arrives still takes it the moment it re-enables them. Delivering a single edge
+at the frame boundary instead loses the interrupt whenever `IFF1` happens to be
+clear right then -- and a sound driver disables interrupts constantly.
+
+**32.2% of Z80 interrupts were being dropped.** Taking only 68% of them
+predicts the driver's first phase taking 1/0.68 = 1.47x longer; the measured
+figure was 1.48x. That is the whole bug.
+
+The line is now modelled properly: `z80_irq_assert()` holds it for one
+scanline's worth of Z80 cycles and `z80_run` checks it before every
+instruction, because the point of a level is that it can be accepted at any
+moment while held.
+
+| | before | after | reference |
+|---|---|---|---|
+| Z80 interrupts dropped | 32.2% | **0.0%** | — |
+| interrupts per frame | 0.65 | **0.963** | 1 VBlank/frame |
+| first Timer A enable (FM tick) | 2,064,335 | **1,393,114** | 1,392,052 |
+| Timer A overflows | 139,397 | **273,640** | 273,813 |
+| YM writes | 432,536 | **791,830** | 789,437 |
+| envelope correlation vs reference | 0.541 | **0.803** | 1.0 |
+
+The music now starts within 1062 FM ticks -- 0.02 s, under one frame -- of the
+reference, where it was 12.7 s late.
+
+### What remains
+
+Envelope correlation is 0.803, not 1.0, and our mean level is 931 against the
+reference's 637. With the command stream now matching within 0.3%, that
+residual really is synthesis: levels and the envelope generator, SSG-EG first,
+exactly as this plan originally proposed. That work is now worth doing, and was
+not before.
+
+### Regression this causes: the input recordings are stale
+
+`data/recordings/level1atredis.txt` no longer plays to Victory and
+`tests/defeat.sh` no longer reaches the defeat screen. Both recordings were
+made against the broken timing, and the Z80 can write into 68000 RAM through
+its bank window, so changing when the driver runs changes the game slightly.
+Everything that does not depend on a recording still passes: menus 100.00%
+pixel-exact, gameplay 99.69% unchanged, `check-state`, `check-houses`, zexdoc,
+and the unit tests.
+
+They need re-recording with `make record`, which needs an interactive session.
+
 
 Neither side ever disables Timer A, and both enable it at the same place. So
 after that point the reference issues roughly twice as many writes in the same

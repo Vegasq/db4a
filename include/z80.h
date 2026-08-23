@@ -23,6 +23,13 @@ typedef struct {
     bool     iff1, iff2, halted;
     uint8_t  im;
     uint64_t cycles;
+    /* The INT line is a LEVEL, not an edge. The VDP asserts it at the start of
+       the VBlank line and releases it at the end of that line, so a driver
+       that has interrupts disabled when VBlank arrives still takes it as soon
+       as it re-enables them inside that window. Delivering an edge instead
+       drops the interrupt outright -- 32% of them, for this driver. */
+    bool     irq_line;
+    uint64_t irq_until;
 } z80_t;
 
 extern z80_t Z80;
@@ -30,6 +37,7 @@ extern z80_t Z80;
 void     z80_reset(void);
 unsigned z80_step(void);              /* execute one instruction, return cycles */
 void     z80_run(uint64_t until);     /* run until Z80.cycles >= until */
+void     z80_irq_assert(uint64_t until);  /* hold INT until this Z80 cycle */
 
 /* Z80 and 68000 clocks: master/15 and master/7. */
 #define Z80_NUM 3546893ull
