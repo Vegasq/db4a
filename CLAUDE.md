@@ -464,6 +464,7 @@ exposed them, so both branches get them.
 CLAUDE.md            this file
 Makefile             reproducible analysis + test targets
 include/m68k.h       CPU state, memory interface, flag helpers
+src/buildmenu.c      mouse control inside the build console
 src/cursor.c         first game routine owned in C (see docs/natives.md)
 include/native.h     native-override interface
 tools/semantics.py   SINGLE SOURCE OF TRUTH for instruction semantics
@@ -527,6 +528,7 @@ make check-operands  # every discovered instruction parses
 make check-state     # save a state, resume, require an identical frame
 make check-houses    # all three houses load
 make check-native    # C overrides match the cartridge code they replace
+make check-menu      # pointing at a build-console cell selects it
 make compare-screen SCENARIO=houseselect FRAME=2800    # vs the reference
 make replay REC=data/recordings/level1atredis.txt      # mission 1 won, into mission 2
 ./tests/defeat.sh    # win mission 1, then lose mission 2
