@@ -44,6 +44,7 @@
  * handler at $8462 runs, which the dispatcher sees for free.
  */
 #include "buildmenu.h"
+#include "probe.h"
 #include "input.h"
 #include "hal.h"
 #include <stdlib.h>
@@ -62,19 +63,19 @@
 #define CELL_W 32
 #define CELL_H 24
 
-uint32_t menu_probe_pc;           /* 0 until enabled, so the probe costs nothing */
-
 static int enabled;
-static int ran_this_frame, ran_last_frame;
+static int ran_last_frame;
 static int releasing;             /* the handler is edge-triggered: pulse */
 
-void menu_handler_ran(void) { ran_this_frame = 1; }
-
 void menu_enable(int on) {
+    enabled = menu_mouse_wanted() && on;
+    probe_watch(PROBE_BUILD_CONSOLE, enabled ? MENU_HANDLER : 0);
+}
+
+/* One switch for every menu screen the pointer can drive. */
+int menu_mouse_wanted(void) {
     const char *e = getenv("DB4A_MENU_MOUSE");
-    if (e && *e == '0') on = 0;
-    enabled = on ? 1 : 0;
-    menu_probe_pc = enabled ? MENU_HANDLER : 0;
+    return !(e && *e == '0');
 }
 
 int buildmenu_open(void) { return enabled && ran_last_frame; }
@@ -115,8 +116,7 @@ static void release(void) {
 
 int buildmenu_steer(int px, int py) {
     int was_open = buildmenu_open();
-    ran_last_frame = ran_this_frame;
-    ran_this_frame = 0;
+    ran_last_frame = probe_take(PROBE_BUILD_CONSOLE);
     if (!enabled || !was_open) { releasing = 0; return 0; }
 
     const uint8_t *ram = ram_or_null();

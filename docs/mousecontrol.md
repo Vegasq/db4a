@@ -156,6 +156,15 @@ for its input handler to run. `src/buildmenu.c` and
 While the console is open it owns the d-pad and the map cursor is left alone.
 `DB4A_MENU_MOUSE=0` turns just this part off.
 
+## Before the mission
+
+House selection and the mentat's YES/NO both take the pointer: point at a
+shield or an answer and the highlight goes there, left click confirms. The
+mentat's description and briefing pages have nothing to select and already
+worked, because left click is A. [menus.md](menus.md) has the survey, including
+why the title sequence and the attract mode need nothing and why there is no
+main menu to click.
+
 ## Limits
 
 - **Only during gameplay.** Menus, briefings, the mentat screen and the build

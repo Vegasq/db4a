@@ -12,15 +12,10 @@
  * leaving the rest of mouse control alone.
  */
 
-/* Called by the dispatcher when the console's input handler executes. That is
- * the open/closed signal -- no RAM flag distinguishes the two states. */
-void menu_handler_ran(void);
-
-/* The PC to watch for, or 0 when the feature is off. Read once per block by
- * the dispatch loop, so it is a plain global rather than a call. */
-extern uint32_t menu_probe_pc;
-
 void menu_enable(int on);
+
+/* False when DB4A_MENU_MOUSE=0. Shared by every menu screen. */
+int  menu_mouse_wanted(void);
 
 /* True if the console took input on the frame just simulated. */
 int  buildmenu_open(void);
