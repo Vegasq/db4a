@@ -145,6 +145,17 @@ DB4A_INTEGER=1 make play       # whole-number pixel scaling
 Fullscreen keeps the monitor's current mode and scales into it, so there is no
 mode switch. F11 rather than Alt+Enter, because Alt is bound to the B button.
 
+## The build console
+
+Pointing at an icon in the Construction Yard's console selects it, and left
+click activates it. The console is a 3x6 grid navigated with the d-pad; it is a
+sub-mode of gameplay rather than its own scene, so it is detected by watching
+for its input handler to run. `src/buildmenu.c` and
+[buildmenu.md](buildmenu.md) have the model and the measurements.
+
+While the console is open it owns the d-pad and the map cursor is left alone.
+`DB4A_MENU_MOUSE=0` turns just this part off.
+
 ## Limits
 
 - **Only during gameplay.** Menus, briefings, the mentat screen and the build

@@ -2247,3 +2247,46 @@ there.
 Verified: `make check-native` (9319 calls, 0 mismatched; faithful frames
 identical), all unit tests, `check-state`, `check-houses`, `tests/mouse.sh`,
 the full 27609-frame winning mission, and `tests/defeat.sh`.
+
+## 2026-08-22 — clicking icons in the build console
+
+Extending mouse control from the map into the Construction Yard's build
+console. The research is in `docs/buildmenu.md`; three things are worth
+repeating here.
+
+**It is not a scene.** The obvious approach was to look for a new value at
+`$FFFFE002` and gate on it, the way map steering gates on gameplay. A full
+winning mission produces only eight distinct scenes and the console opens and
+closes entirely inside `00006D0C`, so there was nothing to gate on. What works
+instead is execution rather than state: the console is open exactly when its
+input handler at `$8462` runs, which the dispatcher already sees. No RAM flag
+was found that distinguishes the two states — `$FFBF86`, `$FFBF32`, `$FFBFB4`
+and `$FFC728` all read the same either way, and the cell table keeps its
+contents after the console closes so it cannot be used as a proxy.
+
+**The technique that fixed the map cursor is wrong here.** The map cursor is
+warped by writing `$FFBF12`, so writing `$FFBF8A`/`$FFBF8C` looked like the
+same job. It is the opposite case. The map cursor tolerates a direct write
+precisely because the ROM recomputes everything downstream from it every frame;
+the code after `$84E8` instead writes the item code to `$FFBFA1`, calls `$8302`
+to redraw the preview panel and price, and updates the list scroll. Writing the
+words moves the highlight and leaves the panel describing the previous item. So
+this synthesises presses — and gets hover previews for free, because moving the
+highlight is what makes the game redraw the panel. The objection that sank
+presses for the map cursor does not apply to a 3x6 grid.
+
+**The grid is ragged, so a per-axis walk gets stuck.** The handler refuses to
+move onto a cell holding `$80`, and empty cells are the normal case early in a
+mission when two items are buildable out of eighteen. Stepping down from STOP
+at (0,2) is refused; the walk has to cross the top row first. Each step now
+checks the destination before pressing, and falls back to the other axis.
+
+The byte-write watchpoint was what made this tractable at all: the navigation
+state looked like a byte at `$FFBF8B` and was invisible until `m68k_write8` was
+hooked, at which point it turned out to be a word at `$FFBF8A`.
+
+Verified: `make check-menu` (all three top buttons, both items, an empty cell, a
+point off the grid, and the `DB4A_MENU_MOUSE=0` escape hatch), plus the whole
+suite unchanged — unit tests, `check-native` still bit-exact, `check-state`,
+`check-houses`, `tests/mouse.sh`, the full 27609-frame winning mission and
+`tests/defeat.sh`. Tagged `pre-menu-mouse` beforehand as a revert point.

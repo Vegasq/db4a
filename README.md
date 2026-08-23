@@ -113,7 +113,8 @@ DB4A_MOUSE=1 make play        # left = A, right = B, middle = C
 ```
 
 The cursor goes exactly where you point, and the outer 24 pixels of the screen
-scroll the map. Both are off by default: the cartridge moves its cursor at
+scroll the map. In the Construction Yard's build console, pointing at an icon
+selects it — with its name and price — and left click builds it. Both are off by default: the cartridge moves its cursor at
 three pixels a frame and starts scrolling a quarter of the way in from each
 edge, which suits a d-pad and cannot be made to follow a mouse.
 
@@ -122,6 +123,7 @@ edge, which suits a d-pad and cannot be made to follow a mouse.
 | `DB4A_MOUSE_EDGE=24` | how deep the scroll band is |
 | `DB4A_SCROLL_MAX=6` | top scroll speed, px/frame (the cartridge's is 3) |
 | `DB4A_SYSCURSOR=1` | keep the system pointer visible over the window |
+| `DB4A_MENU_MOUSE=0` | leave the build console on d-pad control |
 
 Gamepads are supported. Any button can be remapped without rebuilding:
 
@@ -192,6 +194,7 @@ make check-operands   # every discovered instruction parses
 make check-state      # save a state, resume from it, require an identical frame
 make check-houses     # all three houses load
 make check-native     # C overrides match the cartridge code they replace
+make check-menu       # pointing at a build-console cell selects it
 make analyse          # regenerate code discovery from the ROM
 
 # against the reference emulator (needs ref/gpgx, see docs/verification.md)
@@ -216,6 +219,7 @@ src/                 dispatch loop, HAL, VDP, Z80, PSG, YM2612, frontends
 tests/               unit tests and scripted playthroughs
 docs/roadmap.md      goals, acceptance criteria, milestones
 docs/natives.md      replacing cartridge code with C
+docs/buildmenu.md    the build console: grid, RAM layout, how to drive it
 docs/verification.md how correctness is established
 docs/journal.md      chronological record, including what went wrong
 CLAUDE.md            working notes and hard-won gotchas

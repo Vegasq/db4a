@@ -123,14 +123,36 @@ the handler at `$8462` runs.** The dispatcher already sees every block entry,
 so this costs one comparison and is exact by construction — the same trick as
 the native-override table in `include/native.h`.
 
-## What an implementation needs
+## The implementation
 
-1. A per-frame flag set when block `$8462` executes.
-2. Hit test the pointer to `(row, col)`, rejecting cells whose byte is `$80`.
-3. Step the highlight towards it with pulsed direction presses.
-4. While the console is open, stop `src/mouse.c` writing the map cursor and the
-   clamp box — otherwise the two fight over the d-pad and the cursor variables.
-5. Left click is already A, which activates the highlighted cell.
+`src/buildmenu.c`, enabled with mouse control and disabled on its own with
+`DB4A_MENU_MOUSE=0`.
 
-Hovering gets item previews for free, because moving the highlight is what
-makes the game redraw the panel.
+1. `menu_probe_pc` holds `$8462` while the feature is on, and the dispatch loop
+   compares each block entry against it. Zero when off, so the probe costs one
+   comparison against a global and nothing else.
+2. The pointer is hit-tested to `(row, col)`; cells reading `$80` and points
+   outside the grid are ignored, so the highlight simply does not move.
+3. The highlight steps towards the target with pulsed presses — one press
+   frame, one release frame, because the handler is edge-triggered.
+4. The step picks the longer axis first, but only onto a cell that exists. A
+   naive per-axis walk gets stuck the moment the grid is ragged, which it
+   usually is: from STOP at (0,2) straight down is `$80` and the handler
+   refuses, so the walk has to go along the top row first.
+5. `buildmenu_steer()` returns 1 whenever the console is open, and the callers
+   skip `mouse_steer()` in that case. Both drive the d-pad, and `mouse_steer`
+   would additionally be writing map-cursor variables underneath a screen that
+   is not the map.
+
+Hovering gets item previews for free: moving the highlight is what makes the
+game redraw the panel, so pointing at an item shows its name and price —
+CONCRETE 15, WINDTRAP 300/100/400 — exactly as if it had been reached with the
+d-pad. That is the payoff for pressing buttons rather than writing the words.
+
+```bash
+make check-menu
+```
+
+Regenerates the console state from the committed recording and checks all three
+top buttons, both items, an empty cell, a point off the grid, and that
+`DB4A_MENU_MOUSE=0` really disables it.

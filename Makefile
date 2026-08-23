@@ -102,7 +102,7 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o build/buildmenu.o \
                build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
@@ -171,6 +171,10 @@ build/mouse.o: src/mouse.c include/mouse.h include/input.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/buildmenu.o: src/buildmenu.c include/buildmenu.h include/input.h include/hal.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/psg.o: src/psg.c include/psg.h include/hal.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -210,6 +214,10 @@ check-state: build/db4a
 ## check-native - native C overrides must match the cartridge code they replace
 check-native: build/db4a
 	./tests/native.sh
+
+## check-menu - pointing at a build-console cell selects it
+check-menu: build/db4a
+	./tests/buildmenu.sh
 
 ## check-houses - all three houses must select and load their mission
 check-houses: build/db4a
