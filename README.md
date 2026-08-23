@@ -138,6 +138,26 @@ DB4A_KEYS="a=q,b=w,c=r" make play
 DB4A_GAIN=8 make play          # louder
 ```
 
+### Widescreen (experimental, and known to be wrong in motion)
+
+```bash
+make play WIDE=400          # or `wide = 400` in db4a.conf
+```
+
+Widens the view from the cartridge's 320 pixels. In gameplay the picture
+shifts right so the HUD stays flush against the edge with its backdrop under
+it, and the new space opens on the left as more map; menus and cutscenes are
+320-wide compositions with nothing to anchor, so they are centred with black
+bars.
+
+**It still looks wrong once the view moves.** The game only writes tiles for
+the 320 pixels it thinks are visible, so the extra columns are reconstructed
+from whatever the tilemap still holds there — convincing in a still frame,
+not in play. It is off by default and stays that way until the game itself can
+be made to maintain a wider view. With it off, output is byte-identical to the
+faithful build. `docs/widescreen.md` has the measurements and the three
+possible ways forward.
+
 ### Recording and replaying
 
 Input can be recorded and replayed deterministically, which is how the

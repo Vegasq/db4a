@@ -255,7 +255,67 @@ the world map all pillarbox; gameplay and building placement go full width.
 `DB4A_WIDE_SCENES=6d0c,608e,b540` overrides the set, for a mission or house
 that turns out to use a handler not listed here.
 
-## Status: PARKED, still broken in play
+## Status: UNPARKED 2026-08-23, rebased onto remaster
+
+Brought forward from its old base onto `remaster` so the remaining fault can be
+reproduced from a recorded session rather than argued about from still frames.
+The account below of *why* it was parked still stands and has not been
+weakened — nothing here fixes the underlying reconstruction problem.
+
+What the rebase changed:
+
+- **Three of the nine commits were partly or wholly redundant.** Fullscreen,
+  integer scaling, F11 and `DB4A_LOAD` were all reimplemented independently on
+  remaster while this branch sat parked, and remaster's versions read through
+  `cfg()`. Those were resolved in remaster's favour; the widescreen-specific
+  part (sizing the window and the logical size from `fb_width` rather than
+  `FB_W`) was kept.
+- **One real bug was created by the rebase, and fixed.** The sprite-priority
+  mask `plane_hi` — the fog-of-war fix — landed on remaster during the park,
+  so the two met for the first time here. `render_frame()` has two early
+  `continue` paths belonging to widescreen (the pillarbox bars, and the columns
+  where the extension would wrap the 512-pixel plane); neither wrote
+  `plane_hi`. That array is static and which columns are bars or wrap moves as
+  the view scrolls, so a stale 1 made the sprite pass drop low-priority sprites
+  over columns that were by then plain backdrop. Units would vanish near the
+  left edge with nothing wrong in the plane itself.
+- **Sprites are now clipped out of the pillarbox.** The hardware clips sprites
+  to the 320-pixel window; when a 320 composition is centred, the bars are not
+  part of that window. In gameplay the clip opens to the full width, because
+  there the extension is meant to reveal more.
+
+Verified after the rebase:
+
+| | |
+|---|---|
+| Default 320 output | **byte-identical** to remaster at frames 1320, 2800, 6000, 9000, 12000 |
+| `check-native`, `check-menu`, `check-menus`, `check-state`, `check-houses` | all pass |
+| `wide = 400` from `db4a.conf` | applies in the SDL build, ignored by the headless build |
+| `DB4A_WIDE` over a conf entry | env wins, as the config contract requires |
+
+The byte-identical result is the one that matters for the branch policy: with
+widescreen off, this branch renders exactly what the faithful build renders.
+
+### Reproducing the fault
+
+```bash
+make record REC=data/recordings/wide.txt WIDE=400
+```
+
+Scroll around, especially into and along the map's western and northern edges,
+and where units cross the boundary between the game's own 320 columns and the
+extension. The extension is at the **left**, so anything wrong will be there
+while the right-hand HUD stays correct. `make replay REC=... WIDE=400
+SHOTS=<frames>` then re-renders any moment headlessly for inspection.
+
+What is expected to be wrong, from the analysis below: the extra columns are
+reconstructed from tilemap contents the game has not updated, so they should
+lag or smear when the view moves and settle into something plausible when it
+stops. If the fault turns out **not** to match that description, that is the
+useful finding — it would mean there is a second, separate bug, which is the
+outcome this rebase is meant to establish one way or the other.
+
+## Why it was parked, and the analysis that still stands
 
 Two rounds of fixes made the captured frames look right — the map-edge wrap is
 genuinely gone and the game's own 320 view is provably unaltered inside the
