@@ -13,6 +13,22 @@
 
 uint8_t FB[FB_H][FB_W][3];
 
+/* Set by the plane pass: 1 where the visible plane pixel came from a
+ * high-priority pattern. Read by the sprite pass, which is why it is file
+ * scope rather than a local. */
+static uint8_t plane_hi[FB_H][FB_W];
+
+/* Sprite pixels a high-priority plane pattern hid. Zero means the priority
+ * rule made no difference, which is the only honest way to tell whether a
+ * frame exercises it at all -- DB4A_LOG_OCCLUDE reports it.
+ *
+ * Note the headless build only renders when a screenshot is requested, so
+ * these counters stay at zero on a run with no DB4A_SHOTS. That is not the
+ * same as "the rule never fires", and reading it that way cost a wrong
+ * conclusion here twice. */
+unsigned long render_occluded;
+unsigned long render_planehi;   /* high-priority plane pixels drawn */
+
 /* 9-bit BGR -> 8-bit RGB.
  *
  * A 3-bit component does NOT map linearly onto 0-255. The VDP shares one DAC
@@ -203,10 +219,17 @@ void render_frame(void) {
             cb = sample_plane(nt_b, x - hs_b, y + vs_b, &pb);
 
             unsigned pick = 0;
-            if      (pa && ca) pick = ca;      /* A, high priority */
-            else if (pb && cb) pick = cb;      /* B, high priority */
-            else if (ca)       pick = ca;
-            else if (cb)       pick = cb;
+            int hi = 0;
+            if      (pa && ca) { pick = ca; hi = 1; }   /* A, high priority */
+            else if (pb && cb) { pick = cb; hi = 1; }   /* B, high priority */
+            else if (ca)         pick = ca;
+            else if (cb)         pick = cb;
+
+            /* Remembered for the sprite pass: a LOW-priority sprite is drawn
+               behind a high-priority plane pixel. This is what puts units
+               under the fog of war. */
+            plane_hi[y][x] = (uint8_t)hi;
+            if (hi) render_planehi++;
 
             if (pick) cram_rgb(VDP.cram[pick & 0x3F], FB[y][x]);
             else      memcpy(FB[y][x], backdrop, 3);
@@ -241,6 +264,7 @@ void render_sprites(void) {
         unsigned tile = att & 0x7FF;
         unsigned fx = (att >> 11) & 1, fy = (att >> 12) & 1;
         unsigned pal = (att >> 13) & 3;
+        int      spr_hi = (att >> 15) & 1;
 
         for (unsigned cx = 0; cx < hw; cx++) {
             for (unsigned cy = 0; cy < hh; cy++) {
@@ -254,8 +278,19 @@ void render_sprites(void) {
                         unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
                         unsigned c = tile_pixel(tc, ix, iy);
                         if (c && !taken[Y][X]) {
+                            /* Sprite-vs-sprite is settled by link order alone,
+                               independent of the priority bit, so this pixel
+                               is spoken for either way -- a later sprite never
+                               shows through, even a high-priority one over a
+                               low-priority winner. */
                             taken[Y][X] = 1;
-                            cram_rgb(VDP.cram[(pal * 16 + c) & 0x3F], FB[Y][X]);
+                            /* Sprite-vs-plane is settled by the priority bit:
+                               front to back the hardware orders high sprites,
+                               high A, high B, LOW SPRITES, low A, low B. */
+                            if (spr_hi || !plane_hi[Y][X])
+                                cram_rgb(VDP.cram[(pal * 16 + c) & 0x3F], FB[Y][X]);
+                            else
+                                render_occluded++;   /* hidden behind the plane */
                         }
                     }
                 }
@@ -263,6 +298,21 @@ void render_sprites(void) {
         }
         if (!link) break;
         idx = link;
+    }
+    if (getenv("DB4A_LOG_PRIO")) {
+        static int once = 0;
+        if (!once++) {
+            unsigned lo = 0, hi = 0;
+            unsigned i2 = 0;
+            for (unsigned n = 0; n < 80; n++) {
+                const uint8_t *q = &VDP.vram[(sat + i2 * 8u) & 0xFFFF];
+                uint16_t a2 = (uint16_t)((q[4] << 8) | q[5]);
+                if ((a2 >> 15) & 1) hi++; else lo++;
+                if (!(q[3] & 0x7F)) break;
+                i2 = q[3] & 0x7F;
+            }
+            fprintf(stderr, "[prio] sprites: %u high, %u low\n", hi, lo);
+        }
     }
 }
 

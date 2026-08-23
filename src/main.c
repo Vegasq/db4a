@@ -202,6 +202,16 @@ int main(int argc, char **argv) {
             if (frames == script[k].at)          pad_set(script[k].pad, 1);
             if (frames == script[k].at + hold)   pad_set(script[k].pad, 0);
         }
+        if (getenv("DB4A_LOG_OCCLUDE")) {
+            extern unsigned long render_occluded, render_planehi;
+            static unsigned long prev_occ = 0;
+            (void)render_planehi;
+            if (render_occluded != prev_occ) {
+                printf("  [prio] frame %5u  %lu sprite pixels hidden by plane priority\n",
+                       frames, render_occluded - prev_occ);
+                prev_occ = render_occluded;
+            }
+        }
         end = system_frame(end);
         if (m68k_last_unknown) break;
 
