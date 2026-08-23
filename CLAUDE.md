@@ -251,6 +251,37 @@ Consequences for contributors:
 - If interpreted and recompiled execution ever diverge, that is a generator
   bug by construction, not a semantics disagreement.
 
+## Native overrides -- game logic in C
+
+`src/cursor.c` is the first piece of game logic this project implements in C
+rather than running out of the cartridge. A **native override** replaces one
+recompiled block entry with a hand-written C function that does the same job
+against the same RAM and returns the PC the ROM would have continued from.
+
+Full methodology: **`docs/natives.md`**.
+
+1. **Override only at a real block entry.** The dispatcher looks up whole
+   blocks; a PC in the middle of one is never consulted.
+2. **Account for cycles.** Take the numbers from each generated block's
+   `CPU.cycles +=`.
+3. **Registers and flags are part of the contract.** Route arithmetic through
+   the `add16`/`sub16`/`cmp16` helpers so flags are right by construction.
+
+```bash
+make check-native      # per-call equivalence + a faithful run unchanged
+DB4A_NATIVE=0          # disable every override
+```
+
+**The checker must compare everything.** Its first version compared RAM, cycles
+and the exit PC, and passed on all 9319 calls of a mission while the run
+visibly diverged -- the override was leaving `d0`-`d2` and X holding the
+caller's values.
+
+**Faithful overrides are free.** Measured across the whole recorded mission,
+`DB4A_NATIVE=0` against `=1`: zero differing pixels and zero differing RAM
+bytes. An earlier claim that they cost 0.62% was a bad measurement; see
+`docs/natives.md`.
+
 ## Reference oracle
 
 **Genesis-Plus-GX**, patched to log executed PCs. Chosen over BlastEm for
@@ -390,6 +421,8 @@ exposed them, so both branches get them.
 CLAUDE.md            this file
 Makefile             reproducible analysis + test targets
 include/m68k.h       CPU state, memory interface, flag helpers
+src/cursor.c         first game routine owned in C (see docs/natives.md)
+include/native.h     native-override interface
 tools/semantics.py   SINGLE SOURCE OF TRUTH for instruction semantics
 tools/vectors.py     exception vector table dump
 tools/trace.py       recursive-descent code discovery (main analysis tool)
@@ -397,6 +430,7 @@ tools/jumptab.py     jump-table format detection and resolution
 tools/rommap.py      coarse entropy banding (classification NOT trustworthy)
 tests/test_flags.c   68000 flag semantics unit tests
 docs/roadmap.md      goal, definition of done, non-goals, milestones
+docs/natives.md      replacing cartridge code with C: how, and what it costs
 docs/rom.md          base ROM provenance and header dump
 docs/journal.md      chronological record of work and findings
 build/               generated, gitignored, fully reproducible
@@ -448,6 +482,7 @@ make check-z80       # zexdoc
 make check-operands  # every discovered instruction parses
 make check-state     # save a state, resume, require an identical frame
 make check-houses    # all three houses load
+make check-native    # C overrides match the cartridge code they replace
 make compare-screen SCENARIO=houseselect FRAME=2800    # vs the reference
 make replay REC=data/recordings/level1atredis.txt      # mission 1 won, into mission 2
 ./tests/defeat.sh    # win mission 1, then lose mission 2
