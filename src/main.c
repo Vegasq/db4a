@@ -13,6 +13,7 @@
 #include "inputlog.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 
 extern unsigned long m68k_blocks_run;
@@ -26,6 +27,41 @@ static int cmp_hot(const void *a, const void *b) {
     if (m68k_profile[ia] < m68k_profile[ib]) return 1;
     if (m68k_profile[ia] > m68k_profile[ib]) return -1;
     return 0;
+}
+
+
+/* --- tempo instrumentation, see DB4A_LOG_TEMPO ------------------------- */
+static unsigned long tempo_n, tempo_lo = ~0UL, tempo_hi;
+static double        tempo_sum, tempo_sumsq;
+
+static void tempo_report(void) {
+    if (tempo_n < 2) return;
+    double mean = tempo_sum / tempo_n;
+    double var  = tempo_sumsq / tempo_n - mean * mean;
+    printf("  [tempo] %lu frames: timerA/frame mean=%.2f sd=%.2f min=%lu max=%lu\n",
+           tempo_n, mean, var > 0 ? sqrt(var) : 0.0, tempo_lo, tempo_hi);
+}
+
+static void tempo_sample(unsigned frames) {
+    extern unsigned long ta_overflows;
+    static unsigned long prev_ov, prev_z;
+    static int armed;
+    unsigned long ov = ta_overflows - prev_ov;
+    unsigned long zc = (unsigned long)(Z80.cycles - prev_z);
+    prev_ov = ta_overflows; prev_z = Z80.cycles;
+    if (frames <= 400) return;              /* boot, before the music starts */
+    if (!armed) { armed = 1; atexit(tempo_report); }
+    /* Only meaningful while Timer A is actually running: the driver stops and
+       reprograms it constantly, and counting the stopped frames buries the
+       signal in zeroes. */
+    if (!(ym_timer_ctrl() & 0x01)) return;
+    tempo_n++; tempo_sum += ov; tempo_sumsq += (double)ov * ov;
+    if (ov < tempo_lo) tempo_lo = ov;
+    if (ov > tempo_hi) tempo_hi = ov;
+    { const char *e = getenv("DB4A_LOG_TEMPO");
+      if (e && e[0] == '2' && tempo_n < 30)
+          printf("  [tempo] frame %5u  timerA=%3lu  z80cycles=%6lu  ctrl=%02X period=%u\n",
+                 frames, ov, zc, ym_timer_ctrl(), ym_timer_a_period()); }
 }
 
 int main(int argc, char **argv) {
@@ -212,6 +248,11 @@ int main(int argc, char **argv) {
                 prev_occ = render_occluded;
             }
         }
+        /* DB4A_LOG_TEMPO: the sound driver paces itself on YM2612 Timer A, so
+           the number of overflows per frame IS the tempo. A steady figure means
+           steady music; spread means the wobble is in our scheduling rather
+           than in the driver's. DB4A_LOG_TEMPO=2 also lists the first frames. */
+        if (getenv("DB4A_LOG_TEMPO")) tempo_sample(frames);
         end = system_frame(end);
         if (m68k_last_unknown) break;
 

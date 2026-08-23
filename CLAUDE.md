@@ -351,6 +351,19 @@ These cost real debugging time. Do not rediscover them.
 
 ---
 
+## Branches
+
+Decided 2026-08-22.
+
+| branch | contents |
+|---|---|
+| `master` | the faithful recompile, matching the cartridge |
+| `remaster` | modern conveniences: mouse control, widescreen, and so on |
+
+Fidelity work goes to `master`; anything that changes what the game does goes
+to `remaster`. The pre-existing `mousecontrol`, `menu-screens` and `widescreen`
+branches are the history behind `remaster` and are not merged to `master`.
+
 ## Repository layout
 
 ```

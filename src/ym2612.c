@@ -142,6 +142,11 @@ static struct {
     uint16_t tb_div;
     uint8_t  ta_run, tb_run, ta_flag, tb_flag;
 } Y;
+/* For DB4A_LOG_TEMPO: the driver starts, stops and reprograms Timer A as it
+   plays, so overflows-per-frame is only a tempo measure while it is running. */
+unsigned ym_timer_ctrl(void)     { return Y.timer_ctrl; }
+unsigned ym_timer_a_period(void) { return Y.ta_period; }
+
 
 #define RING 16384
 static int16_t ring[RING * 2];

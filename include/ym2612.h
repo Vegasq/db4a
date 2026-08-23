@@ -16,5 +16,7 @@ size_t ym_available(void);                 /* stereo frames pending */
 void   ym_report(void);
 
 extern unsigned long ym_writes, ym_keyons;
+unsigned ym_timer_ctrl(void);
+unsigned ym_timer_a_period(void);
 
 #endif

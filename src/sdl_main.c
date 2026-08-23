@@ -318,6 +318,7 @@ int main(int argc, char **argv) {
                both sides. Reading only the PSG -- which this did at first --
                plays silence, because Dune mutes it and drives everything
                through the FM chip. */
+            static unsigned long audio_clears, audio_truncations;
             int16_t ybuf[8192], pbuf[4096], mix[8192];
             size_t yn = ym_read_samples(ybuf, 8192);
             size_t pn = psg_read_samples(pbuf, 4096);
@@ -343,14 +344,17 @@ int main(int argc, char **argv) {
                 static unsigned long tot, calls;
                 tot += frames_out; calls++;
                 if ((calls % 100) == 0)
-                    fprintf(stderr, "[audio] %lu frames queued over %lu video frames, "
-                            "queue=%u bytes, ym pending=%zu psg pending=%zu\n",
-                            tot, calls, SDL_GetQueuedAudioSize(audio),
-                            ym_available(), psg_available());
+                    fprintf(stderr, "[audio] %lu samples over %lu frames (%.1f/frame), "
+                            "queue=%u B, pending ym=%zu psg=%zu, clears=%lu trunc=%lu\n",
+                            tot, calls, (double)tot / calls, SDL_GetQueuedAudioSize(audio),
+                            ym_available(), psg_available(), audio_clears, audio_truncations);
             }
             /* Drop a backlog rather than let latency grow without bound. */
-            if (SDL_GetQueuedAudioSize(audio) > PSG_RATE * 2 * sizeof(int16_t) / 4)
+            if (SDL_GetQueuedAudioSize(audio) > PSG_RATE * 2 * sizeof(int16_t) / 4) {
+                audio_clears++;
                 SDL_ClearQueuedAudio(audio);
+            }
+            if (frames_out >= 4096) audio_truncations++;
         }
 
         render_frame();
