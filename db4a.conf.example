@@ -112,3 +112,96 @@
 #
 #   These files contain cartridge memory, so they are game data: keep them out
 #   of the repository, as .gitignore already arranges.
+
+
+# =========================================================================
+# Display                                            (remaster branch only)
+# =========================================================================
+
+# fullscreen = 1
+#
+#   Start fullscreen instead of in a window. F11 toggles it at runtime either
+#   way, so this only decides how the game comes up.
+
+# integer = 1
+#
+#   Scale the 320x224 picture by whole numbers only. Sharper, because every
+#   source pixel becomes the same number of screen pixels, at the cost of
+#   black borders where the window does not divide evenly. Leave it out to
+#   fill the window and accept slightly uneven pixels.
+
+
+# =========================================================================
+# Mouse control                                      (remaster branch only)
+# =========================================================================
+
+# mouse = 1
+#
+#   Point at the map and the game's cursor goes there. Left button is A,
+#   right is B, middle is C. Off by default; with it off the keyboard and pad
+#   behave exactly as the cartridge intends.
+#
+#   Worth knowing why this is not just "steering": the cartridge moves its
+#   own cursor at most three pixels a frame, so crossing the screen takes
+#   over two seconds and no amount of nudging can make it keep up with a
+#   pointer. With this on, the cursor position is written directly, so it is
+#   under the pointer on the same frame.
+#
+#   While it is on, the system pointer is hidden wherever the game draws a
+#   cursor of its own, so you never see two at once.
+
+# syscursor = 1
+#
+#   Keep the system pointer visible over the game window anyway. Mostly
+#   useful for seeing how far the game's cursor is lagging your real one.
+
+# menu_mouse = 0
+#
+#   Turn OFF pointer selection in the game's menus while leaving it on for
+#   the map. Affects the Construction Yard's build console, the Starport,
+#   house selection and the mentat's yes/no -- pointing at an icon or a
+#   button selects it, and left click activates it.
+#
+#   Set this to 0 if you would rather drive those screens with the d-pad.
+
+# mouse_edge = 24
+#
+#   How many pixels in from each screen edge count as "scroll the map"
+#   instead of "move the cursor". Default 24.
+#
+#   For contrast, the cartridge's own rule is that the map scrolls whenever
+#   the cursor leaves a box in the middle of the screen roughly a quarter of
+#   its width -- fine for a d-pad, unusable with a mouse, because the map
+#   lurches the moment you point away from centre. This setting replaces that
+#   box with a band at the edges.
+#
+#   Larger values scroll from further in. Keep it comfortably above
+#   mouse_clamp below, or there is no room left to scroll in.
+
+# mouse_clamp = 4
+#
+#   How close to the screen edge the cursor itself may get, in pixels.
+#   Default 4; the cartridge's own value is 24, which makes the outermost
+#   strip of the map unreachable with a pointer.
+#
+#   This must stay well inside mouse_edge. Scroll speed is worked out from
+#   how far INTO the band the cursor has travelled, so if the two meet there
+#   is no depth to measure and the map will not scroll at all.
+
+# scroll_max = 6
+#
+#   Top scrolling speed in pixels per frame, reached when you push the
+#   pointer right into the corner. Default 6; the cartridge's own limit is 3.
+#   Speed ramps with how far into the band you are, so easing in still
+#   creeps.
+
+# place_scroll = 1
+#
+#   Put back the view re-centring that happens when a building is ready and
+#   the cursor becomes its outline.
+#
+#   The cartridge scrolls the map to bring that outline towards the middle of
+#   the screen, which helps with a d-pad and is disorienting with a mouse:
+#   the pointer is already where you are looking and the map moves out from
+#   under it. With mouse control on, that scrolling is suppressed by default;
+#   set this to 1 if you prefer the original behaviour.

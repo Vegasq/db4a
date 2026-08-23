@@ -54,6 +54,7 @@
  * or pad is being used -- see mouse_steer()'s contract in mouse.h.
  */
 #include "mouse.h"
+#include "config.h"
 #include "input.h"
 #include "hal.h"
 #include "m68k.h"
@@ -95,7 +96,7 @@ static void write_word(unsigned addr, int v) {
 
 int mouse_clamp_margin(void) {
     if (clamp_margin < 0) {
-        const char *e = getenv("DB4A_MOUSE_CLAMP");
+        const char *e = cfg("DB4A_MOUSE_CLAMP");
         clamp_margin = e ? atoi(e) : DEFAULT_CLAMP;
         if (clamp_margin < 0)  clamp_margin = 0;
         if (clamp_margin > 64) clamp_margin = 64;  /* past this the box inverts */

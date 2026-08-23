@@ -10,6 +10,16 @@ DB4A_MOUSE=1 DB4A_FULLSCREEN=1 make play
 
 Off by default; the pad and keyboard are untouched when it is off.
 
+Or put it in `db4a.conf` next to the binary and restart, which needs no shell:
+
+```
+mouse = 1
+scroll_max = 9
+```
+
+Keys are the environment names without the `DB4A_` prefix, and an environment
+variable still beats the file. `db4a.conf.example` lists them all.
+
 ## How it works
 
 The game has no mouse and no concept of one. Its cursor is moved a step at a

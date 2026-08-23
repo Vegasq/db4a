@@ -58,6 +58,7 @@
  * recorded mission with the override on and off and requires identical frames.
  */
 #include "native.h"
+#include "config.h"
 #include "m68k.h"
 #include "mouse.h"
 #include "cursor.h"
@@ -239,7 +240,7 @@ done:
 int cursor_scroll_band(void) {
     static int v = -1;
     if (v < 0) {
-        const char *e = getenv("DB4A_MOUSE_EDGE");
+        const char *e = cfg("DB4A_MOUSE_EDGE");
         v = e ? atoi(e) : 24;
         if (v < 2)  v = 2;
         if (v > 96) v = 96;
@@ -250,7 +251,7 @@ int cursor_scroll_band(void) {
 static int32_t max_speed(void) {
     static int32_t v = -1;
     if (v < 0) {
-        const char *e = getenv("DB4A_SCROLL_MAX");
+        const char *e = cfg("DB4A_SCROLL_MAX");
         /* The cartridge caps at 3 px/frame, which suits a cursor nudged by a
            d-pad. Mouse control is already a modern mode, and 6 crosses a
            screen of map in about a second, which is what an RTS feels like. */
@@ -324,7 +325,7 @@ uint32_t native_cursor_scroll(void) {
 /* DB4A_PLACE_SCROLL: unset follows mouse control, 0 forces this override on,
  * 1 forces the cartridge behaviour back. */
 int placement_override_active(void) {
-    const char *e = getenv("DB4A_PLACE_SCROLL");
+    const char *e = cfg("DB4A_PLACE_SCROLL");
     if (e && *e == '0') return 1;
     if (e && *e == '1') return 0;
     return mouse_enabled();

@@ -44,6 +44,7 @@
  * handler at $8462 runs, which the dispatcher sees for free.
  */
 #include "buildmenu.h"
+#include "config.h"
 #include "probe.h"
 #include "input.h"
 #include "hal.h"
@@ -100,7 +101,7 @@ void menu_enable(int on) {
 
 /* One switch for every menu screen the pointer can drive. */
 int menu_mouse_wanted(void) {
-    const char *e = getenv("DB4A_MENU_MOUSE");
+    const char *e = cfg("DB4A_MENU_MOUSE");
     return !(e && *e == '0');
 }
 
