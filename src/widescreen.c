@@ -243,3 +243,76 @@ void widescreen_extend(void) {
     fill(0, (uint32_t)(VDP.reg[2] & 0x38) << 10, hs);
     fill(1, (uint32_t)(VDP.reg[4] & 0x07) << 13, hs);
 }
+
+/* ---------------------------------------------------------------------------
+ * Units in the extension.
+ *
+ * Terrain and buildings live in the tilemap, so the column fill above brings
+ * them back. Units do not: they are sprites, and the cartridge culls them to
+ * the 320-pixel screen before they ever reach the sprite table. Extending the
+ * tilemap therefore gives an extension with correct ground and no units on it.
+ *
+ * The cull is at $11A4..$11C4, right after $1184 biases the coordinates by $80
+ * (the VDP's sprite origin, where $80 is screen x=0):
+ *
+ *     cmpi.w #$1bf,d2   past the right edge  (128 + 319)   -> drop
+ *     cmpi.w #$15f,d3   past the bottom      (128 + 223)   -> drop
+ *     add.w  d2,d0
+ *     cmpi.w #$80,d0    right edge of the sprite still left of screen -> drop
+ *
+ * The third is the one that matters. Our extension is west of the view, so a
+ * unit standing in it has a sprite whose right edge is left of screen x=0, and
+ * that test drops it.
+ *
+ * $11B4 is its own block entry -- the three instructions above and nothing
+ * else -- so it can be replaced outright rather than patched. Widening the
+ * threshold by the extension width keeps exactly the units that fall in the
+ * extension and nothing further out.
+ *
+ * The RIGHT cull needs no change: the extension is on the left, so the
+ * cartridge's own 320 columns still end where they always did.
+ *
+ * With widescreen off the threshold is $80 and this is the cartridge's block
+ * instruction for instruction -- which is why it is registered as faithful and
+ * `make check-native` verifies it.
+ *
+ * WHAT THIS COSTS, and it is not small. Unlike the column fill, this is NOT
+ * presentation-only. Keeping a sprite the cartridge would have dropped means
+ * taking the other branch, emitting another entry, bumping the sprite index
+ * and the per-column counters at $F700, and executing a different number of
+ * blocks -- so the cycle count moves, and with it the frame pacing. A
+ * widescreen run therefore DIVERGES from a 320 run: replaying
+ * level1atredis.txt at WIDE=400 differs from the same replay at 320 across
+ * 50-73% of the picture by frame 6000. The game is healthy, it is simply a
+ * different battle.
+ *
+ * That breaks the property the column fill was careful to keep -- "the
+ * extension only ever adds" -- and it means a recording made at one width does
+ * not reproduce at another. It is a deliberate departure, which is what the
+ * remaster line is for, but it belongs behind its own switch rather than
+ * bundled in silently.
+ *
+ * The honest alternative, if the divergence ever matters more than the units
+ * do, is to leave the cartridge's cull alone and draw the missing units
+ * ourselves from the unit table in RAM. That needs the unit format and their
+ * sprite tiles worked out, and is a much larger job than this three-line
+ * block.
+ * ------------------------------------------------------------------------- */
+uint32_t native_sprite_left_cull(void) {
+    CPU.cycles += 26;                     /* same as blk_0011B4 */
+    uint16_t r1 = add16((uint16_t)CPU.d[0], (uint16_t)CPU.d[2]);
+    CPU.d[0] = (CPU.d[0] & 0xFFFF0000u) | ((r1) & 0xFFFFu);
+
+    /* DB4A_WIDE_UNITS=0 keeps the cartridge's own threshold, which leaves the
+       extension's ground correct and its units missing -- but keeps a
+       widescreen run bit-for-bit identical to a 320 one. See the note below. */
+    static int units = -1;
+    if (units < 0) { const char *e = getenv("DB4A_WIDE_UNITS");
+                     units = (e && !atoi(e)) ? 0 : 1; }
+    int extra = (units && enabled() && render_widescreen_gameplay())
+                ? fb_width - 320 : 0;
+    cmp16((uint16_t)CPU.d[0], (uint16_t)(0x80u - extra));
+
+    if (cond_lt()) return 0x1284u;        /* dropped */
+    return 0x11BEu;                       /* kept */
+}
