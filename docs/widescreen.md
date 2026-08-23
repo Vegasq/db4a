@@ -390,6 +390,91 @@ It does **not** rescue the current implementation. Black bars that appear when
 you scroll one way are still not shippable. But "the renderer is inventing
 terrain" was the reason to abandon the approach, and that reason is not true.
 
+## Option 2, implemented: drawing the missing columns
+
+`src/widescreen.c`. The cartridge's column-draw is reimplemented in C and used
+to draw the columns the extension needs, which the game does not draw because
+it only maintains what it believes is visible.
+
+### How the cartridge draws a map column
+
+Neither routine has a static caller -- both are reached through a function
+pointer -- so they were found with `DB4A_LOG_NT` (which block wrote the
+nametable) and read with `DB4A_REGS` (what it was passed):
+
+| | |
+|---|---|
+| `$7504` | plane A, indexes the tile table by the map's high byte × 16 |
+| `$7468` | plane B, indexes it by the map's low 9 bits × 32 |
+
+Both set VDP autoincrement to 128 — one nametable row — so they write *down* a
+column of 32 entries, and both use the one table at `$4ADE8`.
+
+| register | meaning |
+|---|---|
+| `d1.w` | nametable address of the column's first entry |
+| `a3` | map pointer; one long per **pair** of columns, `$100` per map row |
+| `d0` | table phase, which is `(col * 2) mod 32` |
+| `$FFC198` | when set, map values ≥ `$67` draw as 0 — the shroud |
+
+Every one of those was checked against the running game across a full scroll,
+not inferred from the disassembly.
+
+### It is an observer, not a native override
+
+It does not replace the block, spend cycles, or touch a register. It writes
+tilemap entries the game will not read at 320 and would have written itself had
+it thought the screen were wider. So `check-native` does not apply, and there
+is no equivalence contract to keep.
+
+### Two things that had to be right
+
+**Aim from the camera, not from the column being drawn.** Scrolling east the
+cartridge draws at the far edge; columns counted west from *there* land inside
+the visible picture, where an arithmetic slip corrupts the real view instead of
+the extension.
+
+**Then only act at the west edge.** Extrapolating the map pointer ~40 columns
+to redraw the eastern case made it *worse* — mean visible pixels 2521 → 131 —
+because the pointer relation holds locally, not across the ring. Drawing ahead
+is only ever needed in the direction of travel; going east the extension is
+behind the camera and already correct.
+
+### Result
+
+Mean visible pixels of 17920 in the extension, `data/recordings/wide.txt`:
+
+| scrolling | before | after |
+|---|---|---|
+| west | 439 | **2274** |
+| east | 2521 | 2553 |
+| stationary | 299 | 345 |
+
+The asymmetry is gone. And both properties that matter hold:
+
+- the cartridge's own 320 view is **byte-exact** inside the widened frame,
+  10/10 sampled frames, including east scrolls
+- the new content is the **real map**: one frame's extension against a later
+  frame showing those same columns in its own view agrees **98.9–99.0%**, the
+  residual being sprites that moved between them
+
+At the map's west edge it stays black rather than inventing terrain, which is
+what the game itself shows there.
+
+`DB4A_WIDE_FILL=0` disables it, for A/B.
+
+### What is still open
+
+Stationary frames are still mostly blank (345 of 17920). The fill only runs
+when the cartridge draws a column, which it does only while scrolling
+horizontally — so stopping somewhere the extension was never filled leaves it
+blank until you move again. Vertical scrolling is fine: `$75B0` redraws whole
+64-column rows, margin included.
+
+Whether anything else looks wrong in motion is not yet established. This fixes
+the black edge that was reported; it is not a claim that widescreen is now
+correct.
+
 ## Why it was parked, and the analysis that still stands
 
 *The section below predates the measurements above. Where the two disagree —
