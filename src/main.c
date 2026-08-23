@@ -9,6 +9,7 @@
 #include "buildmenu.h"
 #include "menus.h"
 #include "render.h"
+#include "widescreen.h"
 #include "splash.h"
 #include "input.h"
 #include "z80.h"
@@ -495,6 +496,7 @@ int main(int argc, char **argv) {
                           fwrite(VDP.cram, 2, CRAM_SIZE, vf);
                           fclose(vf);
                           printf("dumped VRAM+CRAM to %s\n", vp); } } }
+    widescreen_check_report();
     vdp_dump();
     psg_report();
     ym_report();

@@ -10,6 +10,7 @@
 #include "vdp.h"
 #include "render.h"
 #include "hal.h"
+#include "widescreen.h"
 #include <string.h>
 
 uint8_t FB[FB_H][FB_W][3];
@@ -272,6 +273,7 @@ int render_world_offset(void) {
 }
 
 void render_frame(void) {
+    widescreen_extend();   /* draw the map columns the cartridge leaves out */
     uint32_t nt_a = (uint32_t)(VDP.reg[2] & 0x38) << 10;
     uint32_t nt_b = (uint32_t)(VDP.reg[4] & 0x07) << 13;
     uint8_t backdrop[3];
