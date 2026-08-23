@@ -376,7 +376,15 @@ int main(int argc, char **argv) {
            forces a render every frame so those counters mean something. */
         { static int render_all = -1;
           if (render_all < 0) render_all = getenv("DB4A_RENDER_ALL") ? 1 : 0;
-          if (render_all) render_frame(); }
+          if (render_all) render_frame();
+          static int logw = -1;
+          if (logw < 0) logw = getenv("DB4A_LOG_WIDE") ? 1 : 0;
+          if (render_all && logw) {
+              unsigned long g, e; int ha, hb;
+              render_wide_stats(&g, &e, &ha, &hb);
+              fprintf(stderr, "[wide] frame %5u hs_a=%5d hs_b=%5d guard_px=%lu ext_px=%lu\n",
+                      frames, ha, hb, g, e);
+          } }
 
         for (unsigned k = 0; k < nshots; k++) {
             if (frames == shot_at[k] && shot_prefix) {

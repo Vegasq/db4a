@@ -246,6 +246,23 @@ static int scene_is_gameplay(void) {
     return 0;
 }
 
+unsigned long wide_guard_px, wide_ext_px;   /* DB4A_LOG_WIDE diagnostic */
+
+/* Renderer-side counters for one frame, read and reset by the caller, which
+   is the only place that knows the real frame number. Reporting from inside
+   render_frame() instead would number the frames by how many times it has
+   been CALLED -- and headless does not call it every frame, so the two drift
+   apart and every correlation against input is quietly shifted. */
+void render_wide_stats(unsigned long *guard, unsigned long *ext,
+                       int *hsa, int *hsb) {
+    int mid = FB_H / 2;
+    int have = ((unsigned)mid < latched);
+    *guard = wide_guard_px; *ext = wide_ext_px;
+    *hsa = have ? LATCH[mid].hs_a : hscroll_for((unsigned)mid, 0);
+    *hsb = have ? LATCH[mid].hs_b : hscroll_for((unsigned)mid, 1);
+    wide_guard_px = 0; wide_ext_px = 0;
+}
+
 int render_widescreen_gameplay(void) { return fb_width > 320 && scene_is_gameplay(); }
 
 int render_world_offset(void) {
@@ -294,22 +311,33 @@ void render_frame(void) {
                and is not scrolled. */
             int wx = x - render_world_offset();
 
-            /* Do not let the widescreen extension WRAP around the plane.
-             *
-             * The planes are a 512-pixel ring. The game's own 320 view uses
-             * that wrap legitimately, but the extra columns we add can fall off
-             * the left of the map and reappear as the map's far side -- which
-             * is the stray lump of terrain reported at the map edge. The game
-             * shows plain backdrop there, because there is nothing to the west
-             * of the map, and so should we.
-             *
-             * The test is whether this column sits in the same 512-block as the
-             * leftmost column the game itself is drawing. */
-            if (x < render_world_offset()) {
+            /* MEASURED INERT, 2026-08-23 -- kept, but do not trust the
+               reasoning below without re-measuring.
+               .
+               This was added to stop a stray lump of terrain at the map's
+               western edge, on the theory that the extension wraps around the
+               512-pixel plane and comes back on the map's far side. The
+               condition it actually tests is whether the extension straddles
+               plane column 0, which is the ring's ORIGIN, not the map's edge:
+               it fires whenever (hscroll mod 512) <= 80, at 245 frames of the
+               wide.txt recording, at hscroll values scattered across the run.
+               .
+               And it changes nothing. Rendering the 32 frames where it is
+               most active with and without it (DB4A_WIDE_NOGUARD=1) gives
+               byte-identical output, 32/32 -- including the map's west edge,
+               where hscroll pins at 512 and it blanks all 17920 extension
+               pixels. Every pixel it paints was already backdrop.
+               .
+               So it is not the cause of the black bar at the left edge; the
+               game's own tilemap holds black there. See docs/widescreen.md. */
+            static int noguard = -1;
+            if (noguard < 0) noguard = getenv("DB4A_WIDE_NOGUARD") ? 1 : 0;
+            if (!noguard && x < render_world_offset()) {
                 int hs = ((hs_b % 512) + 512) % 512;
                 if (x - render_world_offset() + hs < 0) {
                     memcpy(FB[y][x], backdrop, 3);
                     plane_hi[y][x] = 0;      /* backdrop, not a plane pixel */
+                    wide_guard_px++;
                     continue;
                 }
             }
@@ -334,6 +362,12 @@ void render_frame(void) {
 
             if (pick) cram_rgb(VDP.cram[pick & 0x3F], FB[y][x]);
             else      memcpy(FB[y][x], backdrop, 3);
+            /* Count extension pixels that actually SHOW something. A non-zero
+               pick is not enough: the columns west of the view are filled with
+               tiles whose colour is black, so they read as content while
+               looking like a blank bar. */
+            if (x < render_world_offset() &&
+                (FB[y][x][0] | FB[y][x][1] | FB[y][x][2])) wide_ext_px++;
         }
     }
     render_sprites();

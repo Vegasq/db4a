@@ -315,7 +315,86 @@ stops. If the fault turns out **not** to match that description, that is the
 useful finding — it would mean there is a second, separate bug, which is the
 outcome this rebase is meant to establish one way or the other.
 
+## What the recording actually showed — and what it corrects
+
+`data/recordings/wide.txt`, played at `WIDE=400`. Reported symptom: **the
+leftmost strip goes black when scrolling left, but not when scrolling right.**
+Reproduced, and traced. Two things in the analysis below turn out to be wrong.
+
+### It is not the wrap guard
+
+The obvious suspect was the "refuse to wrap the plane" guard, and it looked
+guilty: it fires on 245 frames, and the condition it tests is genuinely wrong.
+It asks whether the extension straddles **plane column 0** — the 512-pixel
+ring's origin, an artifact of where the tilemap happens to start — which
+reduces to `(hscroll mod 512) <= 80`. That has nothing to do with the map's
+edge, which is what the comment claimed it detected.
+
+But it is also **inert**. Rendering the 32 frames where it is most active with
+and without it (`DB4A_WIDE_NOGUARD=1`) gives byte-identical output, 32 of 32 —
+including at the map's west edge, where hscroll pins at 512 and it blanks all
+17920 extension pixels. Every pixel it paints was already backdrop. The guard
+is kept, with the measurement recorded in place of the old reasoning, but it
+explains nothing and should not be trusted.
+
+### The extension is never WRONG. It is either right or absent
+
+This is the correction that matters. The doc below says the extra columns are
+"a ring buffer, not spare map" and that a good-looking still is "luck". That
+is not what the measurements show.
+
+Where the extension has content, that content is **the correct map**. Take a
+frame at hscroll H and a frame at hscroll H+80: the second is showing, in its
+own real 320-pixel view, exactly the columns the first put in its extension.
+They agree:
+
+| | |
+|---|---|
+| frame 3020 extension vs frame 3106 columns 81–160 | **99.0%** identical |
+| frame 3065 extension vs frame 3106 columns 80–159 | **99.0%** identical |
+| frame 3066 extension vs frame 3107 columns 82–161 | **98.9%** identical |
+
+The residual 1% is sprites, which move between the two frames. The terrain
+matches. The extension is not showing stale content from the far side of the
+ring — it is showing the genuine neighbouring map.
+
+When it is not showing that, it is showing **black**: not wrong tiles, just
+tiles the game has not drawn.
+
+### Which is why the fault is directional
+
+The extension sits to the **west** of the game's view. So it is *behind* the
+camera when you scroll east and *ahead* of it when you scroll west, and the
+game only maintains the columns it believes are visible:
+
+| scrolling | extension is | mean visible pixels (of 17920) |
+|---|---|---|
+| east (hscroll falling) | behind the camera, recently drawn | **2521** |
+| west (hscroll rising) | ahead of the camera, not yet drawn | **439** |
+| stationary | not being maintained | 299 |
+
+Scroll east and you are uncovering ground the game drew a moment ago. Scroll
+west and you are asking for ground it has not drawn yet, so you get black.
+That is the reported asymmetry, measured.
+
+### What this changes
+
+The feature is in better shape than the post-mortem below believed. The
+failure mode is *missing* map, not *wrong* map, which is a much easier thing to
+fix and a much less objectionable thing to look at. It also means option 2
+below — making the game maintain a wider view — is aimed at the right target:
+the game's tilemap update is drawing exactly the visible columns, and would
+need to draw a margin on the leading edge.
+
+It does **not** rescue the current implementation. Black bars that appear when
+you scroll one way are still not shippable. But "the renderer is inventing
+terrain" was the reason to abandon the approach, and that reason is not true.
+
 ## Why it was parked, and the analysis that still stands
+
+*The section below predates the measurements above. Where the two disagree —
+specifically the claim that the extension shows stale wrapped content — the
+measurements win.*
 
 Two rounds of fixes made the captured frames look right — the map-edge wrap is
 genuinely gone and the game's own 320 view is provably unaltered inside the
