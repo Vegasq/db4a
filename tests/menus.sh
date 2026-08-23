@@ -14,11 +14,19 @@ R=data/recordings/level1atredis.txt
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 fail=0
 
-DB4A_REPLAY=$R DB4A_SAVE_AT=1320:build/house.state   ./build/db4a "$ROM" 1400 >/dev/null 2>&1
-DB4A_REPLAY=$R DB4A_SAVE_AT=1487:build/confirm.state ./build/db4a "$ROM" 1550 >/dev/null 2>&1
-# The YES/NO plates appear only after the question has been up a while, so the
-# state has to be taken well after it first shows.
-DB4A_LOAD=build/confirm.state DB4A_SAVE_AT=1700:build/yesno.state ./build/db4a "$ROM" 400 >/dev/null 2>&1
+# Frames are specific to this recording. It reaches the house screen at 1063
+# (scene 00004500, gone again by 1096) and the join question at 1137, with the
+# YES/NO plates visible by 1232 -- they appear only after the question has been
+# up a while, which is why this is not simply the first frame of that scene.
+# Re-recording the mission moves all of these; DB4A_LOG_SCENE=1 finds them
+# again.
+DB4A_REPLAY=$R DB4A_SAVE_AT=1075:build/house.state   ./build/db4a "$ROM" 1150 >/dev/null 2>&1
+DB4A_REPLAY=$R DB4A_SAVE_AT=1205:build/confirm.state ./build/db4a "$ROM" 1260 >/dev/null 2>&1
+# Saved from the question BEFORE the plates appear, then left to run with no
+# input so they arrive on their own. Saving once they are already visible does
+# not work: the recording answers a few frames later, so the state captures the
+# moment of dismissal and the screen is gone by the time the test looks.
+DB4A_LOAD=build/confirm.state DB4A_SAVE_AT=1300:build/yesno.state ./build/db4a "$ROM" 200 >/dev/null 2>&1
 
 probe() {  # state x y  addr  want  label  [extra env]
     local st=$1 x=$2 y=$3 addr=$4 want=$5 label=$6 extra=${7:-}
@@ -36,14 +44,14 @@ PY
     [ $? -eq 0 ] || fail=1
 }
 
-SHOT=1400
+SHOT=1150
 probe build/house.state  70  90 BEF8 0020 "house: Atreides"      || true
 probe build/house.state 160  90 BEF8 0078 "house: Ordos"         || true
 probe build/house.state 250  90 BEF8 00D0 "house: Harkonnen"     || true
 probe build/house.state 160 200 BEF8 0020 "house: below shields ignored" || true
 probe build/house.state 160  90 BEF8 0020 "house: DB4A_MENU_MOUSE=0 off" DB4A_MENU_MOUSE=0 || true
 
-SHOT=1780
+SHOT=1380
 probe build/yesno.state 230 176 A62C 0128 "mentat: YES"          || true
 probe build/yesno.state 230 198 A62C 0140 "mentat: NO"           || true
 probe build/yesno.state 100 100 A62C 0128 "mentat: off the plates ignored" || true
