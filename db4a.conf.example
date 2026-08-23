@@ -130,6 +130,34 @@
 #   fill the window and accept slightly uneven pixels.
 
 
+# wide = 400
+#
+#   EXPERIMENTAL, and known to still look wrong in motion. Widens the view
+#   from the cartridge's 320 pixels to the width given here, between 320 and
+#   512. Left out entirely, the game runs at 320 and nothing below applies.
+#
+#   What it does. During GAMEPLAY the whole picture is shifted right by the
+#   extra width, which keeps the HUD flush against the right edge with its
+#   backdrop still underneath it, and the new space opens on the left as more
+#   map. Everywhere else -- menus, the mentat, cutscenes -- there is nothing
+#   to anchor, so the 320 composition is centred and the surplus is left as
+#   black bars rather than stretched.
+#
+#   Why it is not finished. The game only ever writes tiles for the 320
+#   pixels it believes are visible. The extra columns are therefore
+#   reconstructed from whatever the tilemap happens to still hold there,
+#   which is last frame's leftovers rather than real map. It looks convincing
+#   in a still frame and wrong once the view moves. Two rounds of fixes made
+#   the captured frames correct and play still disagreed, which is why it
+#   ships off by default and behind this warning.
+#
+#   The game's own 320 pixels are unaffected either way: with widescreen off,
+#   output is byte-identical to the faithful build.
+#
+#   docs/widescreen.md records the measurements, and the three possible ways
+#   forward.
+
+
 # splash = 0
 #
 #   How long the start-up notice is held, in frames. Default 200, about four
