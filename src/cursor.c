@@ -298,8 +298,58 @@ uint32_t native_cursor_scroll(void) {
     return 0x71E0u;
 }
 
+/* Placement mode runs its OWN copy of the edge-scroll routine, at $64D2 --
+ * same 16.16 velocity, same 2.75-snaps-to-3.0 cap, same $FFBF3C accumulator,
+ * same camera clamp as $706C. That is why the override above never affected
+ * it, and why the view still lurched when a building became ready to place.
+ *
+ * Its dead zone is computed rather than fixed: d4 starts as the building's
+ * extent from the table at $64F2, and $651E/$6522/$6528 turn that into
+ * [120 - extent, 200 - extent] -- the usual 80-pixel window, shifted so the
+ * building's centre sits inside it. That shift IS the auto-centring: with a
+ * d-pad it helpfully brings the outline into view, and with a mouse it drags
+ * the map out from under a pointer that is already where the player is
+ * looking.
+ *
+ * Rather than reimplement the routine, this takes the outcome it produces when
+ * the cursor is already inside the dead zone -- no scroll -- and rejoins the
+ * ROM at $66F4, its own tail, which reads the two scroll outputs, applies them
+ * (zero, so nothing moves) and returns the way it always does.
+ *
+ * Skipping the routine outright is not an option: all twelve callers reach
+ * $64D2 by bra/beq/jmp rather than bsr/jsr, so it has no return address of its
+ * own on the stack to emulate an rts with. Rejoining its tail sidesteps that
+ * entirely.
+ */
+/* DB4A_PLACE_SCROLL: unset follows mouse control, 0 forces this override on,
+ * 1 forces the cartridge behaviour back. */
+int placement_override_active(void) {
+    const char *e = getenv("DB4A_PLACE_SCROLL");
+    if (e && *e == '0') return 1;
+    if (e && *e == '1') return 0;
+    return mouse_enabled();
+}
+
+uint32_t native_placement_scroll(void) {
+    CPU.a[0] = CUR_X;                      /* the lea the block opens with */
+    ww(OUT_X, 0);
+    ww(OUT_Y, 0);
+    /* What the routine's own no-scroll path costs, summed from the blocks it
+       replaces: $64D2 110, $6516 58, $6528 26, $6530 18, $659E 46, $65B6 58,
+       $6600 50, $6610 26, $6618 18, $668A 46, $66A4 58. */
+    CPU.cycles += 514;
+    return 0x66F4u;
+}
+
+/* `faithful` says whether the override reproduces the cartridge exactly.
+ * make check-native verifies only those -- comparing a deliberate behaviour
+ * change against the code it deliberately differs from would fail by
+ * construction, and a checker that is expected to fail is worth nothing.
+ * A modern override is also not registered at all unless it is switched on,
+ * so a faithful run never takes it. */
 static const struct { uint32_t pc; native_fn fn; int faithful; } TABLE[] = {
     { 0x706Cu, native_cursor_scroll,    1 },
+    { 0x64D2u, native_placement_scroll, 0 },
 };
 
 /* When the override may run.
@@ -327,6 +377,8 @@ static const struct { uint32_t pc; native_fn fn; int faithful; } TABLE[] = {
  * the argument for re-measuring a number before building on it rather than
  * after.
  */
+int placement_override_active(void);
+
 int native_active(void) {
     static int v = -1;
     if (v < 0) {
@@ -335,6 +387,9 @@ int native_active(void) {
         else if (*e == '0')     v = 0;
         else                    v = 1;
     }
+    /* Overrides are on by default, so a modern one switched on by itself --
+       DB4A_PLACE_SCROLL=0 without DB4A_MOUSE -- is reached without any special
+       case here. */
     return v;
 }
 
@@ -347,10 +402,9 @@ int native_checking(void) {
 native_fn native_lookup(uint32_t pc) {
     for (unsigned i = 0; i < sizeof TABLE / sizeof TABLE[0]; i++) {
         if (TABLE[i].pc != pc) continue;
-        /* master carries only faithful overrides. The `faithful` flag and
-           this check exist so that remaster, which rebases on top, can add
-           ones that deliberately differ without touching the lookup. */
-        if (!TABLE[i].faithful) return NULL;
+        /* A modern override is not registered unless it is switched on, so a
+           faithful run never takes it and check-native never sees it. */
+        if (!TABLE[i].faithful && !placement_override_active()) return NULL;
         return TABLE[i].fn;
     }
     return NULL;

@@ -149,6 +149,37 @@ Skipping the routine outright was not available: all twelve callers reach
 `$64D2` by `bra`/`beq`/`jmp` rather than `bsr`/`jsr`, so it has no return
 address of its own on the stack to emulate an `rts` with.
 
+## Overrides that deliberately differ
+
+`$64D2` is the first override that is not a faithful reimplementation. It
+removes the view re-centring that happens when a building becomes ready to
+place -- helpful with a d-pad, disorienting with a mouse, because the map lurches
+out from under a pointer that is already where the player is looking.
+
+Such an override needs two things the faithful ones do not:
+
+- **It is not registered unless it is switched on**, so a faithful run never
+  takes it. `native_active()` also has to know about it, or a flag that turns
+  the override on without `DB4A_MOUSE` silently does nothing.
+- **The equivalence checker skips it.** `make check-native` verifies only
+  entries marked `faithful` in the table. Comparing a deliberate behaviour
+  change against the code it deliberately differs from fails by construction,
+  and a checker that is expected to fail is worth nothing. Marking it wrong
+  costs a real failure: check-native went red the moment this override was
+  added, which is the mechanism working.
+
+Note what this one does NOT do. It does not patch the ROM -- nothing in this
+project does, the HAL holds the cartridge as `const uint8_t *` and
+`make verify-rom` checks the file. And it does not reimplement `$64D2`: it
+writes the outcome the routine produces when no scroll is due and rejoins the
+ROM at `$66F4`, the routine's own tail, which applies that (zero) scroll and
+returns normally. So it still depends on the cartridge routine existing. Owning
+`$64D2` end to end is the fully native version of this, and is not done.
+
+Skipping the routine outright was not available: all twelve callers reach
+`$64D2` by `bra`/`beq`/`jmp` rather than `bsr`/`jsr`, so it has no return
+address of its own on the stack to emulate an `rts` with.
+
 ## What to migrate next
 
 The camera itself: the clamp at `$FFE3CE`-`$FFE3D4` and the routine at `$79CA`
