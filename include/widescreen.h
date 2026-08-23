@@ -25,6 +25,11 @@
  * screen were wider. */
 void widescreen_note_column(uint32_t pc);
 
+/* Called once per frame, before the frame is drawn: fills the extension from
+ * the remembered anchor, so a stationary camera does not leave it blank. */
+void widescreen_extend(void);
+void widescreen_check_report(void);
+
 /* The two cartridge routines this hooks. Both draw a column downward with the
  * VDP autoincrement set to one nametable row; they differ in how they index
  * the shared tile table at $4ADE8. */
