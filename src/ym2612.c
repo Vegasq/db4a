@@ -437,7 +437,7 @@ static op_t *op_for(unsigned bank, unsigned reg, ch_t **chp) {
 static void ymlog(unsigned port, uint8_t v) {
     static FILE *fp; static int init;
     if (!init) { const char *p = getenv("DB4A_YMLOG"); fp = p ? fopen(p, "w") : NULL; init = 1; }
-    if (fp) { extern z80_t Z80; fprintf(fp, "%u %02X %u\n", port, v, (unsigned)Z80.cycles); }
+    if (fp) fprintf(fp, "%u %02X %lu\n", port, v, tick_calls);
 }
 
 void ym_write(unsigned port, uint8_t v) {

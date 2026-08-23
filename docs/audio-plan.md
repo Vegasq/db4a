@@ -172,6 +172,36 @@ chip to the end of the slice before the Z80 executes it. Both are correct
 changes and neither moved the overflow count (139,397 -> 139,396), so the
 asymmetry was real but was not this bug.
 
+### Where it actually is (corrected)
+
+Stamping both logs with the **FM tick count** -- the one clock both sides
+generate at an identical rate, unlike the Z80 counters -- gives the answer:
+
+| | ours | reference |
+|---|---|---|
+| first Timer A enable | FM tick 2,064,335 | FM tick 1,392,052 |
+| equivalent frame | ~1944 | ~1313 |
+| YM write rate *after* that point | 0.6206 /tick | 0.5788 /tick |
+
+**The music starts 672,283 FM ticks -- 12.7 seconds -- later in our build, and
+once it starts our write rate is slightly HIGHER than the reference's.** The
+"half the writes" figure that started this whole investigation is an artifact
+of the late start, not of anything running at half speed.
+
+That corrects the "killed: our music starts late" entry above. Both sides do
+enable Timer A at the same *position in the command stream* (write 20,520
+against 20,521), and I read that as meaning they reach it at the same time.
+Same stream position does not mean same time -- it is the same program making
+the same writes, so of course the position matches; only the clock differs.
+
+The 68000 is not the cause. Frames 1400 and 2000 are pixel-identical between
+the two builds -- planet, then title screen -- so the game's visual state is in
+lockstep while the sound driver is 631 frames behind.
+
+So: our sound driver takes 631 more frames to get through its first ~20,520 YM
+writes, and then runs at the correct rate. Whatever gates that first phase is
+the bug.
+
 ### What is left
 
 Neither side ever disables Timer A, and both enable it at the same place. So
