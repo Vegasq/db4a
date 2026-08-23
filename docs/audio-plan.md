@@ -84,13 +84,78 @@ That kills any plan that tunes gain or mixing levels against the whole mix, and
 promotes step 2 from "useful" to "required": with whole-mix correlation this
 low, nothing further can be diagnosed without separating the channels.
 
-**2. Get a per-channel oracle.** The mix is six FM channels plus DAC; a whole-
+**2. Compare the command streams. DONE — and it moved the diagnosis off the
+synthesis entirely.**
+
+Both YM2612s were instrumented to log every bus write (`DB4A_YMLOG=<path>`;
+the reference patch is in `ref/gpgx/core/sound/ym2612.c`, alongside the
+existing PC-trace hook — that tree is gitignored, so the patch is a local dev
+change to re-apply, not a commit).
+
+Over the same 52 seconds from boot:
+
+| | ours | reference | ratio |
+|---|---|---|---|
+| YM bus writes | 424,810 | 789,437 | 0.54 |
+| of which timer restarts (`27`=`15`) | 98,365 | 186,842 | 0.53 |
+| YM status reads | 262,561 | 490,664 | 0.54 |
+| Timer A overflows | 139,397 | 273,813 | 0.51 |
+| **Z80 instructions retired** | **18,479,524** | **18,859,200** | **0.98** |
+| **FM sample ticks** | **2,761,320** | **2,761,117** | **1.00** |
+
+The writes are the *same commands in the same order* — the reference simply has
+more of them. So this is not a synthesis bug at all, and no amount of envelope
+work would have fixed it.
+
+It is also not a cycle-budget bug. The Z80 retires 98% as many instructions,
+gets the arithmetically correct 71,365 cycles per frame, and is only stopped
+for the 68000's bus for 3.6% of slices. Our chip generates FM samples at
+exactly the reference's rate.
+
+What differs is how long **Timer A is enabled**: 696,985 running ticks against
+an implied ~1.37M. The driver restarts the timer half as often, so the timer
+runs half as long, so it overflows half as often. Cause and effect are circular
+inside that loop; what breaks it must be outside.
+
+A Z80 PC histogram, per address, says where:
+
+| Z80 address | ours | reference |
+|---|---|---|
+| `02B7` | 936,370 | 833,467 |
+| `0041`-`0063` (straight-line loop body) | 554,186 | 447,881 |
+
+The same code runs on both sides. Ours goes round the idle loop about 24% more
+often and spends correspondingly less in the music engine on page `02`
+(18.3% of instructions against 28.6%).
+
+So: the driver executes the same number of instructions, but completes half as
+many iterations, because each one waits longer on something that is not the
+timer. **The next step is to disassemble Z80 `$0041`-`$0063` and `$02B7` and
+find what that loop polls** — a 68000 handshake variable in Z80 RAM, or a
+status bit — and compare that signal's timing against the reference.
+
+**Two instrumentation errors made while getting here**, both caught by
+cross-checking, both worth remembering: a missing pair of braces in the
+reference patch counted overflows that the flag-enable check should have
+excluded (it changed nothing, because the driver always enables the flag, but
+the comparison was invalid until fixed); and our `ta_ticks` counter only
+increments while the timer runs while the reference's counted every call, so
+the two were never comparable. `fmsamples` against the reference's tick count
+is the like-for-like pair.
+
+**3. Get a per-channel oracle** — deferred. With the command streams differing
+this much, per-channel audio comparison would be measuring the consequence
+rather than the cause. Revisit once the streams match.
+
+**(was 2) Per-channel oracle.** The mix is six FM channels plus DAC; a whole-
 mix comparison cannot say which is wrong. Genesis-Plus-GX can be built with
 individual channels muted, and our own chip can do the same, so capture seven
 pairs (each channel alone) and compare them one at a time. Whichever channels
 diverge name the feature that is broken.
 
-**3. Work through the envelope generator, in the order the evidence points.**
+**4. Work through the envelope generator, in the order the evidence points.**
+Only after the command streams match — until then any level difference is
+explained by the missing commands.
 The known gap is SSG-EG: `src/ym2612.c` parses it and ignores it. SSG-EG makes
 an envelope loop or hold instead of decaying, so ignoring it produces both
 failure modes seen above — notes that fade when they should repeat, and notes

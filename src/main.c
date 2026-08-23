@@ -316,6 +316,22 @@ int main(int argc, char **argv) {
     printf("cycles emulated   : %llu\n", (unsigned long long)CPU.cycles);
 
     printf("\nblocks executed   : %lu\n", m68k_blocks_run);
+    { extern unsigned long z80_instructions, z80_pchist[65536];
+      printf("z80 instructions  : %lu\n", z80_instructions);
+      if (getenv("DB4A_Z80HIST")) {
+          for (unsigned n = 0; n < 14; n++) {
+              unsigned best = 0;
+              for (unsigned i = 1; i < 65536; i++) if (z80_pchist[i] > z80_pchist[best]) best = i;
+              if (!z80_pchist[best]) break;
+              printf("  z80 pc %04X : %10lu  %5.2f%%\n", best, z80_pchist[best],
+                     100.0 * z80_pchist[best] / (double)z80_instructions);
+              z80_pchist[best] = 0;
+          }
+      } }
+    { extern unsigned long z80_slices, z80_slices_off;
+      printf("z80 slices        : %lu, of which bus held: %lu (%.1f%%)\n",
+             z80_slices, z80_slices_off,
+             z80_slices ? 100.0 * z80_slices_off / z80_slices : 0.0); }
     printf("stopped at PC     : %06X\n", end);
     if (m68k_last_unknown) {
         printf("reason            : no block for PC %06X (unknown target)\n",

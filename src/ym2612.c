@@ -429,7 +429,18 @@ static op_t *op_for(unsigned bank, unsigned reg, ch_t **chp) {
     return &c->op[slot[(reg >> 2) & 3]];
 }
 
+/* DB4A_YMLOG=<path> logs every bus write as "port value", in the same format
+ * as the matching patch in ref/gpgx/core/sound/ym2612.c. Diffing the two
+ * streams separates "the driver sent different commands" from "we synthesise
+ * the same commands differently", which a whole-mix audio comparison cannot. */
+static void ymlog(unsigned port, uint8_t v) {
+    static FILE *fp; static int init;
+    if (!init) { const char *p = getenv("DB4A_YMLOG"); fp = p ? fopen(p, "w") : NULL; init = 1; }
+    if (fp) fprintf(fp, "%u %02X\n", port, v);
+}
+
 void ym_write(unsigned port, uint8_t v) {
+    ymlog(port, v);
     ym_writes++;
     init_tables();
     unsigned bank = (port >> 1) & 1;

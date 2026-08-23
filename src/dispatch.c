@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 unsigned long m68k_blocks_run;
+unsigned long z80_slices, z80_slices_off;
 
 /* Execution trace for the differential oracle (layer 3).
  *
@@ -240,6 +241,7 @@ uint32_t m68k_run_frame(uint32_t pc) {
         ym_run(CPU.cycles);
 
         z80_on = hal_z80_running();
+        z80_slices++; if (!z80_on) z80_slices_off++;
         if (z80_on) {
             uint64_t target = (CPU.cycles * Z80_NUM) / Z80_DEN;
             if (Z80.cycles < target) z80_run(target);

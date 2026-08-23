@@ -392,8 +392,15 @@ out:
     return cyc;
 }
 
+unsigned long z80_instructions;   /* for the audio work: instructions retired */
+unsigned long z80_pchist[65536];  /* full PC, to find the exact loop */
+
 void z80_run(uint64_t until) {
-    while (Z80.cycles < until) z80_step();
+    while (Z80.cycles < until) {
+        z80_pchist[Z80.pc & 0xFFFF]++;
+        z80_step();
+        z80_instructions++;
+    }
 }
 
 void z80_irq(void) {
