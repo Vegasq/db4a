@@ -364,6 +364,26 @@ Fidelity work goes to `master`; anything that changes what the game does goes
 to `remaster`. The pre-existing `mousecontrol`, `menu-screens` and `widescreen`
 branches are the history behind `remaster` and are not merged to `master`.
 
+**`remaster` is always REBASED onto `master`, never merged.** Decided
+2026-08-23. It is a stack of patches on top of the faithful recompile, and it
+should read as one: `git log master..remaster` is the patch set, and every
+commit in it is a deliberate departure from the cartridge.
+
+```bash
+git checkout remaster && git rebase master
+git push --force-with-lease origin remaster
+```
+
+So updating it rewrites published history and needs a force-push. That is
+accepted here -- the alternative is merge commits accumulating in the patch
+set, which is what this rule exists to prevent. Take a backup ref first
+(`git branch remaster-prerebase remaster`) and use `--force-with-lease`, never
+a bare `--force`.
+
+Because it is rebased, the fixture frames in `tests/menus.sh` and the seeds in
+`data/seeds.txt` belong on `master` even when a `remaster`-only feature is what
+exposed them, so both branches get them.
+
 ## Repository layout
 
 ```
