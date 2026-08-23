@@ -172,7 +172,7 @@ make analyse          # regenerate code discovery from the ROM
 make compare-screen SCENARIO=houseselect FRAME=2800
 
 # the deepest test in the tree: a recorded mission played to Victory
-make replay REC=data/recordings/level1atredis.txt SHOTS=25000
+make replay REC=data/recordings/level1atredis.txt SHOTS=18000
 ./tests/defeat.sh     # win mission 1, then lose mission 2
 ```
 

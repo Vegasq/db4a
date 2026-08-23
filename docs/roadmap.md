@@ -51,7 +51,10 @@ v1 is done when all of the following hold:
 
 The whole of mission 1 has been played through to Victory and is captured in
 `data/recordings/level1atredis.txt`, which replays deterministically and serves
-as the deepest regression test in the tree.
+as the deepest regression test in the tree. It wins mission 1 around frame
+15200, pages through the briefing itself, and is building in mission 2 by frame
+17400 -- so anything that scripts extra input on top of it must stay clear of
+those frames.
 
 Defeat needed mission 2. Mission 1 is the tutorial and has no enemy at all, so
 idling there for 28 minutes of game time changes nothing; `tests/defeat.sh`

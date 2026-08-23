@@ -5,15 +5,18 @@
 # 28 minutes of game time changes nothing. A loss therefore needs mission 2,
 # which is reached by winning mission 1 first.
 #
-# So: replay the recorded mission-1 victory, press through the briefing into
-# mission 2, then stop touching the controls and let the enemy do the work.
-# Defeat appears by frame 90000, about 30 minutes of game time.
+# So: replay the recording, which wins mission 1 around frame 15200 and carries
+# itself through the briefing into mission 2 by frame 17400, then stop touching
+# the controls and let the enemy do the work.
+#
+# It used to synthesise B presses at frames 27700-31000 to page through that
+# briefing, because the previous recording won much later. The recording now
+# contains those presses itself, so adding more would land in mission 2 and
+# press buttons during play.
 set -eu
 cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
-PRESS=$(python3 -c "print(','.join(f'{f}:b' for f in range(27700, 31000, 300)))")
-
-DB4A_REPLAY=data/recordings/level1atredis.txt DB4A_PRESS="$PRESS" DB4A_HOLD=8 \
+DB4A_REPLAY=data/recordings/level1atredis.txt \
     DB4A_SHOTS="${SHOTS:-90000}" DB4A_PPM=build/defeat \
     ./build/db4a "$ROM" 95000 | grep -E 'captured|frames simulated|no block'
 

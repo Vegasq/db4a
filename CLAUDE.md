@@ -429,7 +429,7 @@ make check-operands  # every discovered instruction parses
 make check-state     # save a state, resume, require an identical frame
 make check-houses    # all three houses load
 make compare-screen SCENARIO=houseselect FRAME=2800    # vs the reference
-make replay REC=data/recordings/level1atredis.txt      # the full winning mission
+make replay REC=data/recordings/level1atredis.txt      # mission 1 won, into mission 2
 ./tests/defeat.sh    # win mission 1, then lose mission 2
 ```
 

@@ -247,17 +247,18 @@ residual really is synthesis: levels and the envelope generator, SSG-EG first,
 exactly as this plan originally proposed. That work is now worth doing, and was
 not before.
 
-### Regression this causes: the input recordings are stale
+### Regression this caused, now resolved
 
-`data/recordings/level1atredis.txt` no longer plays to Victory and
-`tests/defeat.sh` no longer reaches the defeat screen. Both recordings were
-made against the broken timing, and the Z80 can write into 68000 RAM through
-its bank window, so changing when the driver runs changes the game slightly.
-Everything that does not depend on a recording still passes: menus 100.00%
-pixel-exact, gameplay 99.69% unchanged, `check-state`, `check-houses`, zexdoc,
-and the unit tests.
+The interrupt fix changed the game's behaviour enough that the old recording no
+longer played to Victory -- the Z80 writes into 68000 RAM through its bank
+window, so changing when the driver runs changes the game. The recording was
+remade on 2026-08-23 and everything is green again.
 
-They need re-recording with `make record`, which needs an interactive session.
+The remake is shorter and wins much earlier: mission 1 falls around frame 15200
+against roughly 27700 before. `tests/defeat.sh` had synthesised B presses at
+frames 27700-31000 to page through the victory briefing, which would now land
+in the middle of mission 2; the new recording pages through the briefing
+itself, so those presses were removed rather than moved.
 
 
 Neither side ever disables Timer A, and both enable it at the same place. So
