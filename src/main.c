@@ -7,6 +7,7 @@
 #include "savestate.h"
 #include "mouse.h"
 #include "buildmenu.h"
+#include "menus.h"
 #include "render.h"
 #include "input.h"
 #include "z80.h"
@@ -258,7 +259,7 @@ int main(int argc, char **argv) {
         { static int mt = -1; static int tx, ty;
           if (mt < 0) { const char *e = getenv("DB4A_MOUSE_TARGET");
                         mt = (e && sscanf(e, "%d,%d", &tx, &ty) == 2) ? 1 : 0;
-                        if (mt) { mouse_enable(1); menu_enable(1); } }
+                        if (mt) { mouse_enable(1); menu_enable(1); menus_enable(1); } }
           if (mt) {
               /* Steering runs unconditionally here.
                *
@@ -270,16 +271,22 @@ int main(int argc, char **argv) {
                * declines to run, so it never releases it and the pad sticks
                * for the rest of the session. */
               {
-                  if (!buildmenu_steer(tx, ty)) mouse_steer(tx, ty);
-                  /* In a scene steering does not recognise it must leave the
-                     pad completely alone, or menus become unusable. */
+                  int on_console = buildmenu_steer(tx, ty);
+                  int on_menu    = menus_steer(tx, ty);
+                  if (!on_console && !on_menu) mouse_steer(tx, ty);
+
+                  /* On a screen nothing claims, steering must leave the pad
+                     completely alone or that screen becomes unusable. It may
+                     hold a direction during gameplay, and on the screens the
+                     console and menu steering own -- driving the d-pad there
+                     is the whole point of them. */
                   extern int pad_dir_held(void);
                   uint32_t sc = ((uint32_t)hal_ram_ptr(0)[0xE002] << 24)
                               | ((uint32_t)hal_ram_ptr(0)[0xE003] << 16)
                               | ((uint32_t)hal_ram_ptr(0)[0xE004] << 8)
                               |  hal_ram_ptr(0)[0xE005];
                   int gameplay = (sc == 0x006D0Cu || sc == 0x00608Eu || sc == 0x00B540u);
-                  if (!gameplay && pad_dir_held()) {
+                  if (!gameplay && !on_console && !on_menu && pad_dir_held()) {
                       printf("  FAIL frame %u: steering held the d-pad in scene %06X\n",
                              frames, sc);
                   }
