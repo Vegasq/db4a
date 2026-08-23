@@ -238,8 +238,21 @@ uint32_t m68k_run_frame(uint32_t pc) {
          * expects. That is what made the music crawl and then stop entirely.
          */
         psg_run(CPU.cycles);
-        ym_run(CPU.cycles);
-
+        /* NOT ym_run(CPU.cycles) here.
+         *
+         * The Z80 is about to execute the span that ends at CPU.cycles, so
+         * running the chip to CPU.cycles first puts it AHEAD of the Z80 for
+         * the whole slice. Every register write the driver makes then lands at
+         * the end of the slice instead of where the Z80 actually is -- and a
+         * Timer A restart that lands late overflows late. At a 500-cycle slice
+         * against a ~95us timer period that is most of a period of delay per
+         * restart, and the driver restarts the timer constantly.
+         *
+         * The chip is advanced on demand instead: z80_read and z80_write both
+         * bring it to the Z80's position before answering, and the end of the
+         * frame catches it up. That keeps the flag current for the driver's
+         * poll -- which is what the eager call was for -- without ever running
+         * the chip past the code that is driving it. */
         z80_on = hal_z80_running();
         z80_slices++; if (!z80_on) z80_slices_off++;
         if (z80_on) {

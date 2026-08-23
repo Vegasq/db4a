@@ -143,7 +143,53 @@ increments while the timer runs while the reference's counted every call, so
 the two were never comparable. `fmsamples` against the reference's tick count
 is the like-for-like pair.
 
-**3. Get a per-channel oracle** — deferred. With the command streams differing
+### Narrowing, and two hypotheses killed
+
+Everything measurable about the chip now matches exactly:
+
+| | ours | reference |
+|---|---|---|
+| FM ticks generated | 2,761,320 | 2,761,117 (ratio 1.000) |
+| ticks per Timer A overflow | 5.00 | 5.00 |
+| values ever written to reg `27` | `15` only | `15` only |
+| stream position of the first Timer A enable | write 20,520 | write 20,521 |
+| Timer A overflows | 139,397 | 273,813 |
+| **Timer A enabled, as a fraction of ticks** | **25.2%** | **49.6%** |
+
+**Killed: "our Timer A runs at half speed."** It does not. The tick rate is
+identical to four figures and the period is identical. The overflow count is
+half because the timer is *enabled* for half as long, not because it counts
+slowly.
+
+**Killed: "our music starts late."** Both sides enable Timer A after the same
+number of YM writes -- 20,520 against 20,521 -- so the driver reaches the same
+point in its own program at the same point in its own command stream.
+
+Also killed earlier, and worth keeping killed: the chip being advanced ahead of
+the Z80. `z80_write` now brings the chip to the Z80's position before applying
+a register write, symmetric with `z80_read`, and the slice no longer runs the
+chip to the end of the slice before the Z80 executes it. Both are correct
+changes and neither moved the overflow count (139,397 -> 139,396), so the
+asymmetry was real but was not this bug.
+
+### What is left
+
+Neither side ever disables Timer A, and both enable it at the same place. So
+after that point the reference issues roughly twice as many writes in the same
+number of FM ticks. Our driver is doing the same work more slowly *in chip
+time* while executing 98% as many instructions and receiving the correct number
+of Z80 cycles per frame.
+
+The next measurement is to stamp the reference's write log with frame numbers
+-- its Z80 cycle counter is rebased per frame, so the timestamps already
+collected are not comparable with ours, which is monotonic -- and find the
+frame at which it first enables Timer A. Ours is frame 1944 of 2600. If the
+reference's is materially earlier, the 68000 side of our build reaches the
+music later in wall-clock time despite reaching it at the same point in the
+command stream, and the fault is in the 68000/Z80 handshake rather than in
+either processor's speed.
+
+**Per-channel oracle** — deferred. With the command streams differing
 this much, per-channel audio comparison would be measuring the consequence
 rather than the cause. Revisit once the streams match.
 

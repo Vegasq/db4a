@@ -102,7 +102,16 @@ void z80_write(uint16_t a, uint8_t v) {
         if ((a & 0x1FF0) == 0x1B20) z80_writes_1b2x++;
         z80ram[a & 0x1FFF] = v; return;
     }
-    if (a < 0x6000) { ym_write(a & 3, v); return; }  /* YM2612 */
+    if (a < 0x6000) {                                /* YM2612 */
+        /* Symmetric with the read path above, and for the same reason. A
+           timer restart written here takes effect at whatever time the chip
+           has reached, so if the chip has already been advanced past the Z80
+           the restart lands late and the next overflow is late with it. Bring
+           the chip to the Z80's own position first. */
+        ym_run((uint64_t)Z80.cycles * Z80_DEN / Z80_NUM);
+        ym_write(a & 3, v);
+        return;
+    }
     if (a < 0x6100) {                                /* bank register */
         bank = (uint16_t)(((bank >> 1) | ((v & 1) << 8)) & 0x1FF);
         return;
