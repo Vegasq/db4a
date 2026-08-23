@@ -9,6 +9,7 @@
 #include "buildmenu.h"
 #include "menus.h"
 #include "render.h"
+#include "splash.h"
 #include "input.h"
 #include "z80.h"
 #include "system.h"
@@ -69,6 +70,12 @@ static void tempo_sample(unsigned frames) {
 
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s <rom> [frames]\n", argv[0]); return 2; }
+    /* DB4A_SPLASH_PREVIEW=out.ppm draws the start-up notice and exits, so its
+       layout can be checked without launching a window. The game's own font is
+       no use here: its text is tiles that the cartridge uploads to VRAM once it
+       boots, and this runs before that -- VRAM is still entirely zero. */
+    { const char *sp = getenv("DB4A_SPLASH_PREVIEW");
+      if (sp) { splash_draw(30); render_write_ppm(sp); return 0; } }
     /* Pacing is cycle-based now, so the budget is a frame count: at PAL
        49.70 Hz, 1 frame = 152923 cycles = 20.12 ms of game time. */
     unsigned max_frames = (argc > 2) ? (unsigned)strtoul(argv[2], NULL, 0) : 600;

@@ -6,6 +6,7 @@
 #include "m68k.h"
 #include "hal.h"
 #include "config.h"
+#include "splash.h"
 #include "vdp.h"
 #include "render.h"
 #include "psg.h"
@@ -223,6 +224,25 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
     int replaying = reppath ? inputlog_replay_open(reppath) : 0;
     if (replaying)
         printf("replaying -- keyboard input is ignored\n");
+
+    /* Say what this build is before the cartridge's own title appears. Held
+       for a few seconds or until a key, and skipped entirely by splash = 0. */
+    for (int sf = 0, hold = splash_frames(); sf < hold; sf++) {
+        SDL_Event se;
+        int skip = 0;
+        while (SDL_PollEvent(&se)) {
+            if (se.type == SDL_QUIT) { SDL_Quit(); return 0; }
+            if (se.type == SDL_KEYDOWN || se.type == SDL_MOUSEBUTTONDOWN ||
+                se.type == SDL_CONTROLLERBUTTONDOWN) skip = 1;
+        }
+        if (skip) break;
+        splash_draw((unsigned)sf);
+        SDL_UpdateTexture(tex, NULL, FB, FB_W * 3);
+        SDL_RenderClear(ren);
+        SDL_RenderCopy(ren, tex, NULL, NULL);
+        SDL_RenderPresent(ren);
+        SDL_Delay(20);
+    }
 
     int running = 1;
     unsigned frames = 0;
