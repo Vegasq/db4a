@@ -48,28 +48,53 @@
 #include "input.h"
 #include "hal.h"
 #include <stdlib.h>
+#include <stdio.h>
 
-#define MENU_HANDLER  0x8462u    /* the console's d-pad handler */
+/* Two screens share this code, because they are the same widget with
+ * different data behind it. The Starport is the Construction Yard's console
+ * with vehicles instead of buildings: same chrome, same 32x24 cells at the
+ * same origin, same EXIT/FIX/STOP across the top, same handler shape reading
+ * a (column,row) pair and refusing to move onto an empty cell.
+ *
+ * What differs is only what is in the table below -- and two values in it
+ * would be easy to assume and wrong. The Starport's grid is FOUR rows, not
+ * six (`cmpi.w #$4,d1` at $91CA against `#$6` at $84C0), and its empty marker
+ * is $FF, not $80 (`cmpi.b #$ff,d3` at $91EA against `#$80` at $84E0).
+ *
+ * Grid geometry is shared and was measured, not assumed: driving the highlight
+ * one cell right moves the changed pixels from x 32..63 to 64..95, and one
+ * cell down from y 48..71 to 72..95, on both screens.
+ */
+struct console {
+    uint32_t handler;      /* d-pad handler; its running IS the screen being up */
+    unsigned probe;
+    unsigned sel_col, sel_row, cells;
+    uint8_t  empty;
+    int      rows;
+};
 
-#define SEL_COL   0xBF8A
-#define SEL_ROW   0xBF8C
-#define CELLS     0xBF8E
-#define EMPTY     0x80
+static const struct console CONSOLES[] = {
+    /* build console */
+    { 0x8462u, PROBE_BUILD_CONSOLE, 0xBF8A, 0xBF8C, 0xBF8E, 0x80, 6 },
+    /* Starport */
+    { 0x916Cu, PROBE_STARPORT,      0xBFC8, 0xBFCA, 0xBFCC, 0xFF, 4 },
+};
+#define NCONSOLES (sizeof CONSOLES / sizeof CONSOLES[0])
 
 #define COLS   3
-#define ROWS   6
 #define GRID_X 32
 #define GRID_Y 48
 #define CELL_W 32
 #define CELL_H 24
 
 static int enabled;
-static int ran_last_frame;
+static const struct console *open_console;   /* NULL when none is up */
 static int releasing;             /* the handler is edge-triggered: pulse */
 
 void menu_enable(int on) {
     enabled = menu_mouse_wanted() && on;
-    probe_watch(PROBE_BUILD_CONSOLE, enabled ? MENU_HANDLER : 0);
+    for (unsigned i = 0; i < NCONSOLES; i++)
+        probe_watch(CONSOLES[i].probe, enabled ? CONSOLES[i].handler : 0);
 }
 
 /* One switch for every menu screen the pointer can drive. */
@@ -78,7 +103,7 @@ int menu_mouse_wanted(void) {
     return !(e && *e == '0');
 }
 
-int buildmenu_open(void) { return enabled && ran_last_frame; }
+int buildmenu_open(void) { return enabled && open_console != NULL; }
 
 static const uint8_t *ram_or_null(void) {
     size_t len = 0;
@@ -88,23 +113,25 @@ static const uint8_t *ram_or_null(void) {
 
 static int rw(const uint8_t *ram, unsigned a) { return (ram[a] << 8) | ram[a + 1]; }
 
-static int cell_filled(const uint8_t *ram, int r, int c) {
-    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return 0;
-    return ram[CELLS + r * COLS + c] != EMPTY;
+static int cell_filled(const struct console *k, const uint8_t *ram, int r, int c) {
+    if (r < 0 || r >= k->rows || c < 0 || c >= COLS) return 0;
+    return ram[k->cells + r * COLS + c] != k->empty;
 }
 
 void buildmenu_selection(int *row, int *col) {
     const uint8_t *ram = ram_or_null();
-    if (!ram) { if (row) *row = -1; if (col) *col = -1; return; }
-    if (col) *col = rw(ram, SEL_COL);
-    if (row) *row = rw(ram, SEL_ROW);
+    const struct console *k = open_console;
+    if (!ram || !k) { if (row) *row = -1; if (col) *col = -1; return; }
+    if (col) *col = rw(ram, k->sel_col);
+    if (row) *row = rw(ram, k->sel_row);
 }
 
 void buildmenu_cell_at(int px, int py, int *row, int *col) {
     const uint8_t *ram = ram_or_null();
+    const struct console *k = open_console;
     int c = (px - GRID_X) / CELL_W;
     int r = (py - GRID_Y) / CELL_H;
-    if (px < GRID_X || py < GRID_Y || !ram || !cell_filled(ram, r, c)) { r = -1; c = -1; }
+    if (px < GRID_X || py < GRID_Y || !ram || !k || !cell_filled(k, ram, r, c)) { r = -1; c = -1; }
     if (row) *row = r;
     if (col) *col = c;
 }
@@ -115,9 +142,35 @@ static void release(void) {
 }
 
 int buildmenu_steer(int px, int py) {
-    int was_open = buildmenu_open();
-    ran_last_frame = probe_take(PROBE_BUILD_CONSOLE);
-    if (!enabled || !was_open) { releasing = 0; return 0; }
+    /* Consume every console's probe each frame, whichever is up: a slot read
+       late reports a stale screen. Only one can be open at a time.
+     *
+     * The handler does NOT run on every frame -- the Starport's alternates,
+     * giving starport/none/starport/none -- so a console is held open for a
+     * few frames after its handler was last seen rather than being dropped the
+     * first frame it is missing. Without this the steering sees a closed
+     * screen every other frame, never completes its press/release pulse, and
+     * the highlight does not move at all, which is exactly how this first
+     * behaved. The grace is short so that leaving the screen still stops the
+     * steering promptly. */
+    const struct console *was = open_console;
+    static int grace;
+    int seen = 0;
+    for (unsigned i = 0; i < NCONSOLES; i++)
+        if (probe_take(CONSOLES[i].probe)) { open_console = &CONSOLES[i]; seen = 1; }
+    if (seen) grace = 4;
+    else if (grace > 0 && --grace == 0) open_console = NULL;
+    if (getenv("DB4A_LOG_CONSOLE")) {
+        static const struct console *last = (const struct console *)1;
+        if (open_console != last) {
+            last = open_console;
+            fprintf(stderr, "[console] %s\n",
+                    open_console ? (open_console->probe == PROBE_STARPORT
+                                    ? "starport" : "build console") : "none");
+        }
+    }
+    if (!enabled || !was) { releasing = 0; return 0; }
+    const struct console *k = was;
 
     const uint8_t *ram = ram_or_null();
     if (!ram) { release(); return 1; }
@@ -130,7 +183,7 @@ int buildmenu_steer(int px, int py) {
     buildmenu_cell_at(px, py, &tr, &tc);
     if (tr < 0) { release(); return 1; }          /* not over a live cell */
 
-    int cr = rw(ram, SEL_ROW), cc = rw(ram, SEL_COL);
+    int cr = rw(ram, k->sel_row), cc = rw(ram, k->sel_col);
     int dr = tr - cr, dc = tc - cc;
     if (!dr && !dc) { release(); return 1; }
 
@@ -144,10 +197,10 @@ int buildmenu_steer(int px, int py) {
     int did = 0;
     for (int attempt = 0; attempt < 2 && !did; attempt++) {
         int try_col = col_first ? (attempt == 0) : (attempt == 1);
-        if (try_col && sc && cell_filled(ram, cr, cc + sc)) {
+        if (try_col && sc && cell_filled(k, ram, cr, cc + sc)) {
             pad_set(sc > 0 ? PAD_RIGHT : PAD_LEFT, 1);
             did = 1;
-        } else if (!try_col && sr && cell_filled(ram, cr + sr, cc)) {
+        } else if (!try_col && sr && cell_filled(k, ram, cr + sr, cc)) {
             pad_set(sr > 0 ? PAD_DOWN : PAD_UP, 1);
             did = 1;
         }

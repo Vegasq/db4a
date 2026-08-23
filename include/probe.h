@@ -18,7 +18,8 @@
 
 #define PROBE_BUILD_CONSOLE 0   /* $8462  the console's d-pad handler   */
 #define PROBE_HOUSE_SELECT  1   /* $4808  the shield highlight's slide  */
-#define PROBE_MENTAT_ASK    2   /* $25CF4 the YES/NO selector's sprites */
+#define PROBE_MENTAT_ASK    2   /* $25CAE the YES/NO loop head          */
+#define PROBE_STARPORT      3   /* $916C  the Starport's d-pad handler  */
 
 extern uint32_t probe_pc[PROBE_SLOTS];
 extern uint8_t  probe_hit[PROBE_SLOTS];

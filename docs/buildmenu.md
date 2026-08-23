@@ -1,4 +1,8 @@
-# The build console
+# The build console (and the Starport)
+
+The Starport is the same widget with different data behind it -- same chrome,
+same cells, same handler shape -- so `src/buildmenu.c` drives both from one
+table. The differences are set out at the end.
 
 For the other screens -- house selection, the mentat, the title sequence -- see
 [menus.md](menus.md).
@@ -159,3 +163,42 @@ make check-menu
 Regenerates the console state from the committed recording and checks all three
 top buttons, both items, an empty cell, a point off the grid, and that
 `DB4A_MENU_MOUSE=0` really disables it.
+
+## The Starport
+
+Same console, vehicles instead of buildings. Two of its four differences would
+be easy to assume and wrong, so all four are listed:
+
+| | build console | Starport |
+|---|---|---|
+| d-pad handler | `$8462` | `$916C` |
+| column / row | `$FFBF8A` / `$FFBF8C` | `$FFBFC8` / `$FFBFCA` |
+| cell table | `$FFBF8E` | `$FFBFCC` |
+| grid rows | 6 (`cmpi.w #$6,d1` at `$84C0`) | **4** (`cmpi.w #$4,d1` at `$91CA`) |
+| empty marker | `$80` (`$84E0`) | **`$FF`** (`$91EA`) |
+
+Cell geometry is shared -- 32x24 from origin (32,48) -- and was measured rather
+than assumed: driving the highlight one cell right moves the changed pixels
+from x 32..63 to 64..95, and one cell down from y 48..71 to 72..95, on both
+screens. A live cell table reads `1C 1D 20 / 01 07 09 / 0A 0D 0F / 10 11 FF`,
+which is EXIT/FIX/STOP and then eight purchasable vehicles.
+
+**The handler does not run every frame.** The Starport's alternates, so the
+probe reports starport/none/starport/none. Detection therefore holds a console
+open for a few frames after its handler was last seen instead of dropping it
+the first frame it is missing. Without that the steering saw a closed screen
+every other frame, never finished its press/release pulse, and the highlight
+did not move at all -- which is exactly how this first behaved, with every
+pointer target leaving the selection at (0,0).
+
+`DB4A_LOG_CONSOLE=1` prints which console the probe thinks is up; it is what
+showed the alternation.
+
+## The crash this came with
+
+Pressing a direction in the Starport used to stop with `BAD PC 00009228`.
+`$921E` is `jmp $9222(pc,d4.w)` indexed by byte offset, so d4 is 0/2/4/6. Three
+slots hold `bra.b` entries; the fourth case's body is inlined at `$9228` and the
+jump lands straight on it. The table walker stops at the first implausible
+entry and `56 41` is not a `bra.b`, so the fourth handler was never decoded.
+Fixed on `master` by seeding `$9228`.
