@@ -255,32 +255,40 @@ Consequences for contributors:
 
 `src/cursor.c` is the first piece of game logic this project implements in C
 rather than running out of the cartridge. A **native override** replaces one
-recompiled block entry with a hand-written C function that does the same job
-against the same RAM and returns the PC the ROM would have continued from.
+block entry with a hand-written C function that does the same job against the
+same RAM and returns the PC the ROM would have continued from.
 
-Full methodology: **`docs/natives.md`**.
+Full methodology, including how to pick the next routine: **`docs/natives.md`**.
+
+The rules, because getting them wrong is quiet rather than loud:
 
 1. **Override only at a real block entry.** The dispatcher looks up whole
    blocks; a PC in the middle of one is never consulted.
-2. **Account for cycles.** Take the numbers from each generated block's
-   `CPU.cycles +=`.
-3. **Registers and flags are part of the contract.** Route arithmetic through
-   the `add16`/`sub16`/`cmp16` helpers so flags are right by construction.
+2. **Account for cycles.** Cycle counts drive frame pacing and the Z80
+   interleave. Take the numbers from each generated block's `CPU.cycles +=`.
+3. **Registers and flags are part of the contract.** An override is spliced
+   into the middle of execution and must leave the CPU as the blocks would
+   have. Route arithmetic through the `add16`/`sub16`/`cmp16` helpers so flags
+   are right by construction.
 
 ```bash
-make check-native      # per-call equivalence + a faithful run unchanged
-DB4A_NATIVE=0          # disable every override
+make check-native                       # per-call equivalence + faithful run unchanged
+DB4A_NATIVE=check ./build/db4a "$ROM" 12000
+DB4A_NATIVE=0                           # never override    =1  always
 ```
 
 **The checker must compare everything.** Its first version compared RAM, cycles
 and the exit PC, and passed on all 9319 calls of a mission while the run
 visibly diverged -- the override was leaving `d0`-`d2` and X holding the
-caller's values.
+caller's values. Whole-RAM diff plus every register plus the flags.
 
-**Faithful overrides are free.** Measured across the whole recorded mission,
-`DB4A_NATIVE=0` against `=1`: zero differing pixels and zero differing RAM
-bytes. An earlier claim that they cost 0.62% was a bad measurement; see
-`docs/natives.md`.
+**Overrides are not free.** `m68k_run_until` checks the slice deadline between
+blocks, so collapsing an eight-block, ~1000-cycle routine into one indivisible
+step moves where the 68000 yields to the Z80 -- 0.62% of pixels at frame 6000,
+the same order as task #21. That is why the cursor override is gated on mouse
+control instead of being on by default. The real fix is to interleave on
+absolute cycle position rather than block boundaries; do that before migrating
+more routines.
 
 ## Reference oracle
 
@@ -378,6 +386,16 @@ wrong and SSG-EG is parsed but ignored.
 
 These cost real debugging time. Do not rediscover them.
 
+- **`DB4A_LOG_SCENE=1` prints the scene pointer whenever it changes.** Useful
+  before assuming a screen has its own scene: the build console does not. A
+  full mission produces only eight distinct scenes, and the console opens and
+  closes entirely inside gameplay's `00006D0C`. See `docs/buildmenu.md`.
+- **`DB4A_WATCH=FFBF12` names the block that wrote a RAM address.** This is the
+  fastest way from "some variable changed" to "this routine did it", and it
+  found the cursor code in minutes after static analysis had pointed at the
+  wrong one of the two writers. Block granularity, which is what you feed back
+  into `tools/` to disassemble. Covers byte, word and long writes.
+
 - **capstone's m68k `detail` API reports `disp=0` for absolute addressing.**
   It cannot distinguish `jsr $1664.w` from `jsr (a0)` structurally. Parse
   `op_str` text instead — it is correct for every addressing mode. PC-relative
@@ -456,6 +474,7 @@ tools/rommap.py      coarse entropy banding (classification NOT trustworthy)
 tests/test_flags.c   68000 flag semantics unit tests
 docs/roadmap.md      goal, definition of done, non-goals, milestones
 docs/natives.md      replacing cartridge code with C: how, and what it costs
+docs/buildmenu.md    the build console: grid layout, RAM, how to drive it
 docs/rom.md          base ROM provenance and header dump
 docs/journal.md      chronological record of work and findings
 build/               generated, gitignored, fully reproducible
