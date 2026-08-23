@@ -182,7 +182,9 @@ static void watch_check(uint32_t a, uint32_t v, int width) {
     }
     if (!watch_addr) return;
     if (a > watch_addr || a + (uint32_t)width <= watch_addr) return;
-    if (hal_watch_hits < 200)
+    static long cap = -1;
+    if (cap < 0) { const char *n = getenv("DB4A_WATCH_N"); cap = n ? atol(n) : 200; }
+    if (cap == 0 || hal_watch_hits < (unsigned long)cap)
         fprintf(stderr, "[watch] %06X <- %0*X  from block %06X\n",
                 a, width * 2, v, m68k_cur_block);
     hal_watch_hits++;
