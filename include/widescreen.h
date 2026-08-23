@@ -30,6 +30,12 @@ void widescreen_note_column(uint32_t pc);
 void widescreen_extend(void);
 void widescreen_check_report(void);
 
+/* Native override of $11B4, the cartridge's left-edge sprite cull. Widened by
+ * the extension width so units standing in it are not dropped. Identical to
+ * the cartridge when widescreen is off. */
+uint32_t native_sprite_left_cull(void);
+#define WS_SPRITE_LEFT_CULL 0x0011B4u
+
 /* The two cartridge routines this hooks. Both draw a column downward with the
  * VDP autoincrement set to one nametable row; they differ in how they index
  * the shared tile table at $4ADE8. */

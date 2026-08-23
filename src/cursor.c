@@ -62,6 +62,7 @@
 #include "m68k.h"
 #include "mouse.h"
 #include "cursor.h"
+#include "widescreen.h"
 #include <stdlib.h>
 
 #define CUR_X    0xFFBF12u
@@ -351,6 +352,9 @@ uint32_t native_placement_scroll(void) {
 static const struct { uint32_t pc; native_fn fn; int faithful; } TABLE[] = {
     { 0x706Cu, native_cursor_scroll,    1 },
     { 0x64D2u, native_placement_scroll, 0 },
+    /* Widescreen's left-edge sprite cull. Faithful: with widescreen off it is
+       the cartridge's block instruction for instruction. See widescreen.c. */
+    { WS_SPRITE_LEFT_CULL, native_sprite_left_cull, 1 },
 };
 
 /* When the override may run.
