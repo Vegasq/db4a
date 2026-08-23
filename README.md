@@ -148,7 +148,7 @@ instruction cannot behave one way in one place and differently in another.
 calls, then iterates jump-table recovery to a fixpoint. Several passes recover
 entry points that nothing branches to — handlers whose address is a long
 immediate, script-interpreter tables reached through an address register,
-anchored tables of absolute pointers. Currently 41103 instructions across 11974
+anchored tables of absolute pointers. Currently 41103 instructions across 11975
 generated blocks.
 
 **Verification** runs at four levels, described in `docs/verification.md`:

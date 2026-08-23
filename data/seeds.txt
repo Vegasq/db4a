@@ -59,3 +59,13 @@
 045A16
 045A8A
 045CD8
+
+# 2026-08-23. Reached from $8FE8 during a long session (frame 68424, after a
+# state load). Not a RAM dispatch like most of this file: $9004 is a plain
+# fall-through that static analysis already decoded correctly. What it lacked
+# was a BLOCK BOUNDARY there, because a spurious overlapping decode at $9000 --
+# `ori.b #$9c,d7`, sitting inside the 6-byte `lea.l $70c9c.l,a4` that starts at
+# $8FFE -- truncated the block, so it ended at $9003 and returned a PC nothing
+# started at. Seeding $9004 restores the real boundary; the instruction count
+# is unchanged at 41103 because nothing new was decoded.
+009004
