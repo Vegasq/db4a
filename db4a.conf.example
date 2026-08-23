@@ -1,29 +1,113 @@
-# db4a settings.
+# db4a settings
+# =============
 #
-# Copy this to db4a.conf next to the binary and edit, then restart the game.
-# DB4A_CONF=<path> points somewhere else.
+# Copy this file to `db4a.conf` next to the binary, uncomment what you want,
+# and restart the game. Nothing here needs a shell or a rebuild.
 #
-#   key = value      one per line, # starts a comment
+#   DB4A_CONF=/path/to/other.conf     reads somewhere else instead
+#
+# Format
+# ------
+#   key = value        one setting per line
+#   # comment          anything after a # is ignored
 #
 # Keys are the environment-variable names without the DB4A_ prefix, so
-# `gain = 8` is the same as running with DB4A_GAIN=8.
+# `gain = 8` in this file is the same as running with DB4A_GAIN=8.
 #
-# An environment variable always beats the file, so you can try a setting for
-# one run without editing anything:
+# Anything that just needs to be "on" takes 1. Setting it to 0 is NOT the same
+# as leaving it out for every option -- where 0 means something specific, it
+# says so below.
+#
+# The environment always wins
+# ---------------------------
+# If a variable is set in the environment it beats this file, so you can try a
+# value for a single run without editing anything:
 #
 #   DB4A_GAIN=16 make play
 #
-# Only player settings live here. The diagnostic and test controls
-# (DB4A_REPLAY, DB4A_SHOTS, DB4A_WATCH, DB4A_NATIVE, the DB4A_LOG_* family)
-# stay environment-only on purpose: they make a single run behave unusually,
-# and a file that persists across runs is a bad place for that.
+# That rule exists for a practical reason: every test in this project drives
+# the binary through environment variables, and a line in your personal config
+# must not be able to change what a test does.
+#
+# What is deliberately NOT here
+# -----------------------------
+# Only settings describing how you want to PLAY live in this file. The
+# diagnostics and test controls -- DB4A_REPLAY, DB4A_SHOTS, DB4A_WATCH,
+# DB4A_NATIVE, DB4A_MOUSE_TARGET, the whole DB4A_LOG_* family -- stay
+# environment-only on purpose. Each exists to make one run behave unusually,
+# and a file that persists across every future run is the wrong place for
+# that: you end up debugging your own configuration instead of the game.
+#
+# On startup the game prints what it actually resolved, so you can see whether
+# this file was picked up:
+#
+#   config: 3 setting(s) from db4a.conf
+#   settings: gain=8 mute=no state=build/state.db4a keys=(default)
 
-# --- audio ---------------------------------------------------------------
-# gain = 8            # output volume, 1-64. Default 4.
-# mute = 1            # open no audio device at all
 
-# --- input ---------------------------------------------------------------
-# keys = a=q,b=w,c=e  # remap buttons. Naming one drops its defaults.
+# =========================================================================
+# Audio
+# =========================================================================
 
-# --- save states ---------------------------------------------------------
-# state = build/state.db4a    # where F5/F9 read and write
+# gain = 4
+#
+#   Output volume, as a plain multiplier applied to the mixed sample before
+#   it is clipped. Range 1-64, default 4.
+#
+#   The cartridge drives everything through the YM2612 and mixes fairly
+#   quietly, so 4 is chosen to leave headroom rather than to be loud. If the
+#   game is too quiet against everything else on your desktop, raise it.
+#   Values high enough to clip will distort rather than get louder -- if it
+#   starts sounding harsh, come back down.
+
+# mute = 1
+#
+#   Open no audio device at all. Not a volume of zero: the game still runs
+#   its sound driver and the emulated chips still work, but nothing is sent
+#   to the system.
+#
+#   Useful when another program has the sound device, when you are running
+#   over a remote session, or when you simply want silence without turning
+#   your whole machine down.
+
+
+# =========================================================================
+# Input
+# =========================================================================
+
+# keys = a=q,b=w,c=e
+#
+#   Remap the three face buttons. The defaults are:
+#
+#     arrows       D-pad
+#     Q W E        A B C        (Z X C, Space, Alt and Shift also work)
+#     Enter        Start        (Tab also works)
+#     Esc          quit
+#     F5 / F9      save / load state
+#     P            pause
+#     ` or F       fast-forward while held
+#     F11          toggle fullscreen
+#
+#   Naming a button in this setting DROPS its defaults, so `a=q` means A is
+#   reachable only from Q -- Z, Space and the rest stop working for A. Buttons
+#   you do not name keep everything they had.
+#
+#   Gamepads are picked up automatically and are not affected by this.
+
+
+# =========================================================================
+# Save states
+# =========================================================================
+
+# state = build/state.db4a
+#
+#   Where F5 writes and F9 reads. Default build/state.db4a.
+#
+#   Two things worth knowing. `build/` is deleted by `make clean`, so a state
+#   you want to keep belongs somewhere else -- data/states/ is gitignored and
+#   is the intended home. And a state records the whole machine, so a build
+#   that changes the CPU or sound-chip layout will refuse to load an older
+#   file rather than load it corrupt.
+#
+#   These files contain cartridge memory, so they are game data: keep them out
+#   of the repository, as .gitignore already arranges.
