@@ -56,11 +56,33 @@ misalignment as well as level error. The first job below distinguishes the two.
 
 ## The plan
 
-**1. Separate level error from timing error.** Cross-correlate the two
-envelopes at a range of lags per section. If the best lag is ~0 everywhere, the
-timing is right and this is purely levels. If the best lag drifts, there is a
-local timing bug as well and it gets its own investigation. This is cheap and
-decides what the rest of the work is.
+**1. Separate level error from timing error. DONE — and the answer is "both".**
+
+Envelope cross-correlation at 50 ms resolution, +/-2 s of lag, per section:
+
+| section | best lag | corr at best | corr at 0 |
+|---|---|---|---|
+| 7-29 s (quiet) | +550 ms | 0.222 | 0.075 |
+| 29-36 s (loud) | -450 ms | **0.855** | 0.212 |
+| 36-44 s | +1350 ms | 0.258 | -0.031 |
+| 44-52 s | -1950 ms | 0.219 | -0.078 |
+
+Read carefully, because three of these four rows say nothing. A best-lag
+correlation of 0.22 means the two signals do not match at *any* offset, so the
+lag that produced it is noise, not a measurement. Only the 29-36 s row is a
+real result: 0.855 is a genuine match, and it sits at **-450 ms**.
+
+Two conclusions:
+
+- Where the content does match, it is **time-shifted by ~450 ms**, so there is
+  a real local timing error on top of the level error. The shifts are not a
+  constant offset in one direction, so it is not a simple rate difference.
+- Everywhere else the content itself differs enough that no alignment helps.
+  We are not playing the same notes quietly; we are playing something else.
+
+That kills any plan that tunes gain or mixing levels against the whole mix, and
+promotes step 2 from "useful" to "required": with whole-mix correlation this
+low, nothing further can be diagnosed without separating the channels.
 
 **2. Get a per-channel oracle.** The mix is six FM channels plus DAC; a whole-
 mix comparison cannot say which is wrong. Genesis-Plus-GX can be built with
