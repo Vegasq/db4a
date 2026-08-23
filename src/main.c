@@ -239,6 +239,20 @@ int main(int argc, char **argv) {
                                    |(hal_ram_ptr(0)[0xE004]<<8)|hal_ram_ptr(0)[0xE005]));
               }
           } }
+        /* DB4A_LOG_SCENE=1 prints the scene pointer whenever it changes.
+           The main loop dispatches through the function pointer at $FFFFE002,
+           so that value identifies the screen you are looking at -- which is
+           how mouse control decides whether it may touch anything. */
+        if (getenv("DB4A_LOG_SCENE")) {
+            static uint32_t last_scene = 0xFFFFFFFFu;
+            const uint8_t *r = hal_ram_ptr(0);
+            uint32_t sc = ((uint32_t)r[0xE002] << 24) | ((uint32_t)r[0xE003] << 16)
+                        | ((uint32_t)r[0xE004] << 8)  |  r[0xE005];
+            if (sc != last_scene) {
+                printf("  [scene] frame %5u  %08X\n", frames, sc);
+                last_scene = sc;
+            }
+        }
         end = system_frame(end);
         if (m68k_last_unknown) break;
 

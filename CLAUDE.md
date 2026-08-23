@@ -361,11 +361,15 @@ wrong and SSG-EG is parsed but ignored.
 
 These cost real debugging time. Do not rediscover them.
 
+- **`DB4A_LOG_SCENE=1` prints the scene pointer whenever it changes.** Useful
+  before assuming a screen has its own scene: the build console does not. A
+  full mission produces only eight distinct scenes, and the console opens and
+  closes entirely inside gameplay's `00006D0C`. See `docs/buildmenu.md`.
 - **`DB4A_WATCH=FFBF12` names the block that wrote a RAM address.** This is the
   fastest way from "some variable changed" to "this routine did it", and it
   found the cursor code in minutes after static analysis had pointed at the
   wrong one of the two writers. Block granularity, which is what you feed back
-  into `tools/` to disassemble.
+  into `tools/` to disassemble. Covers byte, word and long writes.
 
 - **capstone's m68k `detail` API reports `disp=0` for absolute addressing.**
   It cannot distinguish `jsr $1664.w` from `jsr (a0)` structurally. Parse
@@ -412,6 +416,7 @@ tools/rommap.py      coarse entropy banding (classification NOT trustworthy)
 tests/test_flags.c   68000 flag semantics unit tests
 docs/roadmap.md      goal, definition of done, non-goals, milestones
 docs/natives.md      replacing cartridge code with C: how, and what it costs
+docs/buildmenu.md    the build console: grid layout, RAM, how to drive it
 docs/rom.md          base ROM provenance and header dump
 docs/journal.md      chronological record of work and findings
 build/               generated, gitignored, fully reproducible
