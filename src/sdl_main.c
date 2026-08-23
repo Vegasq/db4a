@@ -12,6 +12,7 @@
 #include "savestate.h"
 #include "mouse.h"
 #include "cursor.h"
+#include "buildmenu.h"
 
 /* The FM mix peaks well below full scale; lift it to a usable level.
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
@@ -191,6 +192,7 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
     { const char *g = getenv("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
     if (getenv("DB4A_MOUSE")) {
         mouse_enable(1);
+        menu_enable(1);
         printf("mouse control: on -- left=A, right=B, middle=C\n");
         printf("               the cursor goes where you point; the outer %d px\n",
                cursor_scroll_band());
@@ -384,7 +386,12 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
                 SDL_GetMouseState(&wx, &wy);
                 float gx = 0, gy = 0;
                 SDL_RenderWindowToLogical(ren, wx, wy, &gx, &gy);
-                mouse_steer((int)gx, (int)gy);
+                /* The console owns the d-pad while it is open. Running both
+                   would have them fight over the same four buttons, and would
+                   have mouse_steer writing map-cursor variables underneath a
+                   screen that is not the map. */
+                if (!buildmenu_steer((int)gx, (int)gy))
+                    mouse_steer((int)gx, (int)gy);
             }
         }
 

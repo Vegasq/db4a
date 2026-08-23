@@ -6,6 +6,7 @@
  * silently wrong. */
 #include "m68k.h"
 #include "native.h"
+#include "buildmenu.h"
 #include <string.h>
 #include <stdlib.h>
 #include "hal.h"
@@ -259,6 +260,10 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
            that does the same job and returns the same next PC. Looked up after
            find_block deliberately: an override must sit on a real block entry,
            and requiring the block to exist keeps that honest. */
+        /* The build console has no RAM flag saying it is open; the reliable
+           signal is that its input handler ran. menu_probe_pc is 0 unless
+           mouse control wants to know, so this is one compare. */
+        if (pc == menu_probe_pc) menu_handler_ran();
         native_fn nf = native_active() ? native_lookup(pc) : NULL;
         if (nf && native_checking()) pc = native_verify(pc, nf);
         else                         pc = nf ? nf() : BLOCK_FN[i]();

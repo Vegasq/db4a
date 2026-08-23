@@ -6,6 +6,7 @@
 #include "ym2612.h"
 #include "savestate.h"
 #include "mouse.h"
+#include "buildmenu.h"
 #include "render.h"
 #include "input.h"
 #include "z80.h"
@@ -206,7 +207,7 @@ int main(int argc, char **argv) {
         { static int mt = -1; static int tx, ty;
           if (mt < 0) { const char *e = getenv("DB4A_MOUSE_TARGET");
                         mt = (e && sscanf(e, "%d,%d", &tx, &ty) == 2) ? 1 : 0;
-                        if (mt) mouse_enable(1); }
+                        if (mt) { mouse_enable(1); menu_enable(1); } }
           if (mt) {
               /* Steering runs unconditionally here.
                *
@@ -218,7 +219,7 @@ int main(int argc, char **argv) {
                * declines to run, so it never releases it and the pad sticks
                * for the rest of the session. */
               {
-                  mouse_steer(tx, ty);
+                  if (!buildmenu_steer(tx, ty)) mouse_steer(tx, ty);
                   /* In a scene steering does not recognise it must leave the
                      pad completely alone, or menus become unusable. */
                   extern int pad_dir_held(void);
