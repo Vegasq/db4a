@@ -5,6 +5,7 @@
  */
 #include "m68k.h"
 #include "hal.h"
+#include "config.h"
 #include "vdp.h"
 #include "render.h"
 #include "psg.h"
@@ -70,7 +71,7 @@ static const char *PADNAME[PAD_COUNT] = {
    Any button named here drops its built-in bindings entirely, so a key that
    the machine will not deliver can be routed around without a rebuild. */
 static void apply_key_overrides(void) {
-    const char *spec = getenv("DB4A_KEYS");
+    const char *spec = cfg("DB4A_KEYS");
     if (!spec) return;
     char buf[512];
     snprintf(buf, sizeof buf, "%s", spec);
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
        produces samples in frame-sized bursts, and queueing keeps all the state
        on this thread. DB4A_MUTE=1 skips opening the device entirely. */
     SDL_AudioDeviceID audio = 0;
-    if (!getenv("DB4A_MUTE")) {
+    if (!cfg("DB4A_MUTE")) {
         SDL_AudioSpec want, have;
         SDL_zero(want);
         want.freq     = PSG_RATE;
@@ -171,8 +172,14 @@ int main(int argc, char **argv) {
         }
     }
 
-    { const char *g = getenv("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
+    { const char *g = cfg("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
     apply_key_overrides();
+    { /* What the file and the environment actually resolved to, so a player
+         editing db4a.conf can see whether it was picked up. */
+      const char *st = cfg("DB4A_STATE"), *ky = cfg("DB4A_KEYS");
+      printf("settings: gain=%d mute=%s state=%s keys=%s\n",
+             audio_gain, cfg("DB4A_MUTE") ? "yes" : "no",
+             st ? st : "build/state.db4a", ky ? ky : "(default)"); }
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
     printf("          remap with DB4A_KEYS=\"a=q,b=w,c=e\"\n");
@@ -218,7 +225,7 @@ int main(int argc, char **argv) {
                    mission has to be played in one sitting. Emulation is
                    unaffected either way -- this is convenience, not fidelity. */
                 if (e.type == SDL_KEYDOWN && !e.key.repeat) {
-                    const char *sp = getenv("DB4A_STATE");
+                    const char *sp = cfg("DB4A_STATE");
                     if (!sp) sp = "build/state.db4a";
                     if (e.key.keysym.sym == SDLK_F5) {
                         printf(savestate_write(sp, pc, frames) == 0

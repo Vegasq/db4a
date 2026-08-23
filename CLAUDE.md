@@ -293,6 +293,31 @@ It serves two purposes: coverage tracing (logging PCs to get past the ~10%
 static plateau) and, from M2 onward, frame-hash diffing as the correctness
 oracle underpinning the faithful-first fidelity policy.
 
+## Settings
+
+Player settings come from **`db4a.conf`** next to the binary (or wherever
+`DB4A_CONF` points), so someone can tinker and restart without a shell.
+`db4a.conf.example` is the tracked template; `db4a.conf` itself is gitignored.
+
+```
+gain = 8            # same as DB4A_GAIN=8
+```
+
+Keys are the environment names without the `DB4A_` prefix.
+
+**An environment variable always beats the file.** That is not a nicety: every
+test drives the binary through env vars, so a stray line in someone's config
+must not be able to change what a test does.
+
+**Only player settings are read from the file.** The diagnostic and harness
+controls -- `DB4A_REPLAY`, `DB4A_SHOTS`, `DB4A_WATCH`, `DB4A_NATIVE`, the
+`DB4A_LOG_*` family -- stay environment-only on purpose. They exist to make one
+run behave unusually, and a file that persists across runs is the wrong place
+for that. Adding a new setting means deciding which of the two it is.
+
+The startup banner prints what actually resolved, so a player can see whether
+their file was picked up.
+
 ## Input
 
 Keyboard defaults: arrows = D-pad, **Q/W/E** = A/B/C, Enter = Start, Esc = quit.

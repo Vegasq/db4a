@@ -21,3 +21,6 @@ ref/
 # framebuffer and an 8 KB Z80 RAM dump of the sound driver reached a commit.
 /1
 /--*
+
+# a player's local settings; db4a.conf.example is the tracked template
+db4a.conf

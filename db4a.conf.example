@@ -1,0 +1,29 @@
+# db4a settings.
+#
+# Copy this to db4a.conf next to the binary and edit, then restart the game.
+# DB4A_CONF=<path> points somewhere else.
+#
+#   key = value      one per line, # starts a comment
+#
+# Keys are the environment-variable names without the DB4A_ prefix, so
+# `gain = 8` is the same as running with DB4A_GAIN=8.
+#
+# An environment variable always beats the file, so you can try a setting for
+# one run without editing anything:
+#
+#   DB4A_GAIN=16 make play
+#
+# Only player settings live here. The diagnostic and test controls
+# (DB4A_REPLAY, DB4A_SHOTS, DB4A_WATCH, DB4A_NATIVE, the DB4A_LOG_* family)
+# stay environment-only on purpose: they make a single run behave unusually,
+# and a file that persists across runs is a bad place for that.
+
+# --- audio ---------------------------------------------------------------
+# gain = 8            # output volume, 1-64. Default 4.
+# mute = 1            # open no audio device at all
+
+# --- input ---------------------------------------------------------------
+# keys = a=q,b=w,c=e  # remap buttons. Naming one drops its defaults.
+
+# --- save states ---------------------------------------------------------
+# state = build/state.db4a    # where F5/F9 read and write
