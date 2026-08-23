@@ -102,7 +102,7 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o build/buildmenu.o build/menus.o build/probe.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/splash.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o build/buildmenu.o build/menus.o build/probe.o \
                build/hal_z80.o build/z80.o build/render.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
@@ -156,6 +156,10 @@ build/ym2612.o: src/ym2612.c include/ym2612.h include/psg.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/savestate.o: src/savestate.c include/savestate.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/splash.o: src/splash.c include/splash.h include/render.h include/config.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 

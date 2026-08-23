@@ -130,6 +130,18 @@
 #   fill the window and accept slightly uneven pixels.
 
 
+# splash = 0
+#
+#   How long the start-up notice is held, in frames. Default 200, about four
+#   seconds at 49.7 Hz. Any key, mouse button or pad button dismisses it early;
+#   0 skips it entirely.
+#
+#   The notice says this is an unofficial native port, not a Sega release and
+#   not connected to the rights holders, names the game's copyright holders,
+#   and shows where the source lives. Please leave it on in anything you pass
+#   to someone else -- it is the only thing telling them what they are running.
+
+
 # =========================================================================
 # Mouse control                                      (remaster branch only)
 # =========================================================================

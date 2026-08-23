@@ -17,6 +17,11 @@ and none ever will be — see [Requirements](#requirements).
 
 ---
 
+On start-up the game shows a short notice saying that this is an unofficial
+native port, not a Sega release and not connected to the rights holders, and
+where the source lives. Any key dismisses it; `splash = 0` in `db4a.conf`
+turns it off. Please leave it on in anything you hand to someone else.
+
 ## Status
 
 Mission one is playable end to end and can be won or lost. All three houses
