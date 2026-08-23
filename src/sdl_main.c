@@ -243,6 +243,10 @@ int main(int argc, char **argv) {
     const char *reppath = getenv("DB4A_REPLAY");
     if (recpath) inputlog_record_open(recpath);
     int replaying = reppath ? inputlog_replay_open(reppath) : 0;
+    if (replaying && inputlog_replay_has_mouse()) {
+        mouse_enable(1); menu_enable(1); menus_enable(1);
+        printf("recording contains mouse motion -- steering enabled for replay\n");
+    }
     if (replaying)
         printf("replaying -- keyboard input is ignored\n");
 
@@ -463,6 +467,21 @@ int main(int argc, char **argv) {
                 int on_menu    = menus_steer((int)gx, (int)gy);
                 if (!on_console && !on_menu)
                     mouse_steer((int)gx, (int)gy);
+                /* In GAME pixels, so the replay does not depend on the window
+                   size this was recorded at. */
+                inputlog_record_mouse(frames, (int)gx, (int)gy);
+            }
+        }
+
+        /* Replaying a session that was steered with the pointer. Buttons alone
+           bring back the clicks and leave the camera where it started, which
+           is why mouse-driven bug reports used to be unreproducible. */
+        if (replaying && inputlog_replay_has_mouse()) {
+            int mx, my;
+            if (inputlog_replay_mouse(frames, &mx, &my)) {
+                int on_console = buildmenu_steer(mx, my);
+                int on_menu    = menus_steer(mx, my);
+                if (!on_console && !on_menu) mouse_steer(mx, my);
             }
         }
 

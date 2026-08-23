@@ -248,6 +248,19 @@ int main(int argc, char **argv) {
        line up with the original run rather than starting over. */
     for (frames = resume_frame; frames < resume_frame + max_frames; frames++) {
         if (replaying) inputlog_replay_frame(frames);
+        /* A recording made with the pointer carries its motion; feed it through
+           the same steering the frontend uses, so headless analysis sees the
+           session the player actually had. */
+        if (replaying && inputlog_replay_has_mouse()) {
+            static int armed = 0;
+            if (!armed) { mouse_enable(1); menu_enable(1); menus_enable(1); armed = 1; }
+            int mx, my;
+            if (inputlog_replay_mouse(frames, &mx, &my)) {
+                int on_console = buildmenu_steer(mx, my);
+                int on_menu    = menus_steer(mx, my);
+                if (!on_console && !on_menu) mouse_steer(mx, my);
+            }
+        }
         /* Hold length matters: a menu that advances on each press can consume
            one long hold twice. DB4A_HOLD tunes it. */
         for (unsigned k = 0; k < nscript; k++) {
