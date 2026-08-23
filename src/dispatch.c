@@ -8,6 +8,7 @@
 #include "native.h"
 #include "buildmenu.h"
 #include "probe.h"
+#include "widescreen.h"
 #include <string.h>
 #include <stdlib.h>
 #include "hal.h"
@@ -287,6 +288,11 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         trail_push(pc);
         trace_block(pc);
         regs_probe(pc);
+        /* Draw the map columns the cartridge leaves out, so the widescreen
+           extension has something true to show. Observer only -- no cycles,
+           no registers touched. Costs two compares per block when off. */
+        if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B)
+            widescreen_note_column(pc);
         /* A native override replaces the recompiled block with hand-written C
            that does the same job and returns the same next PC. Looked up after
            find_block deliberately: an override must sit on a real block entry,
@@ -443,6 +449,11 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         trail_push(pc);
         trace_block(pc);
         regs_probe(pc);
+        /* Draw the map columns the cartridge leaves out, so the widescreen
+           extension has something true to show. Observer only -- no cycles,
+           no registers touched. Costs two compares per block when off. */
+        if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B)
+            widescreen_note_column(pc);
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
