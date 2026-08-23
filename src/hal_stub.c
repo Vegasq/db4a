@@ -126,7 +126,7 @@ uint32_t m68k_read32(uint32_t a) {
 
 void m68k_write8(uint32_t a, uint8_t v) {
     a &= 0xFFFFFF;
-    if (a >= 0xFF0000) { ram[a & 0xFFFF] = v; return; }
+    if (a >= 0xFF0000) { watch_check(a, v, 1); ram[a & 0xFFFF] = v; return; }
     if ((a & 0xFFFFE0) == 0xC00000) {
         /* A byte write to a VDP port duplicates the byte into both halves. */
         m68k_write16(a & ~1u, (uint16_t)((v << 8) | v));

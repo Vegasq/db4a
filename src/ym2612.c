@@ -269,6 +269,15 @@ static int32_t op_out(op_t *o, int32_t mod) {
 
 /* ------------------------------------------------------------- one sample */
 
+/* DB4A_YM_MUTE=<hex mask>: silence individual FM channels, bit 0 = channel 1.
+ * The per-channel oracle docs/audio-plan.md asks for -- it is the only way to
+ * attribute a level problem to one instrument rather than to the mix. */
+static unsigned ym_mute_mask(void) {
+    static int v = -1;
+    if (v < 0) { const char *e = getenv("DB4A_YM_MUTE"); v = e ? (int)strtoul(e, NULL, 16) : 0; }
+    return (unsigned)v;
+}
+
 static void fm_sample(int32_t *L, int32_t *R) {
     int32_t l = 0, r = 0;
     for (int ci = 0; ci < 6; ci++) {
@@ -299,6 +308,7 @@ static void fm_sample(int32_t *L, int32_t *R) {
             }
         }
 
+        if (ym_mute_mask() & (1u << ci)) out = 0;
         if (c->pan & 0x80) l += out;
         if (c->pan & 0x40) r += out;
     }

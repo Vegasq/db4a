@@ -181,6 +181,17 @@ uint32_t      waiter_addr[64];
 unsigned      waiter_n;
 int           waiter_enable;
 
+/* DB4A_LOG_SFX: $2DDAE is the game's "play sound N" entry -- the callers push
+ * the id as a long and jsr there. Logging the id at the call identifies which
+ * sound any given effect is, which is otherwise guesswork. */
+static void sfx_log(uint32_t pc) {
+    if (pc != 0x001664u && pc != 0x00167Au) return;
+    static FILE *fp; static int init;
+    if (!init) { const char *p = getenv("DB4A_LOG_SFX"); fp = p ? fopen(p, "w") : NULL; init = 1; }
+    if (fp) fprintf(fp, "%06X %u %u\n", pc,
+                    (unsigned)m68k_read32(CPU.a[7] + 4), (unsigned)CPU.cycles);
+}
+
 static void sample_waiter(uint32_t pc) {
     if (!waiter_enable || pc != 0x000FDAu) return;
     uint32_t ret = m68k_read32(CPU.a[7] + 4);
@@ -217,6 +228,7 @@ uint32_t m68k_run_frame(uint32_t pc) {
         if (chunk > deadline) chunk = deadline;
         if (chunk <= CPU.cycles) chunk = CPU.cycles + 1;   /* always advance */
         sample_waiter(pc);
+        sfx_log(pc);
         /* Checked per slice rather than per block: a corrupted SP or PC stays
            corrupted, so slice granularity still catches it within 500 cycles
            while costing nothing measurable. */
