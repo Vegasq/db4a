@@ -49,5 +49,41 @@ probe 250 180 0 0 "pointer off the grid"
 # The escape hatch must actually disable it.
 probe  80 84 0 0 "DB4A_MENU_MOUSE=0 off" "DB4A_MENU_MOUSE=0"
 
+# --- Starport -------------------------------------------------------------
+# Same widget, different data: 4 rows instead of 6 and $FF for empty instead of
+# $80. Needs a save state taken inside a Starport, which cannot be committed --
+# states contain cartridge VRAM -- so this section runs only if one is present.
+# Make one by opening a Starport and pressing F5, then:
+#     cp build/state.db4a data/states/starport.state
+SP=data/states/starport.state
+if [ -f "$SP" ]; then
+    SHOT=62020
+    probe_sp() {   # x y expect_row expect_col label [extra env]
+        local x=$1 y=$2 er=$3 ec=$4 label=$5 extra=${6:-}
+        env $extra DB4A_LOAD=$SP DB4A_MOUSE=1 DB4A_MOUSE_TARGET="$x,$y" \
+            DB4A_RAMDUMP=1 DB4A_SHOTS=$SHOT DB4A_PPM="$TMP/s" ./build/db4a "$ROM" 150 >/dev/null 2>&1
+        python3 - "$TMP/s.$SHOT.ram" "$x" "$y" "$er" "$ec" "$label" <<'PY'
+import sys
+r=open(sys.argv[1],'rb').read()
+x,y,er,ec,label = int(sys.argv[2]),int(sys.argv[3]),int(sys.argv[4]),int(sys.argv[5]),sys.argv[6]
+col=(r[0xBFC8]<<8)|r[0xBFC9]; row=(r[0xBFCA]<<8)|r[0xBFCB]
+ok = row==er and col==ec
+print("  %-30s pointer(%3d,%3d) -> row %d col %d  %s" % (label,x,y,row,col,
+      "ok" if ok else "FAIL want row %d col %d"%(er,ec)))
+raise SystemExit(0 if ok else 1)
+PY
+        [ $? -eq 0 ] || fail=1
+    }
+    probe_sp  48  60 0 0 "starport: EXIT"
+    probe_sp 112  60 0 2 "starport: STOP"
+    probe_sp  48  84 1 0 "starport: first vehicle"
+    probe_sp 112 108 2 2 "starport: last full row"
+    probe_sp 112 132 0 0 "starport: empty cell (FF) ignored"
+    probe_sp 250 180 0 0 "starport: off the grid"
+    probe_sp  48  84 0 0 "starport: DB4A_MENU_MOUSE=0 off" DB4A_MENU_MOUSE=0
+else
+    echo "  (skipped starport: no $SP -- see comment in this file)"
+fi
+
 [ $fail -eq 0 ] || exit 1
 echo "build console: pointer selects cells"
