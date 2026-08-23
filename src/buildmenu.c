@@ -47,6 +47,7 @@
 #include "probe.h"
 #include "input.h"
 #include "hal.h"
+#include "m68k.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -190,9 +191,48 @@ int buildmenu_steer(int px, int py) {
     int sr = dr > 0 ? 1 : (dr < 0 ? -1 : 0);
     int sc = dc > 0 ? 1 : (dc < 0 ? -1 : 0);
 
-    /* Step along the longer axis first, but only onto a cell that exists --
-       the handler refuses to move onto an empty one, so a naive per-axis walk
-       gets stuck the moment the grid is ragged, which it usually is. */
+    /* Arrive in ONE step, by placing the selection on a neighbour of the
+       target and pressing towards it.
+     *
+     * Stepping cell by cell means up to seven presses, and each press needs a
+     * release frame after it because the handler is edge-triggered -- so the
+     * highlight visibly crawls after the pointer. Writing the target straight
+     * into the row and column words is no good either: the game moves its
+     * internal state but nothing redraws, leaving the highlight painted on the
+     * old cell and the preview panel blank. (Measured: warping to a vehicle
+     * leaves the highlight on EXIT with empty price bars, 5951 pixels away
+     * from where stepping lands.)
+     *
+     * Doing both fixes both. The write is invisible because it is immediately
+     * followed by a real press, and the press runs the game's own handler,
+     * which redraws the panel, the price and the highlight exactly as it does
+     * for a d-pad move.
+     *
+     * The neighbour must be a cell that exists, or the handler refuses the
+     * move and nothing happens. Horizontal is tried first: rows are only three
+     * wide and the top row of buttons is always full, so a horizontal
+     * neighbour almost always exists. */
+    static const struct { int dr, dc; int pad; } APPROACH[] = {
+        {  0, -1, PAD_RIGHT }, {  0, +1, PAD_LEFT },
+        { -1,  0, PAD_DOWN  }, { +1,  0, PAD_UP   },
+    };
+    for (unsigned i = 0; i < sizeof APPROACH / sizeof APPROACH[0]; i++) {
+        int nr = tr + APPROACH[i].dr, nc = tc + APPROACH[i].dc;
+        if (!cell_filled(k, ram, nr, nc)) continue;
+        if (nr == cr && nc == cc) {               /* already adjacent */
+            pad_set(APPROACH[i].pad, 1);
+            releasing = 1;
+            return 1;
+        }
+        m68k_write16(0xFF0000u + k->sel_col, (uint16_t)nc);
+        m68k_write16(0xFF0000u + k->sel_row, (uint16_t)nr);
+        pad_set(APPROACH[i].pad, 1);
+        releasing = 1;
+        return 1;
+    }
+
+    /* An isolated cell with no filled neighbour: fall back to stepping, which
+       cannot reach it either, but at least does nothing surprising. */
     int col_first = (dc < 0 ? -dc : dc) >= (dr < 0 ? -dr : dr);
     int did = 0;
     for (int attempt = 0; attempt < 2 && !did; attempt++) {
