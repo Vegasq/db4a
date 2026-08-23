@@ -1,5 +1,8 @@
 # The build console
 
+For the other screens -- house selection, the mentat, the title sequence -- see
+[menus.md](menus.md).
+
 Research notes for hooking mouse control into the build menu. Everything here
 is measured, not inferred from the disassembly alone; the reproduction command
 is given for each claim.

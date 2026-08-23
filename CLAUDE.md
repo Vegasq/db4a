@@ -476,6 +476,7 @@ tests/test_flags.c   68000 flag semantics unit tests
 docs/roadmap.md      goal, definition of done, non-goals, milestones
 docs/natives.md      replacing cartridge code with C: how, and what it costs
 docs/buildmenu.md    the build console: grid layout, RAM, how to drive it
+docs/menus.md        survey of every screen: which can take mouse input
 docs/rom.md          base ROM provenance and header dump
 docs/journal.md      chronological record of work and findings
 build/               generated, gitignored, fully reproducible
