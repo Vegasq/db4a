@@ -13,16 +13,24 @@ P=$(python3 tests/playthrough.py mission --emit-press | head -1)
 
 # Aim inside the map. A target in the sidebar steers the cursor onto the HUD,
 # which legitimately changes what the game does and is not what this tests.
+#
+# Note this pointer also lands on the Ordos shield when the route passes the
+# house screen, so the mission played here is Ordos rather than Atreides. That
+# is the pre-mission menu steering working, not a fault; the check below only
+# asks that a mission was reached.
 out=$(env DB4A_MOUSE_TARGET=160,110 DB4A_PRESS="$P" DB4A_HOLD=6 \
     DB4A_SHOTS=6000 DB4A_PPM=build/mousetest ./build/db4a "$ROM" 6100)
 
-# Steering must never touch the d-pad outside gameplay: menus, briefings and
-# the construction-yard build list are all navigated with it.
+# Steering must never touch the d-pad on a screen nothing claims -- briefings,
+# the mentat's text pages, the title sequence -- or those become unusable. It
+# may hold a direction during gameplay and on the screens the build console and
+# the pre-mission menu steering own, because driving the d-pad there is exactly
+# what they are for.
 if echo "$out" | grep -q FAIL; then
     echo "$out" | grep FAIL | head -3
     exit 1
 fi
-echo "  steering never held the d-pad outside gameplay"
+echo "  steering never held the d-pad on an unclaimed screen"
 
 python3 - <<'PY'
 from PIL import Image, ImageStat

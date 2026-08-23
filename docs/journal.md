@@ -2290,3 +2290,46 @@ point off the grid, and the `DB4A_MENU_MOUSE=0` escape hatch), plus the whole
 suite unchanged — unit tests, `check-native` still bit-exact, `check-state`,
 `check-houses`, `tests/mouse.sh`, the full 27609-frame winning mission and
 `tests/defeat.sh`. Tagged `pre-menu-mouse` beforehand as a revert point.
+
+## 2026-08-22 — the pointer on the pre-mission screens
+
+House selection and the mentat's YES/NO now take the pointer. `src/menus.c`,
+`docs/menus.md`, `make check-menus`.
+
+**Neither screen stores an index.** Both keep the highlight's *position* and
+read the choice off it: the house is decided by comparing `$FFBEF8` against 32,
+120 and 208 at the moment you confirm, and the answer by the selector's sprite
+Y. That makes them easy to drive and impossible to drive by writing an index
+that does not exist.
+
+**The mentat probe went on the wrong block first.** `$25CF4` writes the
+selector's three sprites, which looks like the detector you want — but it only
+runs while the selector is travelling, so it reported "no screen" precisely
+when the screen was idle and waiting for input. Every pointer test came back
+"YES" regardless of where the pointer was. The probe belongs on `$25CAE`, the
+loop head. That screen turns out not to be a dispatched handler at all: it runs
+its own loop, waiting for vblank itself at `$FD4`.
+
+**A RAM diff can point at the wrong number.** The diff showed the byte at
+`$FFA62D` going `$28` to `$40`, and comparing against those never matched — the
+word at `$FFA62C` holds `$128` and `$140`, because Mega Drive sprite Y carries a
++128 offset. Reading it back and printing it was what settled it: `$128` is
+screen y 168 and `$140` is y 192, exactly where the plates were measured.
+
+**A passing invariant became the wrong invariant.** `tests/mouse.sh` asserted
+that steering never holds the d-pad outside gameplay, which was right when only
+the map cursor existed and is wrong now that menu steering owns the d-pad on
+the screens it drives. It failed on scene `004500` — correctly, because
+steering was selecting a house. The rule is now "never on a screen nothing
+claims", checked against what the steerers actually report rather than against
+a list of scene numbers, so it cannot go stale the same way again.
+
+A side effect worth knowing: that test aims at (160,110), which lands on the
+Ordos shield, so its scripted route now plays Ordos rather than Atreides. The
+check only asks that a mission was reached, so it still holds.
+
+Verified: `make check-menus` (three shields, both answers, two off-target
+cases, the escape hatch on both screens), and the whole suite unchanged --
+unit tests, `check-native` still bit-exact, `check-menu`, `check-state`,
+`check-houses`, `tests/mouse.sh`, the 27609-frame winning mission and
+`tests/defeat.sh`.

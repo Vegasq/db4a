@@ -14,6 +14,7 @@
 #include "mouse.h"
 #include "cursor.h"
 #include "buildmenu.h"
+#include "menus.h"
 
 /* The FM mix peaks well below full scale; lift it to a usable level.
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
@@ -194,6 +195,7 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
     if (getenv("DB4A_MOUSE")) {
         mouse_enable(1);
         menu_enable(1);
+        menus_enable(1);
         printf("mouse control: on -- left=A, right=B, middle=C\n");
         printf("               the cursor goes where you point; the outer %d px\n",
                cursor_scroll_band());
@@ -397,7 +399,13 @@ SDL_RenderSetLogicalSize(ren, FB_W, FB_H);
                    would have them fight over the same four buttons, and would
                    have mouse_steer writing map-cursor variables underneath a
                    screen that is not the map. */
-                if (!buildmenu_steer((int)gx, (int)gy))
+                /* Both are called unconditionally -- each consumes its own
+                   screen probe every frame, and a probe read late reports a
+                   stale screen. Each touches the pad only while its own screen
+                   is up, so they cannot collide. */
+                int on_console = buildmenu_steer((int)gx, (int)gy);
+                int on_menu    = menus_steer((int)gx, (int)gy);
+                if (!on_console && !on_menu)
                     mouse_steer((int)gx, (int)gy);
             }
         }

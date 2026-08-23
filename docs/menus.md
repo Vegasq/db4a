@@ -101,17 +101,33 @@ DB4A_REPLAY=$R DB4A_SAVE_AT=1487:build/confirm.state ./build/db4a "$ROM" 1550
 DB4A_LOAD=build/confirm.state DB4A_SAVE_AT=1700:build/yesno.state ./build/db4a "$ROM" 400
 ```
 
-## What implementing these needs
+## Implemented
 
-Both follow the build console's pattern and neither needs a native override:
+`src/menus.c`, enabled with mouse control and turned off by `DB4A_MENU_MOUSE=0`
+along with the build console. `make check-menus`.
 
-1. A probe slot per screen — blocks `$4808` and `$25CF4` — since neither screen
-   can be identified from the scene pointer or from RAM alone. The existing
-   probe is a single global; it would become a small array.
-2. Hit test the pointer against the rectangles above.
-3. Step towards the target with pulsed presses, respecting `$FFBF02` on the
-   house screen so a direction is not thrown away mid-slide.
-4. Left click already maps to A, which confirms on both.
+The probe became a small array (`include/probe.h`) so each screen has its own
+slot. Neither screen needs a native override.
+
+**Two things this got wrong first, both worth keeping.**
+
+*The mentat probe was put on the wrong block.* `$25CF4` writes the selector's
+three sprites, which looked like the obvious detector — but it only executes
+while the selector is actually travelling, so it reported "no screen" exactly
+when the screen was idle and waiting for input. The probe belongs on `$25CAE`,
+the loop head. That screen is not a dispatched handler at all: `$25C82` runs
+its own loop, waiting for vblank itself at `$FD4`, reading the pad, and sliding
+the selector 2 px a frame for twelve frames with more vblank waits inside.
+
+*The selector's Y is a sprite coordinate.* A RAM diff shows the byte at
+`$FFA62D` going `$28` to `$40`, and reading those as the values to compare
+against never matches: the word at `$FFA62C` is `$128` and `$140`, because
+Mega Drive sprite Y carries a +128 offset. `$128` is screen y 168 and `$140` is
+y 192, which is where the plates were measured.
+
+Both screens animate, so mid-slide the position matches neither choice. The
+steering waits rather than guessing, which also stops it throwing presses at a
+handler that discards them.
 
 ## Not investigated
 
