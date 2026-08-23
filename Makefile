@@ -49,16 +49,18 @@ build/z80_zex: tests/z80_zex.c build/z80.o include/z80.h
 
 ## record - play the game and save your inputs to a file
 ##          usage: make record REC=data/recordings/slab.txt
+##                 make record REC=... WIDE=400   (record in widescreen)
 REC ?= data/recordings/session.txt
 record: build/db4a-sdl
 	@mkdir -p $(dir $(REC))
-	DB4A_RECORD=$(REC) ./build/db4a-sdl "$(ROM)"
+	DB4A_RECORD=$(REC) $(if $(WIDE),DB4A_WIDE=$(WIDE),) ./build/db4a-sdl "$(ROM)"
 
 ## replay - replay a recording headlessly, capturing screenshots
 ##          usage: make replay REC=data/recordings/slab.txt SHOTS=6000,9000
 SHOTS ?=
 replay: build/db4a
-	DB4A_REPLAY=$(REC) DB4A_SHOTS=$(SHOTS) DB4A_PPM=build/replay ./build/db4a "$(ROM)"
+	DB4A_REPLAY=$(REC) DB4A_SHOTS=$(SHOTS) DB4A_PPM=build/replay \
+	    $(if $(WIDE),DB4A_WIDE=$(WIDE),) ./build/db4a "$(ROM)"
 
 ## playthrough - drive the game through a scripted route, capturing each screen
 ##               usage: make playthrough SCENARIO=house
@@ -125,8 +127,10 @@ data/states/mission1-f6000.state: build/db4a data/recordings/level1atredis.txt
 	    DB4A_SAVE_AT="6000:$@" ./build/db4a "$(ROM)" 6010 >/dev/null
 
 ## play - build and run the interactive SDL build
+##        usage: make play          (320, faithful)
+##               make play WIDE=400 (experimental widescreen)
 play: build/db4a-sdl
-	./build/db4a-sdl "$(ROM)"
+	$(if $(WIDE),DB4A_WIDE=$(WIDE),) ./build/db4a-sdl "$(ROM)"
 
 build/db4a-sdl: $(COMMON_OBJS) build/sdl_main.o
 	$(CC) $^ -o $@ $(shell pkg-config --libs sdl2) -lm

@@ -141,8 +141,12 @@ int main(int argc, char **argv) {
 
     /* Widescreen (docs/widescreen.md). Off unless asked for: menus and
        cutscenes are 320-wide compositions, and every comparison against the
-       reference runs at 320. */
-    { const char *w = getenv("DB4A_WIDE");
+       reference runs at 320.
+       Read through cfg() so it can live in db4a.conf -- it is a player
+       setting. The headless binary deliberately keeps its own getenv: a
+       stray `wide =` line in a config file must not be able to change the
+       size of the frames the comparison tests render. */
+    { const char *w = cfg("DB4A_WIDE");
       if (w) { int v = atoi(w);
                if (v >= 320 && v <= FB_W) { fb_width = v;
                    printf("widescreen: %dx%d window %dx%d\n", fb_width, FB_H, fb_width * scale, FB_H * scale); }
