@@ -277,6 +277,11 @@ void render_frame(void) {
         for (int x = 0; x < fb_width; x++) {
             if (pillar && (x < pillar || x >= pillar + 320)) {
                 memset(FB[y][x], 0, 3);      /* bars, not stretched content */
+                /* plane_hi persists between frames, and which columns are bars
+                   moves as the view changes. Leaving a stale 1 here would make
+                   the sprite pass believe a high-priority plane pixel covers
+                   this column and silently drop low-priority sprites over it. */
+                plane_hi[y][x] = 0;
                 continue;
             }
             int16_t vs_a = have ? vscroll_latched((unsigned)y, (unsigned)(x - render_world_offset()), 0)
@@ -304,6 +309,7 @@ void render_frame(void) {
                 int hs = ((hs_b % 512) + 512) % 512;
                 if (x - render_world_offset() + hs < 0) {
                     memcpy(FB[y][x], backdrop, 3);
+                    plane_hi[y][x] = 0;      /* backdrop, not a plane pixel */
                     continue;
                 }
             }
@@ -346,6 +352,14 @@ void render_sprites(void) {
      * without the mask the border vanishes underneath the face. */
     static uint8_t taken[FB_H][FB_W];
     memset(taken, 0, sizeof taken);
+    /* The hardware clips sprites to the 320-pixel display window. When we
+       pillarbox a 320 composition the bars are NOT part of that window, so a
+       sprite hanging off the game's left or right edge must not spill into
+       them. In gameplay widescreen the extension IS meant to show more, so
+       the clip opens up to the full width there. */
+    int spr_lo = render_widescreen_gameplay() ? 0 : render_world_offset();
+    int spr_hi_x = render_widescreen_gameplay() ? fb_width
+                                                : render_world_offset() + 320;
     for (unsigned n = 0; n < 80; n++) {
         uint32_t e = sat + idx * 8u;
         const uint8_t *p = &VDP.vram[e & 0xFFFF];
@@ -369,7 +383,7 @@ void render_sprites(void) {
                     for (unsigned px = 0; px < 8; px++) {
                         int X = sx + (int)(cx * 8 + px) + render_world_offset();
                         int Y = sy + (int)(cy * 8 + py);
-                        if (X < 0 || X >= fb_width || Y < 0 || Y >= FB_H) continue;
+                        if (X < spr_lo || X >= spr_hi_x || Y < 0 || Y >= FB_H) continue;
                         unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
                         unsigned c = tile_pixel(tc, ix, iy);
                         if (c && !taken[Y][X]) {
