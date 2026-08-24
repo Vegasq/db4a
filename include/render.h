@@ -7,9 +7,14 @@
    at its maximum means one binary serves both and the flag is a runtime
    switch rather than a build variant. */
 #define FB_W 512
-#define FB_H 224
+/* FB_H is the ALLOCATION height, as FB_W is for width. The live height is
+   fb_height, which is 224 -- the lines a Mega Drive shows in its usual V28
+   mode -- unless something asks for more. Keeping the buffer at its maximum
+   means one binary serves every size and the choice is a runtime one. */
+#define FB_H 256
 extern uint8_t FB[FB_H][FB_W][3];
-extern int fb_width;      /* live width, <= FB_W */
+extern int fb_width;      /* live width,  <= FB_W */
+extern int fb_height;     /* live height, <= FB_H */
 int render_world_offset(void);
 int render_widescreen_gameplay(void);
 void render_wide_stats(unsigned long *guard, unsigned long *ext, int *hsa, int *hsb);

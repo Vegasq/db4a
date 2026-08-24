@@ -454,8 +454,9 @@ static int appending(void) {
 
 void widescreen_append_sprites(void) {
     if (!appending() || !enabled() || !render_widescreen_gameplay()) return;
-    int ext = render_world_offset();
-    if (ext <= 0) return;
+    int ext  = render_world_offset();          /* strip to the west  */
+    int exth = fb_height - 224;                /* strip to the south */
+    if (ext <= 0 && exth <= 0) return;
 
     ws_calls++;
     unsigned count = 0;
@@ -522,13 +523,21 @@ void widescreen_append_sprites(void) {
                   if (call_seen != ws_calls) { call_seen = ws_calls; done = (done ? 2 : 1); }
                   if (done == 1) fprintf(stderr, "[dbg] %d,%d\n", x, y);
               } }
-            if (x > 0x1BF || y > 0x15F) { ws_rej_yx++; continue; }
+            /* The cartridge's own bounds, widened by whatever strip we have
+               asked for on that side. East and north are untouched: the view
+               grows west and south only. */
+            if (x > 0x1BF || y > 0x15F + exth) { ws_rej_yx++; continue; }
             if (y + hh < 0x80) { ws_rej_yx++; continue; }
             /* The one the cartridge uses to drop it, and the reason it is
                missing: the whole sprite lies west of the cartridge's screen.
                Ours are exactly those, and only as far west as the strip. */
-            if (x + ww_ >= 0x80) { ws_rej_kept++; continue; }
-            if (x + ww_ < 0x80 - ext) { ws_rej_far++; continue; }
+            /* Keep only what the cartridge DROPPED, and only as far out as
+               our strips reach. A piece it kept is already in the list. */
+            int off_west  = (x + ww_ <  0x80);
+            int off_south = (y       >  0x15F);
+            if (!off_west && !off_south) { ws_rej_kept++; continue; }
+            if (off_west  && x + ww_ < 0x80 - ext)  { ws_rej_far++; continue; }
+            if (off_south && y > 0x15F + exth)      { ws_rej_far++; continue; }
 
             uint32_t e = SAT_SHADOW + slot * 8u;
             m68k_write16(e, (uint16_t)y);

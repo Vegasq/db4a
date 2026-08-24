@@ -133,10 +133,12 @@ int main(int argc, char **argv) {
         }
     }
 
+    { const char *t = getenv("DB4A_TALL");
+      if (t) { int v = atoi(t); if (v >= 224 && v <= FB_H) fb_height = v; } }
     { const char *w = getenv("DB4A_WIDE");
       if (w) { int v = atoi(w);
                if (v >= 320 && v <= FB_W) { fb_width = v;
-                   printf("widescreen: %dx%d\n", fb_width, FB_H); } } }
+                   printf("widescreen: %dx%d\n", fb_width, fb_height); } } }
 
     const char *shot_prefix = getenv("DB4A_PPM");
     m68k_profile_enable();

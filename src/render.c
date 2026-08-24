@@ -15,6 +15,7 @@
 
 uint8_t FB[FB_H][FB_W][3];
 int fb_width = 320;
+int fb_height = 224;
 
 /* Set by the plane pass: 1 where the visible plane pixel came from a
  * high-priority pattern. Read by the sprite pass, which is why it is file
@@ -262,7 +263,7 @@ unsigned long wide_guard_px, wide_ext_px, render_fogged;   /* DB4A_LOG_WIDE diag
    apart and every correlation against input is quietly shifted. */
 void render_wide_stats(unsigned long *guard, unsigned long *ext,
                        int *hsa, int *hsb) {
-    int mid = FB_H / 2;
+    int mid = fb_height / 2;
     int have = ((unsigned)mid < latched);
     *guard = wide_guard_px; *ext = wide_ext_px;
     *hsa = have ? LATCH[mid].hs_a : hscroll_for((unsigned)mid, 0);
@@ -270,7 +271,13 @@ void render_wide_stats(unsigned long *guard, unsigned long *ext,
     wide_guard_px = 0; wide_ext_px = 0;
 }
 
-int render_widescreen_gameplay(void) { return fb_width > 320 && scene_is_gameplay(); }
+/* True when the view is larger than the cartridge's own 320x224 in EITHER
+   direction and we are in gameplay. Checking width alone left a 320x240 view
+   with its extra lines drawn but no units in them, because everything that
+   fills the margins hangs off this one predicate. */
+int render_widescreen_gameplay(void) {
+    return (fb_width > 320 || fb_height > 224) && scene_is_gameplay();
+}
 
 int render_world_offset(void) {
     int extra = fb_width - 320;
@@ -286,13 +293,13 @@ void render_frame(void) {
     cram_rgb(VDP.cram[VDP.reg[7] & 0x3F], backdrop);
 
     if (!vdp_display_enabled()) {
-        for (int y = 0; y < FB_H; y++)
+        for (int y = 0; y < fb_height; y++)
             for (int x = 0; x < fb_width; x++)
                 memset(FB[y][x], 0, 3);
         return;
     }
 
-    for (int y = 0; y < FB_H; y++) {
+    for (int y = 0; y < fb_height; y++) {
         /* Fall back to live state for any line that was never latched -- a
            frame rendered outside the normal loop, or before the first latch. */
         int have = ((unsigned)y < latched);
@@ -415,6 +422,8 @@ void render_sprites(void) {
      * sprite is drawn only where the ground beneath it was drawn too. The
      * cartridge's own 320 columns are untouched by this. */
     int strip_end = render_widescreen_gameplay() ? render_world_offset() : 0;
+    /* Same rule below the cartridge's own 224 lines. */
+    int strip_top = render_widescreen_gameplay() ? 224 : fb_height;
 
     int spr_lo = render_widescreen_gameplay() ? 0 : render_world_offset();
     int spr_hi_x = render_widescreen_gameplay() ? fb_width
@@ -442,8 +451,10 @@ void render_sprites(void) {
                     for (unsigned px = 0; px < 8; px++) {
                         int X = sx + (int)(cx * 8 + px) + render_world_offset();
                         int Y = sy + (int)(cy * 8 + py);
-                        if (X < spr_lo || X >= spr_hi_x || Y < 0 || Y >= FB_H) continue;
-                        if (X < strip_end && !plane_any[Y][X]) { render_fogged++; continue; }
+                        if (X < spr_lo || X >= spr_hi_x || Y < 0 || Y >= fb_height) continue;
+                        if ((X < strip_end || Y >= strip_top) && !plane_any[Y][X]) {
+                            render_fogged++; continue;
+                        }
                         unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
                         unsigned c = tile_pixel(tc, ix, iy);
                         if (c && !taken[Y][X]) {
@@ -488,9 +499,9 @@ void render_sprites(void) {
 int render_write_ppm(const char *path) {
     FILE *f = fopen(path, "wb");
     if (!f) return -1;
-    fprintf(f, "P6\n%d %d\n255\n", fb_width, FB_H);
+    fprintf(f, "P6\n%d %d\n255\n", fb_width, fb_height);
     /* Row by row: FB is allocated at FB_W but only fb_width is live. */
-    for (int y = 0; y < FB_H; y++) fwrite(FB[y], 3, (size_t)fb_width, f);
+    for (int y = 0; y < fb_height; y++) fwrite(FB[y], 3, (size_t)fb_width, f);
     fclose(f);
     return 0;
 }
