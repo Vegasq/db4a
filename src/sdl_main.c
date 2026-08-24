@@ -149,7 +149,14 @@ int main(int argc, char **argv) {
     { const char *w = cfg("DB4A_WIDE");
       if (w) { int v = atoi(w);
                if (v >= 320 && v <= FB_W) { fb_width = v;
-                   printf("widescreen: %dx%d window %dx%d\n", fb_width, FB_H, fb_width * scale, FB_H * scale); }
+                   printf("widescreen: %dx%d window %dx%d\n", fb_width, FB_H, fb_width * scale, FB_H * scale);
+                   /* Say which way the units switch resolved. It changes what
+                      the game DOES, not just how it looks, so it should not be
+                      something you have to guess at from the picture. */
+                   { const char *u = cfg("DB4A_WIDE_UNITS");
+                     printf("            units in the widened strip: %s\n",
+                            (u && !atoi(u)) ? "off (identical to a 320 run)"
+                                            : "on (widescreen run diverges)"); } }
                else printf("DB4A_WIDE must be 320..%d\n", FB_W); } }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
