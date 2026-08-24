@@ -42,6 +42,23 @@ probe  80 60 0 1 "FIX"
 probe 112 60 0 2 "STOP"
 probe  48 84 1 0 "concrete"
 probe  80 84 1 1 "windtrap"
+# Widescreen draws the picture offset, so the SAME cell sits at a pointer
+# position that much further right, and the frontend must convert logical
+# coordinates back to the cartridge's 0..319 before steering. Without that
+# conversion these land in the neighbouring cell -- which is what "the icon to
+# the side of the cursor gets selected" looked like in play.
+#
+# The offset here is 40, not 80: the console runs under scene $004500, which
+# is not in the gameplay set, so it is CENTRED with pillarbox bars rather than
+# shifted hard right. That is the renderer's own choice and the pointer simply
+# has to agree with it, whichever it makes. At 320 the offset is 0 and these
+# reduce to the probes above.
+probe  88 60 0 0 "EXIT       (wide 400)"      "DB4A_WIDE=400"
+probe 120 60 0 1 "FIX        (wide 400)"      "DB4A_WIDE=400"
+probe 152 60 0 2 "STOP       (wide 400)"      "DB4A_WIDE=400"
+probe  88 84 1 0 "concrete   (wide 400)"      "DB4A_WIDE=400"
+probe 120 84 1 1 "windtrap   (wide 400)"      "DB4A_WIDE=400"
+
 # $80 -- the game refuses to move there, so the highlight must not budge.
 probe 112 84 0 0 "empty cell ignored"
 # Off the grid entirely.
