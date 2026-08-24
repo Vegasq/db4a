@@ -517,6 +517,10 @@ int main(int argc, char **argv) {
                           fwrite(VDP.cram, 2, CRAM_SIZE, vf);
                           fclose(vf);
                           printf("dumped VRAM+CRAM to %s\n", vp); } } }
+    { extern unsigned long ws_band_calls, ws_band_ext;
+      if (ws_band_calls && getenv("DB4A_LOG_WIDE"))
+          fprintf(stderr, "[wsb] band-count calls %lu, of which extension-only %lu\n",
+                  ws_band_calls, ws_band_ext); }
     widescreen_check_report();
     vdp_dump();
     psg_report();
