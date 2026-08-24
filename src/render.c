@@ -20,6 +20,12 @@ int fb_width = 320;
  * high-priority pattern. Read by the sprite pass, which is why it is file
  * scope rather than a local. */
 static uint8_t plane_hi[FB_H][FB_W];
+/* Was ANY plane pixel drawn here, at any priority? Distinct from plane_hi:
+   that asks whether the pixel wins over a low sprite, this asks whether the
+   ground is drawn at all. Unexplored map is backdrop, so a false here means
+   the player cannot see this square -- which is what the widened strip needs
+   in order not to show units standing in the fog. */
+static uint8_t plane_any[FB_H][FB_W];
 
 /* Sprite pixels a high-priority plane pattern hid. Zero means the priority
  * rule made no difference, which is the only honest way to tell whether a
@@ -247,7 +253,7 @@ static int scene_is_gameplay(void) {
     return 0;
 }
 
-unsigned long wide_guard_px, wide_ext_px;   /* DB4A_LOG_WIDE diagnostic */
+unsigned long wide_guard_px, wide_ext_px, render_fogged;   /* DB4A_LOG_WIDE diagnostic */
 
 /* Renderer-side counters for one frame, read and reset by the caller, which
    is the only place that knows the real frame number. Reporting from inside
@@ -301,6 +307,7 @@ void render_frame(void) {
                    the sprite pass believe a high-priority plane pixel covers
                    this column and silently drop low-priority sprites over it. */
                 plane_hi[y][x] = 0;
+                plane_any[y][x] = 0;
                 continue;
             }
             int16_t vs_a = have ? vscroll_latched((unsigned)y, (unsigned)(x - render_world_offset()), 0)
@@ -339,6 +346,7 @@ void render_frame(void) {
                 if (x - render_world_offset() + hs < 0) {
                     memcpy(FB[y][x], backdrop, 3);
                     plane_hi[y][x] = 0;      /* backdrop, not a plane pixel */
+                    plane_any[y][x] = 0;
                     wide_guard_px++;
                     continue;
                 }
@@ -360,6 +368,7 @@ void render_frame(void) {
                behind a high-priority plane pixel. This is what puts units
                under the fog of war. */
             plane_hi[y][x] = (uint8_t)hi;
+            plane_any[y][x] = pick ? 1 : 0;
             if (hi) render_planehi++;
 
             if (pick) cram_rgb(VDP.cram[pick & 0x3F], FB[y][x]);
@@ -393,6 +402,20 @@ void render_sprites(void) {
        sprite hanging off the game's left or right edge must not spill into
        them. In gameplay widescreen the extension IS meant to show more, so
        the clip opens up to the full width there. */
+    /* Units in the widened strip must not stand in the fog.
+     *
+     * The strip shows real map, but the cartridge only reveals what the player
+     * has explored -- unexplored squares are drawn as nothing, leaving plain
+     * backdrop. A unit whose sprite we recovered can therefore be sitting on
+     * ground the player cannot see, which is exactly what was reported: a
+     * green unit in the top-left corner over 720/720 pure black pixels.
+     *
+     * The cartridge never faces this, because it culls those units long before
+     * they reach the screen. So the rule is ours to state: in the strip, a
+     * sprite is drawn only where the ground beneath it was drawn too. The
+     * cartridge's own 320 columns are untouched by this. */
+    int strip_end = render_widescreen_gameplay() ? render_world_offset() : 0;
+
     int spr_lo = render_widescreen_gameplay() ? 0 : render_world_offset();
     int spr_hi_x = render_widescreen_gameplay() ? fb_width
                                                 : render_world_offset() + 320;
@@ -420,6 +443,7 @@ void render_sprites(void) {
                         int X = sx + (int)(cx * 8 + px) + render_world_offset();
                         int Y = sy + (int)(cy * 8 + py);
                         if (X < spr_lo || X >= spr_hi_x || Y < 0 || Y >= FB_H) continue;
+                        if (X < strip_end && !plane_any[Y][X]) { render_fogged++; continue; }
                         unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
                         unsigned c = tile_pixel(tc, ix, iy);
                         if (c && !taken[Y][X]) {
