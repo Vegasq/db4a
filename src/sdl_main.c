@@ -463,13 +463,25 @@ int main(int argc, char **argv) {
                    screen probe every frame, and a probe read late reports a
                    stale screen. Each touches the pad only while its own screen
                    is up, so they cannot collide. */
-                int on_console = buildmenu_steer((int)gx, (int)gy);
-                int on_menu    = menus_steer((int)gx, (int)gy);
+                /* Into GAME coordinates.
+                 *
+                 * SDL hands back logical coordinates, which span the whole
+                 * framebuffer -- 0..399 in widescreen. Every steering routine
+                 * works in the cartridge's own 0..319 space, because that is
+                 * what the cell layouts and cursor variables are expressed in.
+                 * Widescreen draws the picture shifted right by
+                 * render_world_offset(), so the two differ by exactly that,
+                 * and passing the logical value straight through puts the
+                 * pointer in the wrong cell. */
+                int px = (int)gx - render_world_offset();
+                int py = (int)gy;
+                int on_console = buildmenu_steer(px, py);
+                int on_menu    = menus_steer(px, py);
                 if (!on_console && !on_menu)
-                    mouse_steer((int)gx, (int)gy);
-                /* In GAME pixels, so the replay does not depend on the window
-                   size this was recorded at. */
-                inputlog_record_mouse(frames, (int)gx, (int)gy);
+                    mouse_steer(px, py);
+                /* Recorded in GAME pixels too, so a session recorded at one
+                   width replays correctly at another. */
+                inputlog_record_mouse(frames, px, py);
             }
         }
 

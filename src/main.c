@@ -297,9 +297,17 @@ int main(int argc, char **argv) {
                * declines to run, so it never releases it and the pad sticks
                * for the rest of the session. */
               {
-                  int on_console = buildmenu_steer(tx, ty);
-                  int on_menu    = menus_steer(tx, ty);
-                  if (!on_console && !on_menu) mouse_steer(tx, ty);
+                  /* DB4A_MOUSE_TARGET is given in LOGICAL coordinates, the
+                     same space SDL hands the frontend, and converted here the
+                     same way. Taking it as game coordinates instead would make
+                     this harness the one place that skips the conversion --
+                     and a widescreen offset bug would then be invisible to
+                     every test while being obvious in play, which is exactly
+                     what happened. At 320 the offset is 0 and nothing moves. */
+                  int px = tx - render_world_offset(), py = ty;
+                  int on_console = buildmenu_steer(px, py);
+                  int on_menu    = menus_steer(px, py);
+                  if (!on_console && !on_menu) mouse_steer(px, py);
 
                   /* On a screen nothing claims, steering must leave the pad
                      completely alone or that screen becomes unusable. It may
