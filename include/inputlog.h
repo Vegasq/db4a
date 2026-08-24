@@ -19,6 +19,18 @@
  *     2406 start 0
  */
 
+/* Mouse motion, recorded alongside the buttons.
+ *
+ * Without this a session steered with the pointer cannot be replayed at all:
+ * the buttons come back and the camera never moves, so the recording does not
+ * reproduce the thing it was made to capture. Three bug reports were lost that
+ * way before this existed. Positions are in GAME pixels, already converted
+ * from window coordinates, so a replay does not depend on the window size the
+ * recording was made at. */
+void inputlog_record_mouse(unsigned frame, int x, int y);
+int  inputlog_replay_mouse(unsigned frame, int *x, int *y);
+int  inputlog_replay_has_mouse(void);
+
 void inputlog_record_open(const char *path);
 void inputlog_record(unsigned frame, int button, int down);
 void inputlog_record_close(void);
