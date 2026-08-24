@@ -258,6 +258,10 @@ check-menu: build/db4a
 check-res: build/db4a
 	./tests/resolutions.sh
 
+## check-mission - the recorded mission-1 playthrough is unchanged at any size
+check-mission: build/db4a
+	./tests/mission_wide.sh
+
 ## check-cursor - the cursor can reach the map drawn in the widened strip
 check-cursor: build/db4a
 	./tests/cursorfield.sh
