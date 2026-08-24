@@ -45,6 +45,34 @@ static void trace_block(uint32_t pc) {
     uint32_t rec[2] = { pc, h };
     fwrite(rec, 4, 2, trace_fp);
 }
+/* DB4A_REGS=7504[,7468] dumps the register file on entry to those blocks.
+ *
+ * A block reached only through a function pointer has no static caller to
+ * read, so the way to learn what it is passed is to watch it being passed.
+ * That is how the map column-draw and the sprite emitter were read. Pairs with
+ * DB4A_LOG_NT, which names the block worth looking at in the first place.
+ * DB4A_REGS_N caps the dump (default 8). */
+static void regs_probe(uint32_t pc) {
+    static uint32_t want[8]; static int nwant = -1; static long cap = -1, seen = 0;
+    if (nwant < 0) {
+        nwant = 0;
+        const char *e = getenv("DB4A_REGS");
+        if (e) { char b[128]; snprintf(b, sizeof b, "%s", e);
+                 for (char *t = strtok(b, ","); t && nwant < 8; t = strtok(NULL, ","))
+                     want[nwant++] = (uint32_t)strtoul(t, NULL, 16); }
+        const char *n = getenv("DB4A_REGS_N"); cap = n ? atol(n) : 8;
+    }
+    if (!nwant) return;
+    for (int i = 0; i < nwant; i++) if (pc == want[i]) {
+        if (seen++ >= cap) return;
+        fprintf(stderr, "[regs] %06X d0=%08X d1=%08X d2=%08X d3=%08X d6=%08X d7=%08X\n",
+                pc, CPU.d[0], CPU.d[1], CPU.d[2], CPU.d[3], CPU.d[6], CPU.d[7]);
+        fprintf(stderr, "[regs] %06X a2=%08X a3=%08X a4=%08X a5=%08X a6=%08X\n",
+                pc, CPU.a[2], CPU.a[3], CPU.a[4], CPU.a[5], CPU.a[6]);
+        return;
+    }
+}
+
 uint32_t m68k_cur_block;   /* block currently executing, for I/O attribution */
 unsigned long m68k_irq_taken, m68k_irq_masked;
 uint32_t m68k_last_unknown;
@@ -256,6 +284,7 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         m68k_cur_block = pc;
         trail_push(pc);
         trace_block(pc);
+        regs_probe(pc);
         /* A native override replaces the recompiled block with hand-written C
            that does the same job and returns the same next PC. Looked up after
            find_block deliberately: an override must sit on a real block entry,
@@ -405,6 +434,7 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         m68k_cur_block = pc;
         trail_push(pc);
         trace_block(pc);
+        regs_probe(pc);
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
