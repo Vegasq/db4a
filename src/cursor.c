@@ -62,6 +62,7 @@
 #include "m68k.h"
 #include "mouse.h"
 #include "cursor.h"
+#include "render.h"
 #include "widescreen.h"
 #include <stdlib.h>
 
@@ -154,6 +155,31 @@ static uint32_t velocity(uint32_t d0, const struct axis *a) {
     cmp32(d0, (uint32_t)-a->snap);
     if (!cond_ge()) { CPU.cycles += 12; d0 = (uint32_t)-a->cap; }
     return d0;
+}
+
+/* How far west of the cartridge's own screen the cursor may travel.
+ *
+ * The widened strip shows real map, and the cursor-to-map-cell conversion at
+ * $5518 tolerates a negative cursor X -- it is linear and unclamped. But it
+ * MASKS rather than saturates (andi.w #$7f0), so once the sum goes negative it
+ * wraps to the far side of the map and picks a cell nowhere near the pointer.
+ * Measured: at 40 pixels west the cell was right, at 70 it jumped from 249 to
+ * 363.
+ *
+ * That only happens where there is no map left to point at, and the game
+ * already knows where that is: the camera cannot scroll past CAM_XMIN, so the
+ * map still available to the west is exactly CAM_X - CAM_XMIN. Clamping the
+ * extension to it means the cursor stops at the map's edge instead of wrapping
+ * around behind it.
+ *
+ * Returns 0 unless widescreen gameplay is on, so the faithful path never sees
+ * a negative cursor position and check-native keeps verifying these overrides. */
+int cursor_west_extension(void) {
+    if (!mouse_enabled() || !render_widescreen_gameplay()) return 0;
+    int want = render_world_offset();
+    int have = (int)(int16_t)rw(CAM_X) - (int)(int16_t)rw(CAM_XMIN);
+    if (have < 0) have = 0;
+    return want < have ? want : have;
 }
 
 static void scroll_axis(const struct axis *a) {
@@ -283,8 +309,16 @@ uint32_t native_cursor_scroll(void) {
         while (shift > 0 && ((int64_t)reach << (16 - shift)) < cap) shift--;
     }
 
+    /* Widescreen lets the cursor travel WEST of the cartridge's own screen,
+       into the strip of map drawn there. The scroll band has to move with it:
+       measured from the cartridge's edge it would start a whole strip-width
+       further in than the other three sides, which is what "the left scrolls
+       when you are far from the edge" was. ext is 0 unless widescreen
+       gameplay is on, so the faithful path is untouched. */
+    int ext = cursor_west_extension();
+
     struct axis x = { CUR_X, SUB_X, OUT_X, CAM_X, CAM_XMIN, CAM_XMAX,
-                      modern ? (int16_t)m : ROM_X_LO,
+                      modern ? (int16_t)(m - ext) : ROM_X_LO,
                       modern ? (int16_t)(SCREEN_W - m) : ROM_X_HI,
                       snap, cap, shift, 58, 72, 30, 20 };
     struct axis y = { CUR_Y, SUB_Y, OUT_Y, CAM_Y, CAM_YMIN, CAM_YMAX,

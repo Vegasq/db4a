@@ -9,4 +9,9 @@
  * consulted when mouse control is on. */
 int cursor_scroll_band(void);
 
+
+/* How far west of the cartridge's 320-pixel screen the cursor may travel,
+ * clamped to the map that actually exists. 0 unless widescreen gameplay. */
+int cursor_west_extension(void);
+
 #endif
