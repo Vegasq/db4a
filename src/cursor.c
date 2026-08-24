@@ -354,7 +354,8 @@ static const struct { uint32_t pc; native_fn fn; int faithful; } TABLE[] = {
     { 0x64D2u, native_placement_scroll, 0 },
     /* Widescreen's left-edge sprite cull. Faithful: with widescreen off it is
        the cartridge's block instruction for instruction. See widescreen.c. */
-    { WS_SPRITE_LEFT_CULL, native_sprite_left_cull, 1 },
+    { WS_SPRITE_LEFT_CULL,  native_sprite_left_cull,  1 },
+    { WS_SPRITE_BAND_COUNT, native_sprite_band_count, 1 },
 };
 
 /* When the override may run.

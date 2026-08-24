@@ -316,3 +316,77 @@ uint32_t native_sprite_left_cull(void) {
     if (cond_lt()) return 0x1284u;        /* dropped */
     return 0x11BEu;                       /* kept */
 }
+
+/* ---------------------------------------------------------------------------
+ * Keeping extension sprites out of the sprite BUDGET.
+ *
+ * Widening the left cull let units in the extension reach the emitter, and
+ * that had a side effect well beyond the strip: enemies showed through the fog
+ * of war on entering a mission. Confirmed by the user against DB4A_WIDE_UNITS=0,
+ * which made it go away.
+ *
+ * The reason is $11DC, which every surviving sprite passes through before the
+ * visibility tests that follow it:
+ *
+ *     0011DC  addq.b #$1, $1(a5, d1.w)     one more sprite in this band
+ *     0011E0  move.w (a4), d0
+ *     0011E2  lsr.w  #$3, d0
+ *     0011E4  add.b  d0, $11(a5, d1.w)     and this much more width
+ *
+ * a5 is scratch at $F700, cleared each pass, and d1 = (Y - $80) >> 5 buckets
+ * the screen into eight bands. Those two counters are then compared at
+ * $11F8..$123A against per-band limits to decide whether a sprite is emitted
+ * at all. So an extension sprite does not merely add itself -- it spends band
+ * budget, and changes the verdict for sprites elsewhere on the screen,
+ * including ones the cartridge was suppressing.
+ *
+ * The fix is to let extension sprites be drawn without being counted. They are
+ * ours, outside the screen the cartridge is budgeting for, so they should not
+ * be charged against it.
+ *
+ * Identifying them: d0 still holds width + X from $11B4, the sum the original
+ * cull compared against $80. Below $80 means the sprite lies entirely west of
+ * the cartridge's screen -- exactly the ones our widened threshold let in.
+ *
+ * The arithmetic is still performed so the flags are what the cartridge would
+ * have left; only the two stores are skipped. And with widescreen off nothing
+ * reaches here with d0 < $80, because the unwidened cull already dropped it --
+ * so this is the cartridge's block exactly, and check-native verifies it.
+ * ------------------------------------------------------------------------- */
+unsigned long ws_band_calls, ws_band_ext;
+
+uint32_t native_sprite_band_count(void) {
+    CPU.cycles += 80;                     /* same as blk_0011DC */
+
+    int ext = (int16_t)(uint16_t)CPU.d[0] < 0x80;
+    { extern unsigned long ws_band_calls, ws_band_ext;
+      ws_band_calls++; if (ext) ws_band_ext++; }
+
+    { /* 0011DC  addq.b #$1, $1(a5, d1.w) */
+        uint32_t a1 = CPU.a[5] + sx16((uint16_t)CPU.d[1]) + 1;
+        uint8_t r2 = add8(m68k_read8(a1), 0x1u);
+        if (!ext) m68k_write8(a1, r2);
+    }
+    { /* 0011E0  move.w (a4), d0 */
+        uint16_t m3 = m68k_read16(CPU.a[4]);
+        flags_logic16(m3);
+        CPU.d[0] = (CPU.d[0] & 0xFFFF0000u) | ((m3) & 0xFFFFu);
+    }
+    { /* 0011E2  lsr.w #$3, d0 */
+        uint16_t r1 = lsr16((uint16_t)CPU.d[0], 0x3u);
+        CPU.d[0] = (CPU.d[0] & 0xFFFF0000u) | ((r1) & 0xFFFFu);
+    }
+    { /* 0011E4  add.b d0, $11(a5, d1.w) */
+        uint32_t a1 = CPU.a[5] + sx16((uint16_t)CPU.d[1]) + 17;
+        uint8_t r2 = add8(m68k_read8(a1), (uint8_t)CPU.d[0]);
+        if (!ext) m68k_write8(a1, r2);
+    }
+    { /* 0011E8  btst.b #$1, $7(a2) */
+        uint8_t b2 = m68k_read8(CPU.a[2] + 7);
+        CPU.z = ((b2 >> 0x1u) & 1) ^ 1;
+    }
+    { /* 0011EE  beq.b $123c */
+        if (cond_eq()) return 0x123Cu;
+        return 0x11F0u;
+    }
+}

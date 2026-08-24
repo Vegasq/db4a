@@ -36,6 +36,12 @@ void widescreen_check_report(void);
 uint32_t native_sprite_left_cull(void);
 #define WS_SPRITE_LEFT_CULL 0x0011B4u
 
+/* Native override of $11DC, where a surviving sprite is charged against its
+ * band's budget. Extension sprites are drawn but not charged, so they cannot
+ * change which other sprites the cartridge decides to suppress. */
+uint32_t native_sprite_band_count(void);
+#define WS_SPRITE_BAND_COUNT 0x0011DCu
+
 /* The two cartridge routines this hooks. Both draw a column downward with the
  * VDP autoincrement set to one nametable row; they differ in how they index
  * the shared tile table at $4ADE8. */
