@@ -174,10 +174,39 @@ static uint32_t velocity(uint32_t d0, const struct axis *a) {
  *
  * Returns 0 unless widescreen gameplay is on, so the faithful path never sees
  * a negative cursor position and check-native keeps verifying these overrides. */
+/* The cartridge's own western camera limit, before we move it.
+ *
+ * CAM_XMIN is set once per mission (block $59DA writes $200) and is the
+ * pixel column the camera may not scroll past. Widescreen draws a strip WEST
+ * of the camera, so with the limit left alone the camera can walk until that
+ * strip hangs off the map and goes black -- "we display a row to the left of
+ * the map; we need to stop scrolling when we reach the end of the map".
+ *
+ * So we take the limit over, the same way mouse.c takes over the cursor's
+ * clamp box: remember whatever the cartridge last set, and publish that plus
+ * the strip width. The camera then stops a strip-width early and the strip is
+ * always looking at real map.
+ *
+ * The remembered value is also the honest answer to "how much map is there to
+ * the west", which is what the cursor extension must be measured against --
+ * measuring against the limit we ourselves moved would collapse it to zero at
+ * exactly the point it is needed. */
+static int cam_xmin_rom = -1;
+
+static void own_camera_limit(int ext) {
+    int cur = (int)(int16_t)rw(CAM_XMIN);
+    static int published = -1;
+    if (cur != published) cam_xmin_rom = cur;   /* the cartridge set it */
+    int want = cam_xmin_rom + ext;
+    if (want != cur) ww(CAM_XMIN, (int16_t)want);
+    published = want;
+}
+
 int cursor_west_extension(void) {
     if (!mouse_enabled() || !render_widescreen_gameplay()) return 0;
     int want = render_world_offset();
-    int have = (int)(int16_t)rw(CAM_X) - (int)(int16_t)rw(CAM_XMIN);
+    int floor_ = (cam_xmin_rom >= 0) ? cam_xmin_rom : (int)(int16_t)rw(CAM_XMIN);
+    int have = (int)(int16_t)rw(CAM_X) - floor_;
     if (have < 0) have = 0;
     return want < have ? want : have;
 }
@@ -316,6 +345,12 @@ uint32_t native_cursor_scroll(void) {
        when you are far from the edge" was. ext is 0 unless widescreen
        gameplay is on, so the faithful path is untouched. */
     int ext = cursor_west_extension();
+
+    /* Keep the camera off the part of the map the strip would hang over. Done
+       before the scroll below, so the clamp it applies is already ours. With
+       widescreen off ext is 0 and this republishes the cartridge's own value,
+       leaving RAM identical -- which is why check-native still passes. */
+    own_camera_limit((modern && render_widescreen_gameplay()) ? render_world_offset() : 0);
 
     struct axis x = { CUR_X, SUB_X, OUT_X, CAM_X, CAM_XMIN, CAM_XMAX,
                       modern ? (int16_t)(m - ext) : ROM_X_LO,

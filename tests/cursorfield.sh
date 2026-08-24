@@ -49,9 +49,33 @@ probe  60 negative "and further in"
 probe  84 4        "at the cartridge's own edge"
 probe 200 120      "mid-screen is unaffected"
 
-# At the map's western edge there is nothing west to point at, so the extension
-# must collapse rather than let the cell conversion wrap behind the map.
-probe  10 clamped  "clamps at the map's west edge"
+# Hard against the western camera limit the strip must STILL be looking at real
+# map -- the camera is held a strip-width short of the map's edge precisely so
+# that it is -- and the cell conversion must not have wrapped behind the map.
+# Before the camera limit moved, this collapsed to the cartridge's edge instead.
+probe  40 negative "reaches the strip at the west limit" 250
+
+# The cell picked must rise steadily from west to east. A wrap shows up as a
+# jump of hundreds, which is what $5518's andi.w #$7f0 does once the sum goes
+# negative -- it masks rather than saturates.
+mono() {
+    local prev=-1 x cell
+    for x in 40 60 84 120 200 300; do
+        DB4A_LOAD=$ST DB4A_WIDE=400 DB4A_MOUSE=1 DB4A_MOUSE_TARGET="$x,110" \
+            DB4A_RAMDUMP=1 DB4A_SHOTS=9200 DB4A_PPM="$TMP/m" ./build/db4a "$ROM" 250 >/dev/null 2>&1
+        cell=$(python3 -c "
+r=open('$TMP/m.9200.ram','rb').read()
+v=(r[0xBF4C]<<8)|r[0xBF4D]
+print(v-0x10000 if v>=0x8000 else v)")
+        if [ "$prev" -ge 0 ] && { [ "$cell" -lt "$prev" ] || [ $((cell - prev)) -gt 40 ]; }; then
+            echo "  cell sequence FAIL: x=$x gave $cell after $prev"
+            fail=1
+        fi
+        prev=$cell
+    done
+    echo "  map cell rises steadily west to east, no wrap"
+}
+mono
 
 [ $fail -eq 0 ] || { echo "cursor field: FAIL"; exit 1; }
 echo "cursor field: the cursor reaches the widened strip"
