@@ -254,6 +254,10 @@ check-native: build/db4a
 check-menu: build/db4a
 	./tests/buildmenu.sh
 
+## check-cursor - the cursor can reach the map drawn in the widened strip
+check-cursor: build/db4a
+	./tests/cursorfield.sh
+
 ## check-menus - pointing at a house shield or a mentat answer selects it
 check-menus: build/db4a
 	./tests/menus.sh

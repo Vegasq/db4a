@@ -54,6 +54,7 @@
  * or pad is being used -- see mouse_steer()'s contract in mouse.h.
  */
 #include "mouse.h"
+#include "render.h"
 #include "config.h"
 #include "input.h"
 #include "hal.h"
@@ -150,10 +151,35 @@ int mouse_steer(int target_x, int target_y) {
        cheap half of the invariant and it costs nothing to keep. */
     if (!in_gameplay()) { release_dpad(); have_last = 0; return 0; }
 
-    if (read_word(CURSOR_X_ADDR) < 0) { release_dpad(); return 0; }
+    /* How far WEST of the cartridge's own screen the cursor may travel.
+     *
+     * Widescreen draws a strip of real map west of the 320 the cartridge
+     * believes in. Its cursor lives in that 320-wide field, so without this
+     * the pointer can see the strip but never reach it: the cursor stopped 84
+     * pixels short of the window edge, and the left scroll band -- 24 pixels
+     * inside the CURSOR's field -- began 104 pixels inside the WINDOW, while
+     * the other three edges began at 24.
+     *
+     * The field can be extended because the cartridge's own cursor-to-map-cell
+     * conversion at $5518 is linear and unclamped:
+     *
+     *     d0 = $E3EC - $FFBF54 + CUR_X    cursor to world pixels
+     *     d0 &= $7F0 ; d0 >>= 4           to a map cell
+     *
+     * There is no sign test and no saturation -- the mask wraps rather than
+     * clamps -- so a negative cursor X keeps picking the correct cell for as
+     * long as the base keeps the sum positive, which it does everywhere except
+     * hard against the map's western edge, where there is no map to point at.
+     *
+     * Verified that the cartridge never itself writes a negative cursor X
+     * (0 of 3000 writes across a mission), so nothing treats it as a sentinel;
+     * the guard below was ours and defensive. */
+    int ext = cursor_west_extension();
+
+    if (read_word(CURSOR_X_ADDR) < -ext) { release_dpad(); return 0; }
 
     int c    = mouse_clamp_margin();
-    int minx = c, miny = c, maxx = SCREEN_W - c, maxy = SCREEN_H - c;
+    int minx = c - ext, miny = c, maxx = SCREEN_W - c, maxy = SCREEN_H - c;
 
     /* Take ownership of the clamp box. The ROM writes it once per mission from
        $4DA8, so setting it every frame is enough to keep it ours. */
@@ -162,7 +188,7 @@ int mouse_steer(int target_x, int target_y) {
     write_word(BOUND_MAX_X, maxx);
     write_word(BOUND_MAX_Y, maxy);
 
-    int px = clampi(target_x, 0, SCREEN_W - 1);
+    int px = clampi(target_x, -ext, SCREEN_W - 1);
     int py = clampi(target_y, 0, SCREEN_H - 1);
 
     /* Last input wins: if the pointer has not moved, leave the cursor alone so
@@ -171,7 +197,14 @@ int mouse_steer(int target_x, int target_y) {
        against src/cursor.c pulling it out -- otherwise parking the pointer at
        the edge would scroll for three frames and stop. */
     int b       = cursor_scroll_band();
-    int in_band = px < b || px >= SCREEN_W - b || py < b || py >= SCREEN_H - b;
+    /* The left band is measured from the TRUE screen edge, not from the
+       cartridge's. Leaving it at `px < b` would keep scrolling starting a
+       whole strip-width further in than the other three sides. */
+    int in_band = px < b - ext || px >= SCREEN_W - b || py < b || py >= SCREEN_H - b;
+    /* Anywhere west of the cartridge's own screen the cursor must also be
+       held, or the scroll routine drags it back out of the strip on the very
+       next frame and the pointer can never reach the map drawn there. */
+    if (px < 0) in_band = 1;
     int moved   = !have_last || px != last_px || py != last_py;
     last_px = px; last_py = py; have_last = 1;
 
