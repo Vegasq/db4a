@@ -30,6 +30,12 @@ void widescreen_note_column(uint32_t pc);
 void widescreen_extend(void);
 void widescreen_check_report(void);
 
+/* Append the strip's units to the sprite list AFTER the cartridge's emitter
+ * has finished, so its own run is untouched. Hooked on $6716, the DMA that
+ * copies the shadow to VRAM. */
+void widescreen_append_sprites(void);
+#define WS_SAT_DMA 0x00006716u
+
 /* Native override of $11B4, the cartridge's left-edge sprite cull. Widened by
  * the extension width so units standing in it are not dropped. Identical to
  * the cartridge when widescreen is off. */

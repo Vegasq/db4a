@@ -158,10 +158,17 @@
 #   docs/widescreen.md records the measurements, and the three possible ways
 #   forward.
 
-# wide_units = 0
+# wide_units = 1
 #
-#   Only meaningful with `wide` set. Leave it out and units standing in the
-#   widened strip are drawn; set it to 0 and they are not.
+#   Only meaningful with `wide` set, and you almost certainly do not want it.
+#
+#   Units in the widened strip are drawn either way. The default route adds
+#   them to the sprite list AFTER the cartridge has finished with it, so the
+#   game's own run is untouched. This setting instead widens the cartridge's
+#   own culling test, which works but changes what the game DOES: a few more
+#   sprites are emitted, a few more instructions run, and the frame timing
+#   shifts with them, so the same recorded inputs replayed at 400 and at 320
+#   drift apart. Kept only so the two can be compared.
 #
 #   Terrain and buildings in the strip come from the tilemap and are free.
 #   Units are sprites, and the cartridge discards a sprite whose right edge is
