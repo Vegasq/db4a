@@ -306,9 +306,13 @@ uint32_t native_sprite_left_cull(void) {
     /* DB4A_WIDE_UNITS=0 keeps the cartridge's own threshold, which leaves the
        extension's ground correct and its units missing -- but keeps a
        widescreen run bit-for-bit identical to a 320 one. See the note below. */
+    /* OFF by default now. The appender below does the same job without
+       perturbing the cartridge -- 2.1 sprites a frame against this path's 2.3,
+       so essentially the same population -- and without the divergence this
+       one costs. DB4A_WIDE_UNITS=1 restores it for comparison. */
     static int units = -1;
     if (units < 0) { const char *e = getenv("DB4A_WIDE_UNITS");
-                     units = (e && !atoi(e)) ? 0 : 1; }
+                     units = (e && atoi(e)) ? 1 : 0; }
     int extra = (units && enabled() && render_widescreen_gameplay())
                 ? fb_width - 320 : 0;
     cmp16((uint16_t)CPU.d[0], (uint16_t)(0x80u - extra));
@@ -389,4 +393,166 @@ uint32_t native_sprite_band_count(void) {
         if (cond_eq()) return 0x123Cu;
         return 0x11F0u;
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * Appending the strip's units to the sprite list, without touching the
+ * cartridge's own run.
+ *
+ * Widening the cull at $11B4 works, but it is not free: keeping a sprite the
+ * cartridge would have dropped means taking the other branch, emitting another
+ * entry, bumping the sprite index, and running a different number of blocks --
+ * so cycles move and a widescreen run drifts away from a 320 one.
+ *
+ * The alternative is to leave the cartridge's emitter completely alone and add
+ * our sprites AFTERWARDS. The list is a shadow at $FFE428, eight bytes an
+ * entry, DMA'd whole by $6716; the chain is a link byte per entry, and $1294
+ * ends it by clearing the link of the last one. So appending is: walk the
+ * chain to the end, write our entries after it, point the old last entry at
+ * the first of ours, and clear the link on ours.
+ *
+ * Nothing about the cartridge's execution changes -- same branches, same cycle
+ * count, same RAM except the tail of a table it has finished with.
+ *
+ * The objects come from the same list the emitter walks: head at $FFF3AC, next
+ * at $E(a2), and the object-to-screen conversion at $1124..$11A2 reproduced
+ * below. Read-only: the blink counters at $4(a2)/$5(a2) are deliberately NOT
+ * ticked, because the cartridge has already ticked them this frame and doing
+ * it again would be exactly the kind of state perturbation this exists to
+ * avoid.
+ * ------------------------------------------------------------------------- */
+#define OBJ_HEAD   0x00FFF3ACu
+#define SAT_SHADOW 0x00FFE428u
+#define SAT_MAX    0x50            /* the cartridge's own cap, $127C */
+#define CAM_X_ADDR 0x00FFE3BEu
+#define CAM_Y_ADDR 0x00FFE3C0u
+#define ADJ_TABLE  0x00001164u     /* the eight (dx,dy) pairs at $1164 */
+
+unsigned long ws_appended, ws_append_frames;
+unsigned long ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx;
+
+static int sat_chain_end(unsigned *count) {
+    /* Walk the link chain from entry 0, exactly as the VDP would. */
+    unsigned idx = 0, n = 0, last = 0;
+    for (; n < SAT_MAX; n++) {
+        uint32_t e = SAT_SHADOW + idx * 8u;
+        unsigned link = m68k_read8(e + 3) & 0x7Fu;
+        last = idx;
+        if (!link) break;
+        idx = link;
+    }
+    *count = n + 1;
+    return (int)last;
+}
+
+static int appending(void) {
+    static int a = -1;
+    if (a < 0) { const char *e = getenv("DB4A_WIDE_APPEND");
+                 a = (e && !atoi(e)) ? 0 : 1; }
+    return a;
+}
+
+void widescreen_append_sprites(void) {
+    if (!appending() || !enabled() || !render_widescreen_gameplay()) return;
+    int ext = render_world_offset();
+    if (ext <= 0) return;
+
+    ws_calls++;
+    unsigned count = 0;
+    int last = sat_chain_end(&count);
+    if (count >= SAT_MAX) { ws_rej_full++; return; }
+
+    int camx = (int)(int16_t)m68k_read16(CAM_X_ADDR);
+    int camy = (int)(int16_t)m68k_read16(CAM_Y_ADDR);
+    unsigned slot = count;
+    unsigned added = 0;
+
+    uint32_t obj = 0xFFFF0000u | m68k_read16(OBJ_HEAD);
+    for (int guard = 0; guard < 512 && (obj & 0xFFFFu); guard++) {
+        ws_objs++;
+        unsigned f7 = m68k_read8(obj + 7);
+        /* Only bit 7 drops the object outright.
+           .
+           $10C2 branches to $111E, and $111E is `tst.w d6; bne $128C` -- it
+           skips only when d6 is NON-zero. So bit 7 set leaves d6 = $80 and
+           skips, while bit 5 CLEAR leaves d6 = 0 and falls straight through to
+           be drawn. Reading `beq $111e` as "skip" inverts it, and that is
+           exactly what it did: seven objects in eight discarded, four pieces
+           a frame reaching the culls instead of twenty-odd. */
+        if (f7 & 0x80u) goto next;                      /* $10BA */
+        /* The cartridge's blink logic at $10CE..$111E cannot be reproduced
+           here: it DECREMENTS the counter at $4(a2) and toggles bit 4 of the
+           flags as it goes, and it has already run this frame. Ticking it a
+           second time is exactly the state perturbation this whole approach
+           exists to avoid, and reading the post-tick state does not tell us
+           which way it went. So blink is ignored: a unit that would have been
+           mid-blink is drawn steadily in the strip. That is a cosmetic
+           difference confined to the strip, and the alternative -- guessing --
+           was skipping seven objects in every eight. */
+
+        {
+        uint32_t pos = m68k_read32(obj);
+        int d4 = (int16_t)m68k_read16(pos);             /* word 0 */
+        int d5 = (int16_t)m68k_read16(pos + 2);         /* word 1 */
+        if (!(f7 & 0x40u)) {                            /* btst #6 clear */
+            int t = d4; d4 = d5; d5 = t;                /* exg.l d4,d5 */
+            d4 = (int16_t)(((uint16_t)d4) >> 3);
+            d5 = (int16_t)(((uint16_t)d5) >> 3);
+            d4 -= camx; d5 -= camy;
+            if (f7 & 0x04u) {                           /* btst #2 set */
+                unsigned k = m68k_read8(pos - 0xCu + 0x72u) & 7u;
+                d4 += (int16_t)m68k_read16(ADJ_TABLE + k * 4u);
+                d5 += (int16_t)m68k_read16(ADJ_TABLE + k * 4u + 2u);
+            }
+        }
+        d4 += 0x80; d5 += 0x80;
+
+        uint32_t a4 = m68k_read32(obj + 8);
+        int pieces = (int16_t)m68k_read16(a4);
+        a4 += 2;
+        for (int i = 0; i <= pieces && slot < SAT_MAX; i++, a4 += 0xC) {
+            int y = d5 + (int16_t)m68k_read16(a4 + 4);
+            int hh = (int16_t)m68k_read16(a4 + 2);
+            int x = d4 + (int16_t)m68k_read16(a4 + 0xA);
+            int ww_ = (int16_t)m68k_read16(a4);
+
+            ws_pieces++;
+            { static unsigned long call_seen = 0; static int done = 0;
+              if (getenv("DB4A_WIDE_DBG")) {
+                  if (call_seen != ws_calls) { call_seen = ws_calls; done = (done ? 2 : 1); }
+                  if (done == 1) fprintf(stderr, "[dbg] %d,%d\n", x, y);
+              } }
+            if (x > 0x1BF || y > 0x15F) { ws_rej_yx++; continue; }
+            if (y + hh < 0x80) { ws_rej_yx++; continue; }
+            /* The one the cartridge uses to drop it, and the reason it is
+               missing: the whole sprite lies west of the cartridge's screen.
+               Ours are exactly those, and only as far west as the strip. */
+            if (x + ww_ >= 0x80) { ws_rej_kept++; continue; }
+            if (x + ww_ < 0x80 - ext) { ws_rej_far++; continue; }
+
+            uint32_t e = SAT_SHADOW + slot * 8u;
+            m68k_write16(e, (uint16_t)y);
+            m68k_write16(e + 2, (uint16_t)(m68k_read16(a4 + 6) + slot));
+            {
+                uint16_t at = m68k_read16(a4 + 8);
+                uint16_t v  = (uint16_t)(at & 0x9FFFu);
+                v ^= (uint16_t)(m68k_read16(obj + 6) & 0xF800u);
+                if (at & 0x6000u) { v = (uint16_t)(v & 0x9FFFu); v |= at; }
+                else              { v |= (uint16_t)(at & 0x6000u); }
+                m68k_write16(e + 4, v);
+            }
+            m68k_write16(e + 6, (uint16_t)x);
+            slot++; added++;
+        }
+        }
+    next:
+        obj = 0xFFFF0000u | m68k_read16(obj + 0xE);
+    }
+
+    if (!added) return;
+    /* Splice: the cartridge's last entry now points at the first of ours, and
+       ours ends the chain the same way $1294 does. */
+    m68k_write8(SAT_SHADOW + (uint32_t)last * 8u + 3, (uint8_t)count);
+    m68k_write8(SAT_SHADOW + (uint32_t)(slot - 1) * 8u + 3, 0);
+    ws_appended += added; ws_append_frames++;
 }

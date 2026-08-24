@@ -293,6 +293,7 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
            no registers touched. Costs two compares per block when off. */
         if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B)
             widescreen_note_column(pc);
+        if (pc == WS_SAT_DMA) widescreen_append_sprites();
         /* A native override replaces the recompiled block with hand-written C
            that does the same job and returns the same next PC. Looked up after
            find_block deliberately: an override must sit on a real block entry,
@@ -454,6 +455,7 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
            no registers touched. Costs two compares per block when off. */
         if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B)
             widescreen_note_column(pc);
+        if (pc == WS_SAT_DMA) widescreen_append_sprites();
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }

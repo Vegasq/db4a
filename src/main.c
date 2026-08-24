@@ -521,6 +521,14 @@ int main(int argc, char **argv) {
       if (ws_band_calls && getenv("DB4A_LOG_WIDE"))
           fprintf(stderr, "[wsb] band-count calls %lu, of which extension-only %lu\n",
                   ws_band_calls, ws_band_ext); }
+    { extern unsigned long ws_appended, ws_append_frames;
+      { extern unsigned long ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx;
+        if (ws_calls && getenv("DB4A_LOG_WIDE"))
+            fprintf(stderr, "[wsa] calls=%lu objs=%lu pieces=%lu | full=%lu kept=%lu tooFar=%lu yx=%lu\n",
+                    ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx); }
+      if (ws_append_frames && getenv("DB4A_LOG_WIDE"))
+          fprintf(stderr, "[wsa] appended %lu sprites over %lu frames (%.1f/frame)\n",
+                  ws_appended, ws_append_frames, (double)ws_appended / (double)ws_append_frames); }
     widescreen_check_report();
     vdp_dump();
     psg_report();
