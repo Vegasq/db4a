@@ -287,6 +287,15 @@ int main(int argc, char **argv) {
                    : "  [frame %5u] could not save to %s\n", frames, save_path);
         }
 
+        /* Headless renders ONLY at the DB4A_SHOTS frames, which silently
+           starves any per-frame diagnostic inside the renderer -- measured
+           counters come back as zero and read as "the thing never happens".
+           That has cost real debugging time three times. DB4A_RENDER_ALL
+           forces a render every frame so those counters mean something. */
+        { static int render_all = -1;
+          if (render_all < 0) render_all = getenv("DB4A_RENDER_ALL") ? 1 : 0;
+          if (render_all) render_frame(); }
+
         for (unsigned k = 0; k < nshots; k++) {
             if (frames == shot_at[k] && shot_prefix) {
                 char path[512];
@@ -387,6 +396,7 @@ int main(int argc, char **argv) {
         printf("   return to %06X : %lu samples\n", waiter_addr[i], waiter_hits[i]); }
     invariant_report();
     pad_report();
+    vdp_nt_report();
     vdp_dump();
     psg_report();
     ym_report();

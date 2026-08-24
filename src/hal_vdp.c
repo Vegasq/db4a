@@ -85,7 +85,60 @@ void vdp_write_control(uint16_t v) {
     }
 }
 
-static void write_vram_byte(uint32_t a, uint8_t b) { VDP.vram[a & 0xFFFF] = b; }
+/* Nametable write attribution.
+ *
+ * DB4A_LOG_NT=1 tallies which 68000 block wrote into the plane A/B nametables,
+ * the way DB4A_WATCH does for RAM. Finding the routine that draws map columns
+ * is the whole problem for widescreen: it is the thing that decides how much
+ * of the world exists in the tilemap, and static analysis cannot point at it
+ * because the main loop dispatches through a pointer.
+ *
+ * Block granularity, which is what tools/ wants to disassemble. */
+extern uint32_t m68k_cur_block;
+static int nt_log = -1;
+#define NT_SLOTS 64
+static struct { uint32_t pc; unsigned long n; uint32_t lo, hi; } nt_tally[NT_SLOTS];
+static unsigned nt_used;
+
+static void nt_note(uint32_t a) {
+    if (nt_log < 0) nt_log = getenv("DB4A_LOG_NT") ? 1 : 0;
+    if (!nt_log) return;
+    uint32_t na = (uint32_t)(VDP.reg[2] & 0x38) << 10;
+    uint32_t nb = (uint32_t)(VDP.reg[4] & 0x07) << 13;
+    uint32_t sa = (uint32_t)(VDP.reg[5] & 0x7F) << 9;
+    int in_a = (a >= na && a < na + 0x1000), in_b = (a >= nb && a < nb + 0x1000);
+    /* DB4A_LOG_NT=sat tallies the SPRITE attribute table instead: which block
+       decides what gets a sprite is the same kind of question. */
+    static int want_sat = -1;
+    if (want_sat < 0) { const char *e = getenv("DB4A_LOG_NT");
+                        want_sat = (e && e[0] == 's') ? 1 : 0; }
+    if (want_sat) { if (!(a >= sa && a < sa + 0x280)) return; }
+    else if (!in_a && !in_b) return;
+    for (unsigned i = 0; i < nt_used; i++)
+        if (nt_tally[i].pc == m68k_cur_block) {
+            nt_tally[i].n++;
+            if (a < nt_tally[i].lo) nt_tally[i].lo = a;
+            if (a > nt_tally[i].hi) nt_tally[i].hi = a;
+            return;
+        }
+    if (nt_used < NT_SLOTS)
+        nt_tally[nt_used++] = (typeof(nt_tally[0])){ m68k_cur_block, 1, a, a };
+}
+
+void vdp_nt_report(void) {
+    if (nt_log <= 0) return;
+    for (unsigned i = 0; i + 1 < nt_used; i++)          /* biggest first */
+        for (unsigned j = i + 1; j < nt_used; j++)
+            if (nt_tally[j].n > nt_tally[i].n) {
+                typeof(nt_tally[0]) t = nt_tally[i]; nt_tally[i] = nt_tally[j]; nt_tally[j] = t;
+            }
+    fprintf(stderr, "\n[nt] nametable writers, by block:\n");
+    for (unsigned i = 0; i < nt_used && i < 16; i++)
+        fprintf(stderr, "[nt]   block %06X  %8lu writes  addr %04X..%04X\n",
+                nt_tally[i].pc, nt_tally[i].n, nt_tally[i].lo, nt_tally[i].hi);
+}
+
+static void write_vram_byte(uint32_t a, uint8_t b) { nt_note(a); VDP.vram[a & 0xFFFF] = b; }
 
 static void vdp_store(uint16_t v) {
     switch (VDP.code & 0x0F) {
@@ -226,6 +279,7 @@ static void vdp_dma_run(void) {
     }
     if (mode == 3) {                       /* VRAM -> VRAM copy */
         for (uint32_t i = 0; i < len; i++) {
+            nt_note(VDP.addr);
             VDP.vram[VDP.addr & 0xFFFF] = VDP.vram[(src + i) & 0xFFFF];
             VDP.addr = (VDP.addr + vdp_autoinc()) & 0xFFFF;
         }

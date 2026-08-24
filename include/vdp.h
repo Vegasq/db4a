@@ -43,4 +43,5 @@ static inline int vdp_vint_enabled(void)    { return (VDP.reg[1] >> 5) & 1; }
 static inline int vdp_dma_enabled(void)     { return (VDP.reg[1] >> 4) & 1; }
 static inline int vdp_h40(void)             { return (VDP.reg[12] >> 7) & 1; }
 static inline unsigned vdp_autoinc(void)    { return VDP.reg[15]; }
+void vdp_nt_report(void);
 #endif
