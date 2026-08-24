@@ -146,10 +146,14 @@ int main(int argc, char **argv) {
        setting. The headless binary deliberately keeps its own getenv: a
        stray `wide =` line in a config file must not be able to change the
        size of the frames the comparison tests render. */
+    { const char *t = cfg("DB4A_TALL");
+      if (t) { int v = atoi(t);
+               if (v >= 224 && v <= FB_H) fb_height = v;
+               else printf("DB4A_TALL must be 224..%d\n", FB_H); } }
     { const char *w = cfg("DB4A_WIDE");
       if (w) { int v = atoi(w);
                if (v >= 320 && v <= FB_W) { fb_width = v;
-                   printf("widescreen: %dx%d window %dx%d\n", fb_width, FB_H, fb_width * scale, FB_H * scale);
+                   printf("view: %dx%d window %dx%d\n", fb_width, fb_height, fb_width * scale, fb_height * scale);
                    /* Say which way the units switch resolved. It changes what
                       the game DOES, not just how it looks, so it should not be
                       something you have to guess at from the picture. */
@@ -168,7 +172,7 @@ int main(int argc, char **argv) {
            for the widest supported view), so sizing the window from it left a
            fixed 512-wide window on every setting with the real content
            letterboxed inside. */
-        fb_width * scale, FB_H * scale, SDL_WINDOW_RESIZABLE);
+        fb_width * scale, fb_height * scale, SDL_WINDOW_RESIZABLE);
     /* Fullscreen uses the DESKTOP flavour: it keeps the current display mode
        and scales into it rather than changing the monitor's resolution, so
        there is no mode switch and alt-tab behaves. */
@@ -185,13 +189,13 @@ int main(int argc, char **argv) {
        fb_width, not FB_W: FB_W is the ALLOCATION width (the widest view we
        support), so sizing from it letterboxes the real content inside a
        permanently 512-wide window. */
-    SDL_RenderSetLogicalSize(ren, fb_width, FB_H);
+    SDL_RenderSetLogicalSize(ren, fb_width, fb_height);
     if (cfg("DB4A_INTEGER")) {
         SDL_RenderSetIntegerScale(ren, SDL_TRUE);
         printf("integer scaling: on\n");
     }
     SDL_Texture *tex = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGB24,
-        SDL_TEXTUREACCESS_STREAMING, fb_width, FB_H);
+        SDL_TEXTUREACCESS_STREAMING, fb_width, fb_height);
 
     SDL_GameController *gc = NULL;
     for (int i = 0; i < SDL_NumJoysticks(); i++)

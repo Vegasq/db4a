@@ -69,7 +69,7 @@ static const unsigned char *glyph(char c) {
 }
 
 static void put(int x, int y, const unsigned char rgb[3]) {
-    if (x < 0 || y < 0 || x >= FB_W || y >= FB_H) return;
+    if (x < 0 || y < 0 || x >= fb_width || y >= fb_height) return;
     memcpy(FB[y][x], rgb, 3);
 }
 
@@ -117,7 +117,7 @@ void splash_draw(unsigned frame) {
     static const unsigned char DIM[3]   = {168, 176, 200 };
     static const unsigned char LINK[3]  = {130, 200, 170 };
 
-    for (int y = 0; y < FB_H; y++)
+    for (int y = 0; y < fb_height; y++)
         for (int x = 0; x < FB_W; x++)
             put(x, y, BG);
 
@@ -134,7 +134,7 @@ void splash_draw(unsigned frame) {
 
     /* Blink, so it reads as "waiting for you" rather than "stuck". */
     if ((frame / 25) & 1)
-        centred(FB_H - 24, "PRESS ANY KEY", 1, DIM);
+        centred(fb_height - 24, "PRESS ANY KEY", 1, DIM);
 }
 
 int splash_frames(void) {

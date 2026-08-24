@@ -158,6 +158,21 @@
 #   docs/widescreen.md records the measurements, and the three possible ways
 #   forward.
 
+# tall = 240
+#
+#   The same idea as `wide`, downwards: the number of scanlines to show,
+#   between 224 and 256. Left out, the game runs at the 224 lines a Mega Drive
+#   shows in its usual mode.
+#
+#   The extra lines appear BELOW the cartridge's own picture, and are filled
+#   the same way the widened strip is -- real map, with the units standing in
+#   it. Whatever the cartridge itself drew is untouched at any size, which
+#   `make check-res` verifies at six of them.
+#
+#   The same caveat as `wide` applies: the cartridge only maintains what it
+#   believes is visible, so the margins depend on ground it has drawn recently.
+
+
 # wide_units = 1
 #
 #   Only meaningful with `wide` set, and you almost certainly do not want it.
