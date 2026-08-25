@@ -11,6 +11,8 @@
 #include "render.h"
 #include "hal.h"
 #include "widescreen.h"
+#include "mapview.h"
+#include "m68k.h"
 #include <string.h>
 
 uint8_t FB[FB_H][FB_W][3];
@@ -286,6 +288,7 @@ int render_world_offset(void) {
 }
 
 void render_frame(void) {
+    mapview_check();
     widescreen_extend();   /* draw the map columns the cartridge leaves out */
     uint32_t nt_a = (uint32_t)(VDP.reg[2] & 0x38) << 10;
     uint32_t nt_b = (uint32_t)(VDP.reg[4] & 0x07) << 13;
@@ -298,6 +301,12 @@ void render_frame(void) {
                 memset(FB[y][x], 0, 3);
         return;
     }
+
+    /* The margin: everything outside the 320x224 the cartridge maintains. */
+    int strip_left = render_widescreen_gameplay() ? render_world_offset() : 0;
+    int strip_bot  = render_widescreen_gameplay() ? 224 : fb_height;
+    int cam_px = (int)(int16_t)m68k_read16(0x00FFE3BEu);
+    int cam_py = (int)(int16_t)m68k_read16(0x00FFE3C0u);
 
     for (int y = 0; y < fb_height; y++) {
         /* Fall back to live state for any line that was never latched -- a
@@ -358,11 +367,30 @@ void render_frame(void) {
                     continue;
                 }
             }
-            if (window_covers(wx >> 3, y >> 3))
+            /* In the MARGIN, read the game's map rather than the tilemap.
+             *
+             * The cartridge only fills the tilemap for the 320 pixels it
+             * believes are visible, so outside that the tilemap holds whatever
+             * was last there. The map does not have that problem: it is the
+             * game's own record of the world, indexed by absolute position, so
+             * a margin pixel is looked up exactly like any other -- no ring, no
+             * lap, no dependence on which way the camera last moved.
+             *
+             * Screen and world differ by exactly the camera, because the
+             * cartridge's horizontal scroll IS the negated camera. */
+            int in_margin = (x < strip_left || y >= strip_bot);
+            if (in_margin && mapview_ready()) {
+                int wpx = cam_px + (x - render_world_offset());
+                int wpy = cam_py + y;
+                ca = mapview_pixel(0, wpx, wpy, &pa);
+                cb = mapview_pixel(1, wpx, wpy, &pb);
+            } else if (window_covers(wx >> 3, y >> 3)) {
                 ca = sample_window(wx, y, &pa);
-            else
+                cb = sample_plane(nt_b, wx - hs_b, y + vs_b, &pb);
+            } else {
                 ca = sample_plane(nt_a, wx - hs_a, y + vs_a, &pa);
-            cb = sample_plane(nt_b, wx - hs_b, y + vs_b, &pb);
+                cb = sample_plane(nt_b, wx - hs_b, y + vs_b, &pb);
+            }
 
             unsigned pick = 0;
             int hi = 0;
