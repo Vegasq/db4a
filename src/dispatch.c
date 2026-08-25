@@ -295,6 +295,8 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B) {
             widescreen_note_column(pc);
             mapview_observe(pc);
+        } else if (pc == WS_ROW_PLANE_A || pc == WS_ROW_PLANE_B) {
+            mapview_observe(pc);   /* vertical scrolling finds the map too */
         }
         if (pc == WS_SAT_DMA) widescreen_append_sprites();
         /* A native override replaces the recompiled block with hand-written C
@@ -459,6 +461,8 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B) {
             widescreen_note_column(pc);
             mapview_observe(pc);
+        } else if (pc == WS_ROW_PLANE_A || pc == WS_ROW_PLANE_B) {
+            mapview_observe(pc);   /* vertical scrolling finds the map too */
         }
         if (pc == WS_SAT_DMA) widescreen_append_sprites();
         pc = BLOCK_FN[i]();

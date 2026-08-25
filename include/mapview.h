@@ -43,6 +43,7 @@ int      mapview_ready(void);
 /* Called on the cartridge's column-draw entry to learn the base. */
 void mapview_observe(uint32_t pc);
 
+
 /* The nametable entry for one tile of the world, straight from the map.
  * col/row are WORLD tile coordinates (camera pixels / 8). */
 uint16_t mapview_entry(int plane_b, int col, int row);
