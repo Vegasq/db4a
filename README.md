@@ -168,6 +168,22 @@ make record REC=data/recordings/mine.txt
 make replay REC=data/recordings/mine.txt SHOTS=6000,12000
 ```
 
+### Handing a build to someone else
+
+```bash
+make dist              # -> build/dist/db4a-<branch>-<sha>/
+make dist DIST=-t      # ... and the same folder as a .tar.gz
+```
+
+Builds, then collects the game, the cartridge it reads its data from, and a
+`db4a.conf` into one folder that runs from anywhere: `./play.sh`. It also
+carries a `BUILD.txt` naming the exact commit and binary, and a `report/`
+directory for the two things worth sending back -- `./play.sh --record` writes
+a session there, and an unknown PC appends itself to `report/seeds.txt`.
+
+The package contains the ROM, which is why it is built into `build/` and why
+`tools/package.sh` refuses an output path git does not ignore.
+
 ---
 
 ## How it works
