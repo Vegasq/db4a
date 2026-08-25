@@ -2333,3 +2333,76 @@ cases, the escape hatch on both screens), and the whole suite unchanged --
 unit tests, `check-native` still bit-exact, `check-menu`, `check-state`,
 `check-houses`, `tests/mouse.sh`, the 27609-frame winning mission and
 `tests/defeat.sh`.
+
+## 2026-08-24 — B4: the southern margin was never empty, and the metric was wrong
+
+Acceptance B4 says the widened view's margin must fill in every direction. It
+was recorded NOT MET on the strength of a pixel count: at frame 4125 of
+`data/recordings/artifacts.txt`, 400x256 shows only 128 more non-black pixels
+than 400x224, against ~10000 for a full southern margin. That number is real
+and the conclusion drawn from it was wrong.
+
+**Non-black is not the same as drawn.** Unexplored map is fog; the fog tile is
+a solid block of colour index 12; palette entry 12 is `$0000`, black. Counting
+non-black pixels therefore measures how much of the map the player has
+explored, not whether the renderer filled the margin. Replaying `mapview_pixel`
+offline against the RAM, VRAM and ROM at the same frames:
+
+| frame | south non-black | south DRAWN from the map |
+|---|---|---|
+| artifacts 4125 | 128 / 12800 | **12800 / 12800** |
+| level1atredis 6000 | 5532 / 12800 | **12800 / 12800** |
+| level1atredis 9000 | 5627 / 12800 | **12800 / 12800** |
+| level1atredis 12000 | 8535 / 12800 | **12800 / 12800** |
+
+Frame 4125 is simply an early mission where the explored blob happens to be
+exactly the seven cell rows the camera is showing: cell rows 33-39 at cols
+21-30, with cell row 40 -- the whole southern margin -- still at `$F6`. That the
+blob does not follow the camera is checked directly: at frame 3800 the camera
+is on cell rows 35-42 and the blob is still 33-39, and at frame 4000 the camera
+is on rows 40-47 with the blob unmoved, so the whole screen is fog.
+
+The other giveaway in the original measurement was that 512x256 and 400x256
+report the *same* southern count to the pixel. The extra 112 columns a 512-wide
+view adds are west of the camera, and there they are unexplored too.
+
+**The margin was also checked against the cartridge itself**, the way the
+western strip was: the southern margin at frame 12000 covers world rows
+1266-1297, and by frame 12037 the camera has dropped 40 px so the cartridge
+draws those rows in its own view. They agree 68.7%. That looks poor until the
+same comparison is run on the cartridge's own rows, which agree 66.0% -- 37
+frames of animating terrain cost that much on any band. The margin is as true
+to the map as the cartridge's own picture is.
+
+### What WAS wrong: the camera's southern limit
+
+The same defect the western strip had. `CAM_YMAX` bounds the camera so that
+camera + 224 lands exactly on the map's southern edge; a taller view grows
+downwards, so those extra lines hang off the map. Measured at the southern
+limit from `build/cursorfield.state`, driving the pointer into the corner:
+
+| view | before | after |
+|---|---|---|
+| 320x224 | south edge at world y 1535 | 1535 |
+| 320x256 | **1567** — 31 of 32 lines past the map | 1535 |
+| 400x256 | **1567** | 1535 |
+| 512x256 | **1567** | 1535 |
+
+The map's playfield is cell rows 16-47, so world y 1536 upward is the all-zero
+ring outside it, which renders as backdrop. `own_camera_limit()` now takes over
+`CAM_YMAX` exactly as it already took over `CAM_XMIN`: remember what the
+cartridge last set, publish that minus the extra lines. Gated on mouse control
+and widescreen, so with either off it republishes the cartridge's own value and
+RAM is identical.
+
+`make check-margins` (`tests/margins.sh`) is the command B4 was missing. It
+checks both halves: the margin shows the true map, calibrated against the
+cartridge's own rows so terrain animation cannot make it flaky, and the view
+stops at the map's edge -- west and south -- at every size.
+
+Verified: `check-margins` (fails on all four sizes without the `CAM_YMAX`
+change), `check-native` 472185 calls 0 mismatched, `check-res` all six sizes
+exact, `check-cursor`, `check-state`, `check-menu`. The faithful 320x224 path
+is byte-identical at frames 1320, 2800, 6000, 9000 and 12000, as is a 400x256
+replay without mouse control, both compared against binaries differing only in
+`cursor.o`.

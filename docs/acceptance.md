@@ -43,7 +43,7 @@ Fixing A3 is task #32 and is orthogonal to widescreen.
 | B1 | Width and height are runtime settings, not build constants | `wide`/`tall` in db4a.conf | MET |
 | B2 | The cartridge's own 320x224 is byte-exact inside every supported size | `make check-res` | MET |
 | B3 | The margin shows the true map, not leftovers, regardless of scroll history | `DB4A_MAPCHECK=1` over the recordings | MET (39M tiles, <=0.04%) |
-| B4 | The margin fills in EVERY direction, including below | margin-fill measurement | **NOT MET** (south ~0%) |
+| B4 | The margin fills in EVERY direction, including below | `make check-margins` | MET |
 | B5 | Sizes beyond 512x256 work, or the cap is documented as deliberate | none yet | **NOT MET** |
 | B6 | Units appear in the margin and are hidden by fog like any other | `make check-res` + fog frames | MET |
 

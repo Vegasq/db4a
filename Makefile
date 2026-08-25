@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: all verify-rom analyse test check-operands check-cpu check-z80 recomp run play record replay playthrough compare-screen vectors clean
+.PHONY: check-margins all verify-rom analyse test check-operands check-cpu check-z80 recomp run play record replay playthrough compare-screen vectors clean
 ## all - build the emulator and run the unit tests (the default target)
 ##       `make clean && make` must leave a playable build behind, which is
 ##       v1 acceptance criterion 8; running only the tests did not.
@@ -268,6 +268,10 @@ check-mission: build/db4a
 ## check-cursor - the cursor can reach the map drawn in the widened strip
 check-cursor: build/db4a
 	./tests/cursorfield.sh
+
+## check-margins - the widened view's margin fills from the map, in every direction
+check-margins: build/db4a
+	./tests/margins.sh
 
 ## check-menus - pointing at a house shield or a mentat answer selects it
 check-menus: build/db4a
