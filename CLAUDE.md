@@ -294,9 +294,15 @@ caller's values. Whole-RAM diff plus every register plus the flags.
 blocks, so collapsing an eight-block, ~1000-cycle routine into one indivisible
 step moves where the 68000 yields to the Z80 -- 0.62% of pixels at frame 6000,
 the same order as task #21. That is why the cursor override is gated on mouse
-control instead of being on by default. The real fix is to interleave on
+control rather than running unconditionally. The real fix is to interleave on
 absolute cycle position rather than block boundaries; do that before migrating
 more routines.
+
+Note what that gate now implies on `remaster`: mouse control is ON by default
+there, so the override is the default path and this cost is one the branch
+pays every run. It is bounded and measured, and it is the price of the branch's
+headline feature -- but the interleave fix stopped being optional cleanup when
+that default flipped. `master` is unaffected: it has no mouse control at all.
 
 ## Reference oracle
 

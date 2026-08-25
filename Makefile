@@ -110,9 +110,9 @@ COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o
 build/db4a: $(COMMON_OBJS) build/main.o
 	$(CC) $^ -o $@ -lm
 
-## explore - resume mid-mission and play live, optionally in widescreen
-##           usage: make explore              (320, from frame 6000)
-##                  make explore WIDE=400     (widescreen spike)
+## explore - resume mid-mission and play live
+##           usage: make explore              (from frame 6000, defaults)
+##                  make explore WIDE=320     (the cartridge's own view)
 ##                  make explore STATE=<file>
 STATE ?= data/states/mission1-f6000.state
 WIDE  ?=
@@ -134,8 +134,8 @@ dist:
 	./tools/package.sh $(DIST)
 
 ## play - build and run the interactive SDL build
-##        usage: make play          (320, faithful)
-##               make play WIDE=400 (experimental widescreen)
+##        usage: make play          (400 wide with mouse control, the defaults)
+##               make play WIDE=320 (the cartridge's own view)
 play: build/db4a-sdl
 	$(if $(WIDE),DB4A_WIDE=$(WIDE),) ./build/db4a-sdl "$(ROM)"
 
