@@ -74,6 +74,10 @@
 #define OUT_Y    0xFFBF36u
 #define CAM_X    0xFFE3BEu
 #define CAM_Y    0xFFE3C0u
+#define BOUND_MIN_X 0xFFBF1Au
+#define BOUND_MIN_Y 0xFFBF1Cu
+#define BOUND_MAX_X 0xFFBF1Eu
+#define BOUND_MAX_Y 0xFFBF20u
 #define CAM_XMIN 0xFFE3D2u
 #define CAM_XMAX 0xFFE3D4u
 #define CAM_YMIN 0xFFE3CEu
@@ -376,7 +380,10 @@ uint32_t native_cursor_scroll(void) {
        further in than the other three sides, which is what "the left scrolls
        when you are far from the edge" was. ext is 0 unless widescreen
        gameplay is on, so the faithful path is untouched. */
+    /* Still needed for the camera limits below; the scroll band no longer
+       uses it, because it now reads the clamp bound actually in force. */
     int ext = cursor_west_extension();
+    (void)ext;
 
     /* Keep the camera off the part of the map the strip would hang over, west
        and south alike. Done before the scroll below, so the clamp it applies
@@ -389,12 +396,25 @@ uint32_t native_cursor_scroll(void) {
 
 
     struct axis x = { CUR_X, SUB_X, OUT_X, CAM_X, CAM_XMIN, CAM_XMAX,
-                      modern ? (int16_t)(m - ext) : ROM_X_LO,
-                      modern ? (int16_t)(SCREEN_W - m) : ROM_X_HI,
+                      /* Measure the band from where the cursor can actually
+                         REACH, not from a fixed screen coordinate.
+                         .
+                         The clamp box is not reliably ours: $4DA8 is the
+                         cartridge's own setter for it and runs every frame,
+                         after we have written ours. That never showed while
+                         the pointer was driving, because mouse_steer writes
+                         the cursor position directly and the box is beside the
+                         point. With the ARROW keys it decides everything: the
+                         ROM's box pins the cursor at 24 while the threshold
+                         sat at m - ext = -56, so it could never be reached and
+                         the map would not scroll. Reading the bound actually
+                         in force makes the band right whoever last wrote it. */
+                      modern ? (int16_t)((int)(int16_t)rw(BOUND_MIN_X) + m) : ROM_X_LO,
+                      modern ? (int16_t)((int)(int16_t)rw(BOUND_MAX_X) - m) : ROM_X_HI,
                       snap, cap, shift, 58, 72, 30, 20 };
     struct axis y = { CUR_Y, SUB_Y, OUT_Y, CAM_Y, CAM_YMIN, CAM_YMAX,
-                      modern ? (int16_t)m : ROM_Y_LO,
-                      modern ? (int16_t)(SCREEN_H - m) : ROM_Y_HI,
+                      modern ? (int16_t)((int)(int16_t)rw(BOUND_MIN_Y) + m) : ROM_Y_LO,
+                      modern ? (int16_t)((int)(int16_t)rw(BOUND_MAX_Y) - m) : ROM_Y_HI,
                       snap, cap, shift, 42, 80, 34, 24 };
     scroll_axis(&x);
     scroll_axis(&y);
