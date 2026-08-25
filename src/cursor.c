@@ -191,15 +191,33 @@ static uint32_t velocity(uint32_t d0, const struct axis *a) {
  * the west", which is what the cursor extension must be measured against --
  * measuring against the limit we ourselves moved would collapse it to zero at
  * exactly the point it is needed. */
-static int cam_xmin_rom = -1;
+/* The same argument applies BELOW the cartridge's own 224 lines, because a
+ * taller view grows downwards. CAM_YMAX bounds the camera so that
+ * camera + 224 lands exactly on the map's southern edge; with (fb_height-224)
+ * extra lines below that, the camera has to stop that much earlier or the
+ * extra lines hang off the map. Measured at the southern limit with a 256-line
+ * view: CAM_Y pinned at 1311 either way, so lines 224-255 read cell row 48,
+ * the all-zero ring outside the 32x32 playfield, and rendered as backdrop.
+ *
+ * Both limits are handled the same way and for the same reason, so they share
+ * one function. */
+static int cam_xmin_rom = -1, cam_ymax_rom = -1;
 
-static void own_camera_limit(int ext) {
-    int cur = (int)(int16_t)rw(CAM_XMIN);
-    static int published = -1;
-    if (cur != published) cam_xmin_rom = cur;   /* the cartridge set it */
-    int want = cam_xmin_rom + ext;
-    if (want != cur) ww(CAM_XMIN, (int16_t)want);
-    published = want;
+static void own_camera_limit(int ext, int extra_lines) {
+    {   int cur = (int)(int16_t)rw(CAM_XMIN);
+        static int published = -1;
+        if (cur != published) cam_xmin_rom = cur;   /* the cartridge set it */
+        int want = cam_xmin_rom + ext;
+        if (want != cur) ww(CAM_XMIN, (int16_t)want);
+        published = want;
+    }
+    {   int cur = (int)(int16_t)rw(CAM_YMAX);
+        static int published = -1;
+        if (cur != published) cam_ymax_rom = cur;
+        int want = cam_ymax_rom - extra_lines;
+        if (want != cur) ww(CAM_YMAX, (int16_t)want);
+        published = want;
+    }
 }
 
 int cursor_west_extension(void) {
@@ -346,11 +364,14 @@ uint32_t native_cursor_scroll(void) {
        gameplay is on, so the faithful path is untouched. */
     int ext = cursor_west_extension();
 
-    /* Keep the camera off the part of the map the strip would hang over. Done
-       before the scroll below, so the clamp it applies is already ours. With
-       widescreen off ext is 0 and this republishes the cartridge's own value,
-       leaving RAM identical -- which is why check-native still passes. */
-    own_camera_limit((modern && render_widescreen_gameplay()) ? render_world_offset() : 0);
+    /* Keep the camera off the part of the map the strip would hang over, west
+       and south alike. Done before the scroll below, so the clamp it applies
+       is already ours. With widescreen off both are 0 and this republishes the
+       cartridge's own values, leaving RAM identical -- which is why
+       check-native still passes. */
+    int wide = modern && render_widescreen_gameplay();
+    own_camera_limit(wide ? render_world_offset() : 0,
+                     wide ? fb_height - SCREEN_H : 0);
 
     struct axis x = { CUR_X, SUB_X, OUT_X, CAM_X, CAM_XMIN, CAM_XMAX,
                       modern ? (int16_t)(m - ext) : ROM_X_LO,
