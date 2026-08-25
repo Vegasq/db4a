@@ -113,16 +113,21 @@ make play       # play
 
 ### Mouse control
 
-```bash
-DB4A_MOUSE=1 make play        # left = A, right = B, middle = C
-```
+**On by default.** Left = A, right = B, middle = C.
 
 The cursor goes exactly where you point, and the outer 24 pixels of the screen
 scroll the map. In the Construction Yard's build console, pointing at an icon
 selects it — with its name and price — and left click builds it. House
-selection and the mentat's yes/no take the pointer too. Both are off by default: the cartridge moves its cursor at
-three pixels a frame and starts scrolling a quarter of the way in from each
-edge, which suits a d-pad and cannot be made to follow a mouse.
+selection and the mentat's yes/no take the pointer too.
+
+The cartridge cannot do this itself: it moves its cursor at three pixels a
+frame and starts scrolling a quarter of the way in from each edge, which suits
+a d-pad and cannot be made to follow a pointer. So the cursor position is
+written directly instead, and the scroll band replaces the centre box.
+
+```bash
+DB4A_MOUSE=0 make play        # or `mouse = 0` in db4a.conf
+```
 
 | | |
 |---|---|
@@ -138,25 +143,33 @@ DB4A_KEYS="a=q,b=w,c=r" make play
 DB4A_GAIN=8 make play          # louder
 ```
 
-### Widescreen (experimental, and known to be wrong in motion)
+### Widescreen
+
+**On by default, at 400x224.** Anything from 320 to 1024 in either direction
+works, so 640x480 and 800x600 do too.
+
+In gameplay the picture shifts right so the HUD stays flush against the edge
+with its backdrop under it, and the new space opens on the left as more map.
+Menus, the mentat and the cutscenes are 320-wide compositions with nothing to
+anchor a wider one, so they are centred with black bars — the widened strip is
+gated on the gameplay scene handlers rather than drawn everywhere.
+
+The extra picture comes from the game's own **map data**, read straight out of
+work RAM, rather than from whatever the tilemap happens to still hold: the
+cartridge only ever writes tiles for the 320 pixels it believes are visible, so
+reading those back gives you leftovers that depend on which way you last
+scrolled. Map data has no such dependence. It cannot invent map, so ground you
+have never explored stays dark exactly as the cartridge would leave it.
 
 ```bash
-make play WIDE=400          # or `wide = 400` in db4a.conf
+make play WIDE=320          # or `wide = 320` in db4a.conf
 ```
 
-Widens the view from the cartridge's 320 pixels. In gameplay the picture
-shifts right so the HUD stays flush against the edge with its backdrop under
-it, and the new space opens on the left as more map; menus and cutscenes are
-320-wide compositions with nothing to anchor, so they are centred with black
-bars.
-
-**It still looks wrong once the view moves.** The game only writes tiles for
-the 320 pixels it thinks are visible, so the extra columns are reconstructed
-from whatever the tilemap still holds there — convincing in a still frame,
-not in play. It is off by default and stays that way until the game itself can
-be made to maintain a wider view. With it off, output is byte-identical to the
-faithful build. `docs/widescreen.md` has the measurements and the three
-possible ways forward.
+That is a real off switch, not an approximation of one. The cartridge's own 320
+pixels come out byte-identical either way — `make check-res` proves the
+cartridge's picture EXACT inside nine view sizes up to 1024x1024, and
+`make check-mission` replays the recorded mission unchanged at any of them.
+`docs/widescreen.md` has the measurements.
 
 ### Recording and replaying
 
