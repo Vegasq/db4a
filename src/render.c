@@ -12,6 +12,7 @@
 #include "hal.h"
 #include "widescreen.h"
 #include "mapview.h"
+#include "objects.h"
 #include "m68k.h"
 #include <string.h>
 
@@ -507,6 +508,51 @@ void render_sprites(void) {
         if (!link) break;
         idx = link;
     }
+    /* The margin's own objects, read straight from the game's list.
+     *
+     * The cartridge culled these to its 320x224 and never put them in the
+     * table, so nothing here overlaps what the pass above drew -- the two
+     * cover disjoint parts of the screen by construction. No 80-entry cap and
+     * no per-band budget applies, because neither is ours to obey.
+     *
+     * Same rules as the hardware pass otherwise: first sprite wins a pixel,
+     * a low-priority sprite loses to a high-priority plane pixel, and nothing
+     * is drawn over ground the player has not uncovered. */
+    if (render_widescreen_gameplay()) {
+        static struct obj_piece mp[256];
+        unsigned mn = objects_margin(mp, 256, render_world_offset(),
+                                     fb_height - 224);
+        for (unsigned i = 0; i < mn; i++) {
+            unsigned hw = ((mp[i].size >> 2) & 3) + 1;
+            unsigned hh = (mp[i].size & 3) + 1;
+            unsigned tile = mp[i].attr & 0x7FF;
+            unsigned fx = (mp[i].attr >> 11) & 1, fy = (mp[i].attr >> 12) & 1;
+            unsigned pal = (mp[i].attr >> 13) & 3;
+            int spr_hi = (mp[i].attr >> 15) & 1;
+            int sx = mp[i].x - 128, sy = mp[i].y - 128;
+            for (unsigned cx = 0; cx < hw; cx++)
+                for (unsigned cy = 0; cy < hh; cy++) {
+                    unsigned tc = tile + (fx ? (hw - 1 - cx) : cx) * hh
+                                       + (fy ? (hh - 1 - cy) : cy);
+                    for (unsigned py = 0; py < 8; py++)
+                        for (unsigned px = 0; px < 8; px++) {
+                            int X = sx + (int)(cx * 8 + px) + render_world_offset();
+                            int Y = sy + (int)(cy * 8 + py);
+                            if (X < 0 || X >= fb_width || Y < 0 || Y >= fb_height) continue;
+                            if (taken[Y][X]) continue;
+                            if (!plane_any[Y][X]) { render_fogged++; continue; }
+                            unsigned ix = fx ? 7 - px : px, iy = fy ? 7 - py : py;
+                            unsigned c = tile_pixel(tc, ix, iy);
+                            if (!c) continue;
+                            taken[Y][X] = 1;
+                            if (spr_hi || !plane_hi[Y][X])
+                                cram_rgb(VDP.cram[(pal * 16 + c) & 0x3F], FB[Y][X]);
+                            else render_occluded++;
+                        }
+                }
+        }
+    }
+
     if (getenv("DB4A_LOG_PRIO")) {
         static int once = 0;
         if (!once++) {

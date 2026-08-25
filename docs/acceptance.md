@@ -52,13 +52,13 @@ which is A4 and is what the fidelity policy asks of a presentation feature.
 | B3 | The margin shows the true map, not leftovers, regardless of scroll history | `make check-map` | MET to 448 wide (<=0.09%) |
 | B4 | The margin fills in EVERY direction, including below | `make check-margins` | MET |
 | B5 | Sizes beyond 512x256 work, or the cap is documented as deliberate | `make check-map`, `make check-res` | **PARTIAL**: correct to 448, allowed to 1024 |
-| B6 | Units appear in the margin and are hidden by fog like any other | `make check-res` + fog frames | MET |
+| B6 | Units appear in the margin and are hidden by fog like any other | `make check-objects`, fog frames | MET — drawn from the object list, no 80-entry cap |
 
 ## C. The game is unaffected
 
 | # | Criterion | Command | Status |
 |---|---|---|---|
-| C1 | A recorded mission plays out identically at any size | `make check-mission` | MET |
+| C1 | A recorded mission plays out identically at any size | `make check-mission` | MET — now bit-identical RAM, not merely outside the sprite shadow |
 | C2 | Native overrides remain equivalent to the cartridge | `make check-native` | MET |
 | C3 | Save/load round-trips identically | `make check-state` | MET |
 | C4 | Mission progression (win, then lose) unaffected | `./tests/defeat.sh` at WIDE=400 | MET |

@@ -30,23 +30,8 @@ void widescreen_note_column(uint32_t pc);
 void widescreen_extend(void);
 void widescreen_check_report(void);
 
-/* Append the strip's units to the sprite list AFTER the cartridge's emitter
- * has finished, so its own run is untouched. Hooked on $6716, the DMA that
- * copies the shadow to VRAM. */
-void widescreen_append_sprites(void);
-#define WS_SAT_DMA 0x00006716u
 
-/* Native override of $11B4, the cartridge's left-edge sprite cull. Widened by
- * the extension width so units standing in it are not dropped. Identical to
- * the cartridge when widescreen is off. */
-uint32_t native_sprite_left_cull(void);
-#define WS_SPRITE_LEFT_CULL 0x0011B4u
 
-/* Native override of $11DC, where a surviving sprite is charged against its
- * band's budget. Extension sprites are drawn but not charged, so they cannot
- * change which other sprites the cartridge decides to suppress. */
-uint32_t native_sprite_band_count(void);
-#define WS_SPRITE_BAND_COUNT 0x0011DCu
 
 /* The two cartridge routines this hooks. Both draw a column downward with the
  * VDP autoincrement set to one nametable row; they differ in how they index

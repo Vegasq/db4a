@@ -34,6 +34,24 @@ struct obj_entry {
     uint16_t attr;
 };
 
+/* One piece to draw, in the cartridge's own terms: x and y biased by $80,
+ * size as the hardware encodes it, attributes carrying tile, palette, flip
+ * and priority. */
+struct obj_piece {
+    int      x, y;
+    uint8_t  size;
+    uint16_t attr;
+};
+
+/* Collect the pieces that fall OUTSIDE the cartridge's 320x224 but inside a
+ * margin `ext` pixels wide to the west and `exth` tall to the south -- exactly
+ * the ones its culls throw away. Returns how many were written.
+ *
+ * This is the whole point of reading the object list: no 80-entry table, no
+ * per-band budget, no culling to a screen we are not using. The cartridge's
+ * own run is untouched, so nothing here can change what the game does. */
+unsigned objects_margin(struct obj_piece *out, unsigned max, int ext, int exth);
+
 /* Snapshot the prediction. Call on entry to $1088. */
 void objects_predict(void);
 
