@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: check-margins all verify-rom analyse test check-operands check-cpu check-z80 recomp run play record replay playthrough compare-screen vectors clean
+.PHONY: check-margins all verify-rom analyse test check-operands check-cpu check-z80 recomp run dist play record replay playthrough compare-screen vectors clean
 ## all - build the emulator and run the unit tests (the default target)
 ##       `make clean && make` must leave a playable build behind, which is
 ##       v1 acceptance criterion 8; running only the tests did not.
@@ -125,6 +125,13 @@ data/states/mission1-f6000.state: build/db4a data/recordings/level1atredis.txt
 	@mkdir -p data/states
 	DB4A_REPLAY=data/recordings/level1atredis.txt \
 	    DB4A_SAVE_AT="6000:$@" ./build/db4a "$(ROM)" 6010 >/dev/null
+
+## dist - package a build for someone else to run: game, cartridge and
+##        settings in one folder.  DIST=-t also writes a .tar.gz
+##        usage: make dist   /   make dist DIST=-t
+DIST ?=
+dist:
+	./tools/package.sh $(DIST)
 
 ## play - build and run the interactive SDL build
 ##        usage: make play          (320, faithful)
