@@ -277,6 +277,10 @@ check-margins: build/db4a
 check-menus: build/db4a
 	./tests/menus.sh
 
+## check-jump - the picture must not move when a menu or console opens
+check-jump: build/db4a
+	./tests/nojump.sh
+
 ## check-houses - all three houses must select and load their mission
 check-houses: build/db4a
 	./tests/houses.sh

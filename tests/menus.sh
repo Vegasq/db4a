@@ -51,11 +51,50 @@ probe build/house.state 250  90 BEF8 00D0 "house: Harkonnen"     || true
 probe build/house.state 160 200 BEF8 0020 "house: below shields ignored" || true
 probe build/house.state 160  90 BEF8 0020 "house: DB4A_MENU_MOUSE=0 off" DB4A_MENU_MOUSE=0 || true
 
+# Widescreen. The picture is drawn offset, so the SAME shield sits at a pointer
+# position that much further right, and the frontend must convert logical
+# coordinates back to the cartridge's 0..319 before steering. Without that
+# conversion these land on the neighbouring shield.
+#
+# The offset is 40, not 80, and it was MEASURED rather than assumed:
+#
+#     DB4A_LOAD=build/house.state DB4A_SCENE=1 ./build/db4a "$ROM" 130
+#         frame 1076  $FFFFE002 = 004500
+#
+# $004500 is not in render.c's gameplay set, so render_world_offset() centres
+# the 320-wide composition and returns (400-320)/2 = 40 rather than the full
+# 80 that a right-anchored gameplay HUD gets. At 320 the offset is 0 and these
+# reduce to the probes above.
+probe build/house.state 110  90 BEF8 0020 "house: Atreides   (wide 400)"  DB4A_WIDE=400 || true
+probe build/house.state 200  90 BEF8 0078 "house: Ordos      (wide 400)"  DB4A_WIDE=400 || true
+probe build/house.state 290  90 BEF8 00D0 "house: Harkonnen  (wide 400)"  DB4A_WIDE=400 || true
+# The pillarbox bar itself is not the game's screen: pointing into it is off
+# the shields, exactly as pointing below them is.
+probe build/house.state  20  90 BEF8 0020 "house: left bar ignored (wide 400)"  DB4A_WIDE=400 || true
+probe build/house.state 200 200 BEF8 0020 "house: below shields ignored (wide 400)" DB4A_WIDE=400 || true
+
 SHOT=1380
 probe build/yesno.state 230 176 A62C 0128 "mentat: YES"          || true
 probe build/yesno.state 230 198 A62C 0140 "mentat: NO"           || true
 probe build/yesno.state 100 100 A62C 0128 "mentat: off the plates ignored" || true
 probe build/yesno.state 230 198 A62C 0128 "mentat: DB4A_MENU_MOUSE=0 off" DB4A_MENU_MOUSE=0 || true
+
+# Widescreen, same reasoning as the house screen. Measured the same way:
+#
+#     DB4A_LOAD=build/yesno.state DB4A_SCENE=1 ./build/db4a "$ROM" 130
+#         frame 1301  $FFFFE002 = 024724
+#
+# $024724 is the mentat, also not in the gameplay set, so also centred: 40.
+#
+# x is 290 rather than the 270 that simply follows the plates across, because
+# 270 proves nothing: the plates span x 193..271, so a logical 270 is inside
+# them whether or not the offset is subtracted, and the probe passes either
+# way. 290 is outside them unless the conversion happens. Same reasoning put
+# the house probes at 200 and 290, which fall in the gaps between shields if
+# taken as game coordinates.
+probe build/yesno.state 290 176 A62C 0128 "mentat: YES  (wide 400)"  DB4A_WIDE=400 || true
+probe build/yesno.state 290 198 A62C 0140 "mentat: NO   (wide 400)"  DB4A_WIDE=400 || true
+probe build/yesno.state 140 100 A62C 0128 "mentat: off the plates ignored (wide 400)" DB4A_WIDE=400 || true
 
 [ $fail -eq 0 ] || exit 1
 echo "pre-mission screens: pointer selects"

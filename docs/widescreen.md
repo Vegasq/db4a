@@ -134,6 +134,116 @@ should be documented rather than papered over.
 
 ---
 
+## Anchoring, and what D4 actually measures
+
+`render_world_offset()` picks the picture's horizontal offset from the scene
+pointer at `$FFFFE002`. The gameplay scenes (`006D0C`, `00608E`, `00B540`) are
+shifted right by the whole extra width, so the right-anchored HUD stays flush
+against the edge and the new view appears on the left. Every other scene is a
+320-wide composition with nothing to anchor, so it is centred and the surplus
+becomes pillarbox.
+
+Acceptance criterion D4 -- "the picture does not jump when a menu or console
+opens" -- was raised as task #28 against that rule: the build console runs
+under scene `$004500`, which is not in the gameplay set, so opening it should
+slide the picture 40 px at 400 wide and put bars down both sides.
+
+**The scene claim is correct and the visible consequence is not.**
+
+```bash
+DB4A_LOAD=build/buildmenu.state DB4A_SCENE=1 ./build/db4a "$ROM" 130
+    frame 2646  $FFFFE002 = 004500          # the console really is $004500
+```
+
+The offset does change. What it does not do is change where anyone can see it,
+because the cartridge fades to black across its own screen changes. Measured by
+rendering every frame and recording the brightest pixel either side of each
+offset change (`DB4A_LOG_JUMP=1 DB4A_RENDER_ALL=1`, over
+`data/recordings/power.txt`, which opens and closes the console three times):
+
+```
+  [jump] frame  2557 offset 40 -> 80  peak 238 -> 238  scene 006D0C  VISIBLE
+  [jump] frame  2616 offset 80 -> 40  peak   0 ->   0  scene 000000  covered-by-black
+  [jump] frame  2685 offset 40 -> 80  peak   0 ->   0  scene 006D0C  covered-by-black
+  [jump] frame  2913 offset 80 -> 40  peak   0 ->   0  scene 000000  covered-by-black
+  [jump] frame  2981 offset 40 -> 80  peak   0 ->   0  scene 006D0C  covered-by-black
+  [jump] frame  3447 offset 80 -> 40  peak   0 ->   0  scene 000000  covered-by-black
+  [jump] frame  3548 offset 40 -> 80  peak   0 ->   0  scene 006D0C  covered-by-black
+```
+
+Every console open and close is covered. Frame by frame: the picture is lit
+until 2610, blank from 2611, the scene becomes `$004500` at 2632 and the
+console fades in at 2634 -- 23 blank frames spanning the change. Closing is the
+same the other way, with 5 blank frames before the scene reverts at 2685. The
+same pattern holds in `wide.txt` and in `level1atredis.txt`.
+
+The console screenshot is worth keeping in mind here: it is a **full-screen**
+320-wide panel, not a sidebar overlay. There is no HUD on it to anchor and
+nothing on its right edge that wants to be flush, so centring it is the right
+choice on its own merits.
+
+### The one change that IS visible
+
+Entering a mission. The cartridge turns the display on and draws the mission
+map for five frames while `$FFFFE002` still holds `$000000`, then installs
+`$006D0C`:
+
+```
+  frame 2551  display off,  scene 000000
+  frame 2552  LIT, offset 40, content x  65..320     <- map on screen, no HUD
+  ...
+  frame 2556  LIT, offset 40, content x  65..320
+  frame 2557  LIT, offset 80, content x 105..360     <- the jump
+  frame 2570  the HUD sprites arrive
+```
+
+Five frames, once per mission, about 100 ms at 50 Hz.
+
+### Why none of the three proposed fixes helps
+
+**(a) Add `$004500` to the gameplay set.** Wrong scene: the visible change is
+under `$000000`, not `$004500`. And `$004500` is also the house-selection
+screen (`DB4A_LOAD=build/house.state DB4A_SCENE=1` -> `004500`) and the loading
+transitions, all 320-wide compositions that right-anchoring would leave with an
+80 px bar down one side.
+
+**(b) Decide from whether the gameplay HUD is on screen.** Implemented as a
+sprite-table scan -- any sprite whose horizontal extent lies entirely at
+x >= 240 -- and measured against the same recording. It is much worse:
+
+```
+anchor = scene pointer      1 visible change    frame 2557
+anchor = HUD on screen     10 visible changes   frames 1659 1681 1837 1845
+                                                       2141 2208 2558 2634
+                                                       2931 3466
+```
+
+Six of those (1659 through 2208) fall inside scene `$024724`, the mentat, which
+has its own sprites in that region and so flicks in and out of "gameplay" while
+the player is reading it. Three more (2634, 2931, 3466) are the build console
+itself: its panel has sprites at x >= 240 too, so it would be dragged hard
+right and drawn lopsided with an 80 px bar beside it. And the mission-entry
+jump survives regardless -- it merely moves from 2557 to 2558.
+
+**(c) Treat "a console probe fired this frame" as gameplay.** Cannot reach the
+case: the offending frames are before any console exists. It would also make
+the picture's geometry depend on `DB4A_MENU_MOUSE`, since `probe_watch` is only
+called when mouse control is enabled -- the same window would be anchored
+differently with the mouse off.
+
+Fixing the mission-entry window needs a signal that says "a mission is on
+screen" one frame before `$FFFFE002` does. `mapview_ready()` is not it -- it
+only becomes true once the cartridge draws a map column, which a mission that
+has not scrolled yet never does (measured: 0 for the whole of `power.txt`).
+The camera at `$FFE3BE`/`$FFE3C0` is already set to the mission's values by
+frame 2539 and is `0000 0000` on the title screen, so it is a candidate, but it
+keeps its value between missions and would misfire on any later `$000000`
+stretch. Left alone rather than guessed at.
+
+`make check-jump` (`tests/nojump.sh`) asserts the property that holds -- every
+menu and console transition covered by black -- and pins the one exception, so
+that fixing it makes the test say so.
+
 ## Risks and how to check them
 
 | Risk | Check |
@@ -166,6 +276,7 @@ All frontend-only; none of them touch emulation.
 | `DB4A_FULLSCREEN=1` | start fullscreen |
 | **F11** | toggle fullscreen at any time |
 | `DB4A_INTEGER=1` | whole-number pixel scaling |
+| `DB4A_LOG_JUMP=1` | report every change of horizontal offset, and whether the frames either side of it were lit; needs `DB4A_RENDER_ALL=1`. `=2` prints offset, peak and scene for every frame |
 | `./build/db4a-sdl <rom> <scale>` | window scale, default 3 |
 
 Fullscreen uses SDL's *desktop* flavour: it keeps the monitor's current mode and

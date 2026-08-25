@@ -106,6 +106,24 @@ DB4A_LOAD=build/confirm.state DB4A_SAVE_AT=1700:build/yesno.state ./build/db4a "
 `src/menus.c`, enabled with mouse control and turned off by `DB4A_MENU_MOUSE=0`
 along with the build console. `make check-menus`.
 
+`tests/menus.sh` probes both screens at 320 and at `DB4A_WIDE=400`. The
+widescreen probes are the 320 ones plus 40, because both screens run under a
+scene that is not in the renderer's gameplay set -- `$004500` for house
+selection, `$024724` for the mentat -- so `render_world_offset()` centres a
+320-wide composition and returns `(400-320)/2`. That was measured, not assumed:
+
+```bash
+DB4A_LOAD=build/house.state DB4A_SCENE=1 ./build/db4a "$ROM" 130   # 004500
+DB4A_LOAD=build/yesno.state DB4A_SCENE=1 ./build/db4a "$ROM" 130   # 024724
+```
+
+The coordinates matter more than they look. A widescreen probe only tests the
+logical-to-game conversion if the same number means something different with
+and without it -- 270 is inside the mentat's YES plate either way and proves
+nothing, while 290 is inside it only after the offset comes off. Deleting the
+`- render_world_offset()` in `src/main.c` must make the wide probes fail, and
+with the coordinates chosen here three of them do.
+
 The probe became a small array (`include/probe.h`) so each screen has its own
 slot. Neither screen needs a native override.
 
