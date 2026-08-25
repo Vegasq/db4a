@@ -17,24 +17,31 @@ an oracle. A resolution feature must not cost that.
 |---|---|---|---|
 | A1 | At 320x224 the picture is byte-identical to the build before any resolution work | `make check-res` (320x224 row) | MET |
 | A2 | The recorded mission renders identically at 320 against the faithful branch | `make replay` + compare vs remaster | MET |
-| A3 | Menus, mentat and console pixel-match the reference emulator at 320 | `make compare-screen SCENARIO=house FRAME=...` | **NOT MET**, pre-existing |
+| A3 | Menus pixel-match the reference at 320 | `make compare-screen SCENARIO=house FRAME=...` | pages 96-100%, **fades dip**, pre-existing |
 | A4 | The resolution work changes nothing at 320 | byte-compare vs master | MET |
 
 A3 and A4 are the ones that mean "matches the original release". Measured
-against Genesis-Plus-GX, with `ref/gpgx` built:
+against Genesis-Plus-GX with `ref/gpgx` built, scenario `house`, all figures
+quantised through RGB565 the way `tools/framediff.py --quantize` does:
 
-    houseselect 2800   100.00%      house 2400   100.00%
-    house       2658   100.00%      house 2916    97.27%
-    house       4176    75.05%      house 4576    94.91%
+    2400 100.00   2658 100.00   2800 100.00   2900  99.60   3000  99.23
+    3100  96.43   3200 100.00   3400  97.90   3600  97.84   3800  96.43
+    4000  70.10   4100  92.14   4176  75.05   4220  82.13   4280  91.46
+    4360  98.32
 
-So the standing claim of "menus 100.00%" holds for static screens and not for
-animated ones. The world-map reveal at 4176 is the worst.
+Menu pages sit at 96-100%. The three dips all land on FADE TRANSITIONS, where
+our fade runs slower than the reference's -- it reaches black around frame
+4360 and we do not until ~4440. Task #32, pre-existing, same family as #21.
+
+**Quantise, or the numbers are fiction.** The reference core emits RGB565, so
+its 8-bit values have already lost their low bits. Comparing our output raw
+reports 62-70% on frames that are really 96-100%. This cost a full round of
+investigation and a wrong conclusion before it was noticed.
 
 **None of it is ours.** Building master in a separate worktree gives the same
-percentages to two decimal places, and this branch's frames at 2916, 4176 and
-4576 are BYTE-IDENTICAL to master's. The resolution work changes nothing at
-320, which is A4 and is what the fidelity policy actually requires of it.
-Fixing A3 is task #32 and is orthogonal to widescreen.
+percentages to two decimals, and this branch's frames at 2916, 4176 and 4576
+are BYTE-IDENTICAL to master's. The resolution work changes nothing at 320,
+which is A4 and is what the fidelity policy asks of a presentation feature.
 
 ## B. Arbitrary resolution
 
