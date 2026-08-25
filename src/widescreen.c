@@ -537,7 +537,13 @@ void widescreen_append_sprites(void) {
             d5 = (int16_t)(((uint16_t)d5) >> 3);
             d4 -= camx; d5 -= camy;
             if (f7 & 0x04u) {                           /* btst #2 set */
-                unsigned k = m68k_read8(pos - 0xCu + 0x72u) & 7u;
+                /* $1148 does `lea -$c(a0), a0`, but a0 is already pos+2 -- the
+               post-increment at $1126 moved it -- so the index byte is at
+               pos + 2 - 12 + $72 = pos + $68. Reading pos + $66 instead picks
+               up the neighbouring byte, which differs often enough to shift
+               one sprite by one pixel and no more: 1.7% of entries wrong, all
+               of them x off by exactly 1. */
+            unsigned k = m68k_read8(pos + 0x68u) & 7u;
                 d4 += (int16_t)m68k_read16(ADJ_TABLE + k * 4u);
                 d5 += (int16_t)m68k_read16(ADJ_TABLE + k * 4u + 2u);
             }
