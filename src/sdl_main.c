@@ -16,6 +16,7 @@
 #include "cursor.h"
 #include "buildmenu.h"
 #include "menus.h"
+#include "skipintro.h"
 
 /* The FM mix peaks well below full scale; lift it to a usable level.
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
@@ -272,18 +273,23 @@ int main(int argc, char **argv) {
         printf("mouse control: off -- keyboard and pad only, as the cartridge\n");
     }
 
+    skipintro_enable(1);
+
     apply_key_overrides();
     { /* What the file and the environment actually resolved to, so a player
          editing db4a.conf can see whether it was picked up. */
       const char *st = cfg("DB4A_STATE"), *ky = cfg("DB4A_KEYS");
-      printf("settings: gain=%d mute=%s state=%s keys=%s\n",
+      printf("settings: gain=%d mute=%s state=%s keys=%s skipintro=%s\n",
              audio_gain, cfg_bool("DB4A_MUTE", 0) ? "yes" : "no",
-             st ? st : "build/state.db4a", ky ? ky : "(default)"); }
+             st ? st : "build/state.db4a", ky ? ky : "(default)",
+             skipintro_armed() ? "yes" : "no"); }
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");
     printf("          remap with DB4A_KEYS=\"a=q,b=w,c=e\"\n");
     printf("          F5 saves a state, F9 loads it (DB4A_STATE sets the path)\n");
     printf("          P pauses, ` or F fast-forwards while held\n");
+    if (skipintro_armed())
+        printf("          Start skips the intro (skipintro = 0 to sit through it)\n");
     printf("          DB4A_LOG_PAD=1 names every key SDL reports\n");
 
     /* DB4A_RECORD=<file> captures play; DB4A_REPLAY=<file> plays it back. */
@@ -413,6 +419,12 @@ int main(int argc, char **argv) {
                 int down = (e.type == SDL_CONTROLLERBUTTONDOWN);
                 for (int i = 0; i < NGC; i++)
                     if (GC_MAP[i].b == e.cbutton.button && !replaying) {
+                        /* Start belongs to the intro skip while there is an
+                           intro left to skip, and to the game after that. */
+                        if (GC_MAP[i].pad == PAD_START && down && skipintro_armed()) {
+                            skipintro_request();
+                            continue;
+                        }
                         pad_set(GC_MAP[i].pad, down);
                         inputlog_record(frames, GC_MAP[i].pad, down);
                     }
@@ -450,6 +462,15 @@ int main(int argc, char **argv) {
                             SDL_GetScancodeName((SDL_Scancode)i),
                             SDL_GetKeyName(SDL_GetKeyFromScancode((SDL_Scancode)i)));
                 }
+            /* Start skips the intro instead of reaching the cartridge, so the
+               press is swallowed: marked as held without pressing the pad. The
+               game therefore sees nothing until the player lets go and presses
+               again, which is what stops the still-held key from picking START
+               GAME the instant the menu appears. */
+            if (want[PAD_START] && !key_state[PAD_START] && skipintro_armed()) {
+                skipintro_request();
+                key_state[PAD_START] = 1;      /* held, as far as the loop below cares */
+            }
             for (int p = 0; p < PAD_COUNT; p++)
                 if (want[p] != key_state[p]) {
                     key_state[p] = (uint8_t)want[p];
@@ -563,6 +584,21 @@ int main(int argc, char **argv) {
         }
 
         if (replaying) inputlog_replay_frame(frames);
+        /* Before stepping, and unconditionally: this is what consumes the
+           title-menu probe, so it has to run every frame, not only when a skip
+           is pending. It advances `frames` by however many it simulated, which
+           keeps a recording made across a skip replayable frame for frame. */
+        { unsigned before = frames;
+          pc = skipintro_step(pc, &frames);
+          if (frames != before) {
+              /* The pacing deadline is measured from t0 in frames, so a jump
+                 of 2000-odd would put the next target 40 seconds out and the
+                 loop would sleep through it. Rebase onto the frame we landed
+                 on, and drop the audio already handed to the device -- it is
+                 the last quarter-second of the intro. */
+              t0 = SDL_GetTicks64() - (Uint64)(frames * 1000.0 / PAL_HZ);
+              if (audio) SDL_ClearQueuedAudio(audio);
+          } }
         pc = system_frame(pc);
         if (m68k_last_unknown) {
             fprintf(stderr, "no block for PC %06X -- stopping\n", m68k_last_unknown);

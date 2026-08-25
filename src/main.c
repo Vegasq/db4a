@@ -8,6 +8,7 @@
 #include "mouse.h"
 #include "buildmenu.h"
 #include "menus.h"
+#include "skipintro.h"
 #include "render.h"
 #include "widescreen.h"
 #include "mapview.h"
@@ -250,8 +251,21 @@ int main(int argc, char **argv) {
 
     /* Continue the frame count from the state, so input replay and captures
        line up with the original run rather than starting over. */
+    /* DB4A_SKIP_AT=<frame> asks for the intro skip at that frame, which is how
+       the feature is exercised without a keyboard. Harness control, so it stays
+       environment-only: it makes one run behave unusually. Captures scheduled
+       inside the skipped range never happen -- those frames go by in one step. */
+    unsigned skip_at = 0; int want_skip = 0;
+    { const char *sk = getenv("DB4A_SKIP_AT");
+      if (sk) { skip_at = (unsigned)strtoul(sk, NULL, 0); want_skip = 1;
+                skipintro_enable(1); } }
+
     for (frames = resume_frame; frames < resume_frame + max_frames; frames++) {
         if (replaying) inputlog_replay_frame(frames);
+        if (want_skip) {
+            if (frames == skip_at) skipintro_request();
+            end = skipintro_step(end, &frames);
+        }
         /* A recording made with the pointer carries its motion; feed it through
            the same steering the frontend uses, so headless analysis sees the
            session the player actually had. */

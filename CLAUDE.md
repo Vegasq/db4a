@@ -362,6 +362,33 @@ On the development machine SDL never reports E, Z or C as held, while Q, W and
 X work. This is outside db4a -- `PAD_C` itself is verified correct -- and is
 tracked as task #18.
 
+### Start skips the intro
+
+`src/skipintro.c`. The cartridge takes 2164 frames to get from reset to the
+START GAME menu and offers no way past it; Start now does.
+
+**It fast-forwards, it does not jump.** Those frames really run, without
+rendering, audio or pacing, so the machine lands in exactly the state waiting
+would have produced -- provably, since the landed frame is pixel-identical to
+the unattended run's frame of the same number. Nothing is poked into RAM, and
+input recordings stay replayable across a skip because the frame numbers still
+line up. Do not "optimise" this into a state poke.
+
+**The press is swallowed.** Holding Start through the intro on the unmodified
+game confirms START GAME the instant the menu appears. So Start is marked held
+without the pad being pressed, and the game sees nothing until the player
+releases and presses again.
+
+**The menu has no scene of its own** -- `$FFFFE002` is zero there -- so it is
+identified by its input loop `$178C8` running, on a fifth probe slot. See
+`docs/menus.md`, which used to say there was no main menu at all.
+
+```bash
+make check-skipintro                   # lands on 2164, matching the slow route
+DB4A_SKIP_AT=1 ./build/db4a "$ROM" 2400   # headless stand-in for the key press
+DB4A_SKIPINTRO=0                       # sit through it (also skipintro = 0)
+```
+
 ## Audio
 
 Both sound chips are implemented. **Dune drives everything through the YM2612**:
@@ -478,6 +505,7 @@ exposed them, so both branches get them.
 CLAUDE.md            this file
 Makefile             reproducible analysis + test targets
 include/m68k.h       CPU state, memory interface, flag helpers
+src/skipintro.c      Start skips the opening sequence
 src/buildmenu.c      mouse control inside the build console
 src/menus.c          mouse control on house selection and the mentat
 include/probe.h      "did this block run last frame?", for screens RAM cannot identify
@@ -547,6 +575,7 @@ make check-houses    # all three houses load
 make check-native    # C overrides match the cartridge code they replace
 make check-menu      # pointing at a build-console cell selects it
 make check-menus     # pointing at a house shield or mentat answer selects it
+make check-skipintro # Start lands on the title menu, having really run the frames
 make compare-screen SCENARIO=houseselect FRAME=2800    # vs the reference
 make replay REC=data/recordings/level1atredis.txt      # mission 1 won, into mission 2
 ./tests/defeat.sh    # win mission 1, then lose mission 2

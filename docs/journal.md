@@ -2749,3 +2749,53 @@ behaviour; and its polarity was left over from when that switch defaulted on, so
 the one line whose stated purpose is that you should not have to guess whether a
 widescreen run diverges from a 320 one was reporting that it did, by default,
 when it does not.
+## 2026-08-25 — Start skips the intro
+
+The cartridge takes 2164 frames — about 44 seconds — from reset to the START
+GAME menu, and offers no way past it. `remaster` now has one: press Start
+during the opening and you land on the menu.
+
+**It is a fast-forward, not a jump.** The skipped frames are really simulated,
+just without rendering, audio or pacing, so the machine arrives in exactly the
+state waiting would have produced. Nothing is written into RAM and no cartridge
+code is bypassed. That was not the cheap option chosen over a proper one — it
+*is* the proper one here. Poking the intro's state forward would mean finding
+and setting every variable the sequence leaves behind, verifiable only by
+eyeballing the result; this way the landing frame is provably identical to the
+unattended run's frame of the same number, which `tests/skipintro.sh` asserts
+pixel for pixel. It also keeps input recordings replayable across a skip, since
+the frame numbers still line up. The whole thing costs 0.7 s of wall clock.
+
+**There is no scene value that means "the menu is up".** `$FFFFE002` holds
+`00017C32` from frame 351 to 1404 and then returns to zero: the planet zoom,
+the title and the menu are one routine that waits for vblank itself instead of
+going back through the dispatcher. So the landing point had to be found by
+execution, not state — two block traces cut either side of the menu appearing
+differ by 67 blocks, all in `$177D4`-`$17B56`, and `$178C8` is the head of the
+loop that reads the pad and runs the idle countdown into the attract demo. A
+fifth probe slot watches it. Same lesson as the mentat's YES/NO, arrived at
+from the other direction.
+
+While reading that loop: `$4D46` maps pad bits to letters, `S` for Start, and
+the title loop exits on any of them. So `docs/menus.md` was wrong to conclude
+there is no main menu — the scene log had nothing to show for it, and the
+survey trusted the log over the screen.
+
+**The press has to be swallowed.** Holding Start through the intro on the
+unmodified game reaches the menu at frame 981 and then immediately confirms
+START GAME, landing on house selection by 1019 — the opening does honour a held
+Start in places, just not enough to be useful. So the skip marks Start as held
+without pressing the pad: the game sees nothing until the player lets go and
+presses again. Without that, one press would skip the intro *and* pick a menu
+entry.
+
+Two smaller things that would have been quiet bugs. The SDL pacing deadline is
+`t0 + frames / 49.7 Hz`, so a jump of 2163 frames puts the next target 43
+seconds out and the loop sleeps through it; `t0` is rebased onto the landing
+frame. And `build/dispatch.o` did not depend on `include/probe.h`, so adding
+the fifth slot left the dispatcher scanning four and the probe never fired —
+the first run reported "gave up after 3600 frames".
+
+Verified: `make check-skipintro` (lands on frame 2164, that frame identical to
+the unattended run's, refused once the menu is up, and `skipintro = 0` sits
+through it), plus the suite unchanged.

@@ -46,7 +46,7 @@
 # this file was picked up:
 #
 #   config: 3 setting(s) from db4a.conf
-#   settings: gain=8 mute=no state=build/state.db4a keys=(default)
+#   settings: gain=8 mute=no state=build/state.db4a keys=(default) skipintro=yes
 
 
 # =========================================================================
@@ -97,6 +97,21 @@
 #   you do not name keep everything they had.
 #
 #   Gamepads are picked up automatically and are not affected by this.
+
+
+# skipintro = 0                                      (remaster branch only)
+#
+#   Sit through the opening sequence, the way the cartridge makes you.
+#
+#   By default Start skips it: the logos, the planet and the DUNE title take
+#   about 44 seconds and the hardware offers no way past them, so one press
+#   puts you on the START GAME menu instead. Once the menu is up, Start goes
+#   back to being an ordinary button, and the press that did the skipping does
+#   not also pick a menu entry -- let go and press again.
+#
+#   It is a fast-forward, not a jump. Those 44 seconds of game really run,
+#   just without drawing or sound, so the game arrives in exactly the state it
+#   would have been in had you waited. That takes well under a second.
 
 
 # =========================================================================

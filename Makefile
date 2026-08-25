@@ -8,7 +8,7 @@ ROM_SHA := 133cc86b43afe133fc9c9142b448340c17fa668e
 
 CFLAGS  := -O1 -Wall -Wextra -Iinclude
 
-.PHONY: check-margins all verify-rom analyse test check-operands check-cpu check-z80 recomp run dist play record replay playthrough compare-screen vectors clean
+.PHONY: check-margins all verify-rom analyse test check-operands check-cpu check-z80 check-skipintro recomp run dist play record replay playthrough compare-screen vectors clean
 ## all - build the emulator and run the unit tests (the default target)
 ##       `make clean && make` must leave a playable build behind, which is
 ##       v1 acceptance criterion 8; running only the tests did not.
@@ -104,7 +104,7 @@ build/hal_stub.o: src/hal_stub.c include/m68k.h include/vdp.h
 run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
-COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/splash.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o build/buildmenu.o build/menus.o build/probe.o \
+COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/splash.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o build/buildmenu.o build/menus.o build/probe.o build/skipintro.o \
                build/hal_z80.o build/z80.o build/render.o build/widescreen.o build/mapview.o build/objects.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
@@ -214,6 +214,10 @@ build/probe.o: src/probe.c include/probe.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
+build/skipintro.o: src/skipintro.c include/skipintro.h include/probe.h include/config.h include/system.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
 build/psg.o: src/psg.c include/psg.h include/hal.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -239,7 +243,7 @@ build/render.o: src/render.c include/render.h include/vdp.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
-build/dispatch.o: src/dispatch.c include/m68k.h include/hal.h
+build/dispatch.o: src/dispatch.c include/m68k.h include/hal.h include/probe.h include/native.h
 	@mkdir -p build
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -302,6 +306,10 @@ check-jump: build/db4a
 ## check-houses - all three houses must select and load their mission
 check-houses: build/db4a
 	./tests/houses.sh
+
+## check-skipintro - Start must land on the title menu, having really run the frames
+check-skipintro: build/db4a
+	./tests/skipintro.sh
 
 ## test - build and run all unit tests
 test: build/test_flags build/test_ea build/test_sem build/test_psg build/test_ym build/test_z80_timing build/test_config
