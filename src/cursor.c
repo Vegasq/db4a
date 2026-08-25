@@ -203,11 +203,23 @@ static uint32_t velocity(uint32_t d0, const struct axis *a) {
  * one function. */
 static int cam_xmin_rom = -1, cam_ymax_rom = -1;
 
+/* The limit we publish is clamped against the OTHER end of the camera's range,
+ * because a view as wide as the map leaves it nowhere to go. Mission 1 and
+ * mission 2 both give X 512..1216, which with the 320 the camera frames is a
+ * world exactly 1024 pixels across; at fb_width 1024 the extension is 704 and
+ * the two limits meet exactly. Meeting is fine -- the camera is simply pinned
+ * and the whole map is on screen. CROSSING is not: min above max makes the two
+ * clamps in scroll_axis pull opposite ways every frame. A map smaller than
+ * this one would cross, so the clamp is here rather than assumed away.
+ * With widescreen off both adjustments are 0 and this republishes the
+ * cartridge's own values untouched, which is why check-native still passes. */
 static void own_camera_limit(int ext, int extra_lines) {
     {   int cur = (int)(int16_t)rw(CAM_XMIN);
         static int published = -1;
         if (cur != published) cam_xmin_rom = cur;   /* the cartridge set it */
         int want = cam_xmin_rom + ext;
+        int lim  = (int)(int16_t)rw(CAM_XMAX);
+        if (want > lim) want = lim;
         if (want != cur) ww(CAM_XMIN, (int16_t)want);
         published = want;
     }
@@ -215,6 +227,8 @@ static void own_camera_limit(int ext, int extra_lines) {
         static int published = -1;
         if (cur != published) cam_ymax_rom = cur;
         int want = cam_ymax_rom - extra_lines;
+        int lim  = (int)(int16_t)rw(CAM_YMIN);
+        if (want < lim) want = lim;
         if (want != cur) ww(CAM_YMAX, (int16_t)want);
         published = want;
     }
@@ -372,6 +386,7 @@ uint32_t native_cursor_scroll(void) {
     int wide = modern && render_widescreen_gameplay();
     own_camera_limit(wide ? render_world_offset() : 0,
                      wide ? fb_height - SCREEN_H : 0);
+
 
     struct axis x = { CUR_X, SUB_X, OUT_X, CAM_X, CAM_XMIN, CAM_XMAX,
                       modern ? (int16_t)(m - ext) : ROM_X_LO,

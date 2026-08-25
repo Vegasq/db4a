@@ -18,7 +18,12 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 DB4A_REPLAY=$REC DB4A_SHOTS=9000 DB4A_PPM="$TMP/base" ./build/db4a "$ROM" 9010 >/dev/null 2>&1
 
 fail=0
-for size in "320 224" "352 224" "400 224" "400 240" "320 240" "512 256"; do
+# The last three are the ones the 512x256 cap used to forbid. 1024x1024 is the
+# game's own map, measured from the camera limits the cartridge writes
+# ($FFE3D2/$FFE3D4, $FFE3CE/$FFE3D0): a view that size shows the whole map and
+# pins the camera, and a larger one could only add backdrop. See include/render.h.
+for size in "320 224" "352 224" "400 224" "400 240" "320 240" "512 256" \
+            "640 480" "800 600" "1024 1024"; do
     set -- $size
     DB4A_WIDE=$1 DB4A_TALL=$2 DB4A_REPLAY=$REC DB4A_SHOTS=9000 \
         DB4A_PPM="$TMP/v" ./build/db4a "$ROM" 9010 >/dev/null 2>&1

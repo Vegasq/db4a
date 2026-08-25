@@ -568,9 +568,15 @@ int main(int argc, char **argv) {
                   ws_band_calls, ws_band_ext); }
     { extern unsigned long ws_appended, ws_append_frames;
       { extern unsigned long ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx;
-        if (ws_calls && getenv("DB4A_LOG_WIDE"))
+        extern unsigned long ws_cap_pieces, ws_cap_frames;
+        if (ws_calls && getenv("DB4A_LOG_WIDE")) {
             fprintf(stderr, "[wsa] calls=%lu objs=%lu pieces=%lu | full=%lu kept=%lu tooFar=%lu yx=%lu\n",
-                    ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx); }
+                    ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx);
+            /* The 80-entry sprite table is the one hardware limit a much larger
+               view could plausibly exhaust, so report it plainly. */
+            fprintf(stderr, "[wsa] sprite table full on %lu of %lu frames, %lu pieces dropped\n",
+                    ws_cap_frames, ws_calls, ws_cap_pieces);
+        } }
       if (ws_append_frames && getenv("DB4A_LOG_WIDE"))
           fprintf(stderr, "[wsa] appended %lu sprites over %lu frames (%.1f/frame)\n",
                   ws_appended, ws_append_frames, (double)ws_appended / (double)ws_append_frames); }

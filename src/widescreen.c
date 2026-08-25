@@ -156,6 +156,36 @@ static void fill(int plane_b, uint32_t nt_base, int hs) {
 
     int origin = a->wc + step;
     int need = (fb_width - 320 + 7) / 8 + 2;
+    /* The nametable is a 64-column RING, and the cartridge's own view already
+     * holds 41 of those columns. Asking for more than the remaining 23 wraps
+     * round and overwrites what the cartridge drew -- silently, because the
+     * write goes to VRAM and looks like any other column.
+     *
+     * Measured with DB4A_MAPCHECK over data/recordings/wide.txt, comparing the
+     * cartridge's OWN 320x224 against the map it should hold:
+     *
+     *     488 wide   0.03%   (the figure at every size up to here)
+     *     496 wide   0.06%
+     *     504 wide   0.49%
+     *     512 wide   1.12%
+     *     640 wide  11.72%
+     *     800 wide  28.20%
+     *
+     * so this was already corrupting the picture at the old 512 cap. With the
+     * clamp it is 0.03% at every size up to 1024x1024.
+     *
+     * 41, not 40. The cartridge's 320 pixels are 40 tiles only when hscroll
+     * lands exactly on a tile boundary; otherwise they straddle 41 columns,
+     * and cam_col() deliberately rounds WEST to the first of them. Bounding
+     * against 40 leaves that straddling column unprotected -- measured, that
+     * held the figure at 0.06% instead of 0.03% at every width past 496.
+     *
+     * Clamping costs nothing. The margin has been drawn from the game's map
+     * rather than from the tilemap since mapview landed, and rendering
+     * wide.txt with this fill disabled entirely gives byte-identical frames;
+     * what it still covers is the window before mapview has learned the map
+     * base, and 23 columns is as much of that as the ring can hold. */
+    if (need > 64 - 41) need = 64 - 41;
     for (int k = 1; k <= need; k++) {
         int w = origin - k;
         unsigned c  = (unsigned)(w & 63);
@@ -430,6 +460,11 @@ uint32_t native_sprite_band_count(void) {
 
 unsigned long ws_appended, ws_append_frames;
 unsigned long ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx;
+/* How often the cartridge's 80-entry sprite table runs out while we are
+   appending. This is the number that decides whether a much larger view is
+   usable, so it is counted rather than argued about -- see DB4A_LOG_WIDE.
+   Measured over a whole mission at 1024x1024: never. */
+unsigned long ws_cap_pieces, ws_cap_frames;
 
 static int sat_chain_end(unsigned *count) {
     /* Walk the link chain from entry 0, exactly as the VDP would. */
@@ -467,6 +502,7 @@ void widescreen_append_sprites(void) {
     int camy = (int)(int16_t)m68k_read16(CAM_Y_ADDR);
     unsigned slot = count;
     unsigned added = 0;
+    int capped = 0;
 
     uint32_t obj = 0xFFFF0000u | m68k_read16(OBJ_HEAD);
     for (int guard = 0; guard < 512 && (obj & 0xFFFFu); guard++) {
@@ -511,7 +547,11 @@ void widescreen_append_sprites(void) {
         uint32_t a4 = m68k_read32(obj + 8);
         int pieces = (int16_t)m68k_read16(a4);
         a4 += 2;
-        for (int i = 0; i <= pieces && slot < SAT_MAX; i++, a4 += 0xC) {
+        for (int i = 0; i <= pieces; i++, a4 += 0xC) {
+            /* Same stopping point as the `slot < SAT_MAX` this replaces --
+               nothing more is written either way -- but it counts what was
+               dropped instead of leaving the ceiling invisible. */
+            if (slot >= SAT_MAX) { ws_cap_pieces++; capped = 1; continue; }
             int y = d5 + (int16_t)m68k_read16(a4 + 4);
             int hh = (int16_t)m68k_read16(a4 + 2);
             int x = d4 + (int16_t)m68k_read16(a4 + 0xA);
@@ -558,6 +598,7 @@ void widescreen_append_sprites(void) {
         obj = 0xFFFF0000u | m68k_read16(obj + 0xE);
     }
 
+    if (capped) ws_cap_frames++;
     if (!added) return;
     /* Splice: the cartridge's last entry now points at the first of ours, and
        ours ends the chain the same way $1294 does. */
