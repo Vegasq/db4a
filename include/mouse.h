@@ -18,6 +18,15 @@ int  mouse_enabled(void);
  * moved the cursor or drove a scroll this frame. */
 int  mouse_steer(int target_x, int target_y);
 
+/* Replace the cartridge's cursor clamp box with ours, for one frame.
+ *
+ * Called every gameplay frame from src/cursor.c's $706C override, NOT only
+ * when the pointer is steering. The box has to be ours even while the keyboard
+ * owns the cursor: the ROM's box stops the cursor at exactly the pixel the
+ * modern scroll band starts at, so with the ROM's box in force the arrow keys
+ * can never generate a scroll. That was task #26. */
+void mouse_own_clamp_box(void);
+
 /* How close to each screen edge the cursor is allowed to get. Must stay well
  * inside cursor_scroll_band() or there is no depth left to scroll with.
  * DB4A_MOUSE_CLAMP overrides; the ROM's own value is 24. */

@@ -266,10 +266,23 @@ int main(int argc, char **argv) {
         }
         /* Hold length matters: a menu that advances on each press can consume
            one long hold twice. DB4A_HOLD tunes it. */
+        static uint8_t script_held[PAD_COUNT];
         for (unsigned k = 0; k < nscript; k++) {
-            if (frames == script[k].at)          pad_set(script[k].pad, 1);
-            if (frames == script[k].at + hold)   pad_set(script[k].pad, 0);
+            if (frames == script[k].at)        { pad_set(script[k].pad, 1); script_held[script[k].pad] = 1; }
+            if (frames == script[k].at + hold) { pad_set(script[k].pad, 0); script_held[script[k].pad] = 0; }
         }
+        /* What the SCRIPT is holding, which is this harness's stand-in for the
+           keyboard state the SDL frontend reads. Steering is suppressed while a
+           direction is held, exactly as the frontend suppresses it, so the two
+           agree about who owns the d-pad -- and so a fault that only appears
+           when the player uses the arrows with the pointer parked is
+           reproducible without a display. That is task #26.
+           .
+           The pad state itself is deliberately NOT the signal: steering used to
+           press directions, so gating on the pad self-locked. This tracks only
+           what the script asked for, which steering cannot influence. */
+        int script_dir = script_held[PAD_UP] || script_held[PAD_DOWN]
+                      || script_held[PAD_LEFT] || script_held[PAD_RIGHT];
         if (getenv("DB4A_LOG_OCCLUDE")) {
             extern unsigned long render_occluded, render_planehi;
             static unsigned long prev_occ = 0;
@@ -308,9 +321,12 @@ int main(int argc, char **argv) {
                      every test while being obvious in play, which is exactly
                      what happened. At 320 the offset is 0 and nothing moves. */
                   int px = tx - render_world_offset(), py = ty;
-                  int on_console = buildmenu_steer(px, py);
-                  int on_menu    = menus_steer(px, py);
-                  if (!on_console && !on_menu) mouse_steer(px, py);
+                  int on_console = 0, on_menu = 0;
+                  if (!script_dir) {
+                      on_console = buildmenu_steer(px, py);
+                      on_menu    = menus_steer(px, py);
+                      if (!on_console && !on_menu) mouse_steer(px, py);
+                  }
 
                   /* On a screen nothing claims, steering must leave the pad
                      completely alone or that screen becomes unusable. It may
@@ -323,7 +339,7 @@ int main(int argc, char **argv) {
                               | ((uint32_t)hal_ram_ptr(0)[0xE004] << 8)
                               |  hal_ram_ptr(0)[0xE005];
                   int gameplay = (sc == 0x006D0Cu || sc == 0x00608Eu || sc == 0x00B540u);
-                  if (!gameplay && !on_console && !on_menu && pad_dir_held()) {
+                  if (!script_dir && !gameplay && !on_console && !on_menu && pad_dir_held()) {
                       printf("  FAIL frame %u: steering held the d-pad in scene %06X\n",
                              frames, sc);
                   }
