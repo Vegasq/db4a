@@ -157,6 +157,7 @@ unsigned mapview_pixel(int plane_b, int px, int py, int *prio) {
 /* ---- validation ------------------------------------------------------- */
 
 static unsigned long chk_tiles, chk_bad, chk_frames;
+static unsigned long chk_blank;
 
 void mapview_check(void) {
     static int on = -1;
@@ -179,6 +180,17 @@ void mapview_check(void) {
                 uint16_t got  = (uint16_t)((VDP.vram[e & 0xFFFF] << 8)
                                            | VDP.vram[(e + 1) & 0xFFFF]);
                 uint16_t mine = mapview_entry(pb, col, row);
+                /* A blank entry means the cartridge has not filled that cell,
+                   not that it disagrees with us.
+                   .
+                   It stops filling where it has nothing to show -- hard
+                   against a camera limit, most visibly -- and leaves $0000,
+                   which draws as backdrop. We compute the map's own fog tile
+                   there, $800B, whose pixels are colour 12, and palette entry
+                   12 is $0000. Both are black; only the ENTRY differs, and the
+                   entry is not what anyone sees. Counted separately rather
+                   than ignored, so it cannot hide a real disagreement. */
+                if (!got) { chk_blank++; continue; }
                 chk_tiles++;
                 if (got != mine) chk_bad++;
             }
@@ -189,7 +201,7 @@ void mapview_check(void) {
 
 void mapview_report(void) {
     if (!chk_frames) return;
-    fprintf(stderr, "[mapv] base=%06X  tiles=%lu  mismatched=%lu (%.2f%%)  frames=%lu\n",
+    fprintf(stderr, "[mapv] base=%06X  tiles=%lu  mismatched=%lu (%.2f%%)  frames=%lu  unfilled=%lu\n",
             map_base, chk_tiles, chk_bad,
-            chk_tiles ? 100.0 * (double)chk_bad / (double)chk_tiles : 0.0, chk_frames);
+            chk_tiles ? 100.0 * (double)chk_bad / (double)chk_tiles : 0.0, chk_frames, chk_blank);
 }

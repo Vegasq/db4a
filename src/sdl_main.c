@@ -500,8 +500,25 @@ int main(int argc, char **argv) {
            bring back the clicks and leave the camera where it started, which
            is why mouse-driven bug reports used to be unreproducible. */
         if (replaying && inputlog_replay_has_mouse()) {
+            /* A recorded session that used BOTH pointer and keys must not
+               have the pointer win after the player let go of it.
+               .
+               A pointer position HOLDS between events -- that is what a
+               pointer does -- so once the mouse stops moving we keep steering
+               to its last position forever. The player, meanwhile, moved on to
+               the arrow keys, and steering pins the cursor mid-screen where it
+               can never reach the scroll band. The session then replays with
+               the camera stuck: artifacts_new_render.txt records a westward
+               scroll driven by LEFT held from frame 2911, and the replay went
+               east instead.
+               .
+               The frontend already suppresses steering while a key is held.
+               Replay has to do the same against the REPLAYED pad, or a mixed
+               session cannot be reproduced at all. */
+            extern int pad_dir_held(void);
+            int dir_held = pad_dir_held();
             int mx, my;
-            if (inputlog_replay_mouse(frames, &mx, &my)) {
+            if (!dir_held && inputlog_replay_mouse(frames, &mx, &my)) {
                 int on_console = buildmenu_steer(mx, my);
                 int on_menu    = menus_steer(mx, my);
                 if (!on_console && !on_menu) mouse_steer(mx, my);
