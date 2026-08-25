@@ -49,9 +49,9 @@ which is A4 and is what the fidelity policy asks of a presentation feature.
 |---|---|---|---|
 | B1 | Width and height are runtime settings, not build constants | `wide`/`tall` in db4a.conf | MET |
 | B2 | The cartridge's own 320x224 is byte-exact inside every supported size | `make check-res` | MET |
-| B3 | The margin shows the true map, not leftovers, regardless of scroll history | `DB4A_MAPCHECK=1` over the recordings | MET (39M tiles, <=0.04%) |
+| B3 | The margin shows the true map, not leftovers, regardless of scroll history | `make check-map` | MET to 448 wide (<=0.09%) |
 | B4 | The margin fills in EVERY direction, including below | `make check-margins` | MET |
-| B5 | Sizes beyond 512x256 work, or the cap is documented as deliberate | none yet | **NOT MET** |
+| B5 | Sizes beyond 512x256 work, or the cap is documented as deliberate | `make check-map`, `make check-res` | **PARTIAL**: correct to 448, allowed to 1024 |
 | B6 | Units appear in the margin and are hidden by fog like any other | `make check-res` + fog frames | MET |
 
 ## C. The game is unaffected
@@ -71,7 +71,7 @@ which is A4 and is what the fidelity policy asks of a presentation feature.
 | D2 | House select and mentat answers take the pointer, at every size | `make check-menus` | MET at 320 and 400 |
 | D3 | The cursor reaches every pixel of the view | `make check-cursor` | MET |
 | D4 | The picture does not jump when a menu or console opens | `make check-jump` | MET for menus and consoles; one 5-frame exception at mission entry |
-| D5 | Arrow keys scroll the map while mouse control is on | none yet | **NOT MET** (task #26) |
+| D5 | Arrow keys scroll the map while mouse control is on | `./tests/mouse.sh` | MET |
 
 **D4, as measured.** The original statement of task #28 was that the build
 console runs under scene `$004500`, is therefore not anchored like gameplay,
@@ -100,6 +100,28 @@ measures".
 | E5 | No diagnostic left on by default in a release build | inspection | **UNVERIFIED** |
 
 ---
+
+## The size cap is allowed wider than it is verified
+
+`wide`/`tall` accept up to 1024, and `make check-res` shows the cartridge's own
+320x224 surviving intact at every one of them. But `make check-map` -- which
+compares every visible tile against what the cartridge drew, across whole
+recordings rather than one frame -- only holds to **448 wide**:
+
+    artifacts.txt   400  0.09%    496  2.96%    640   0.72%
+                    448  0.09%    512  4.13%   1024  19.89%
+
+The cause is the camera limit. We hold it a view-width short of the map edge so
+the margin always has map to show; past ~448 that pushes the camera into ground
+the map does not describe, and at 1024 it pins the camera outright --
+CAM_XMIN == CAM_XMAX == 1216 -- with the view extending past the map, where
+mapview reads beyond the row and the cartridge draws backdrop.
+
+So 1024 is *allowed* and not *earned*. Anything up to 448 is verified; beyond
+that expect the margin to be wrong near the map's edges. Task #34.
+
+Note also that `make check-res` PASSED at 512x256 while the tilemap was 1.12%
+corrupt, because it samples a single frame. That is why `check-map` exists.
 
 ## Not in scope
 
