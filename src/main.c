@@ -10,6 +10,7 @@
 #include "menus.h"
 #include "render.h"
 #include "widescreen.h"
+#include "mapview.h"
 #include "splash.h"
 #include "input.h"
 #include "z80.h"
@@ -531,6 +532,7 @@ int main(int argc, char **argv) {
       if (ws_append_frames && getenv("DB4A_LOG_WIDE"))
           fprintf(stderr, "[wsa] appended %lu sprites over %lu frames (%.1f/frame)\n",
                   ws_appended, ws_append_frames, (double)ws_appended / (double)ws_append_frames); }
+    mapview_report();
     widescreen_check_report();
     vdp_dump();
     psg_report();

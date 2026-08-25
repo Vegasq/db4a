@@ -105,7 +105,7 @@ run: build/db4a
 	./build/db4a "$(ROM)" 200000
 
 COMMON_OBJS := build/blocks.o build/hal_stub.o build/hal_vdp.o build/hal_input.o build/cursor.o build/config.o build/splash.o build/psg.o build/ym2612.o build/savestate.o build/mouse.o build/buildmenu.o build/menus.o build/probe.o \
-               build/hal_z80.o build/z80.o build/render.o build/widescreen.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
+               build/hal_z80.o build/z80.o build/render.o build/widescreen.o build/mapview.o build/dispatch.o build/system.o build/invariant.o build/inputlog.o
 
 build/db4a: $(COMMON_OBJS) build/main.o
 	$(CC) $^ -o $@ -lm
@@ -217,6 +217,9 @@ build/hal_input.o: src/hal_input.c include/input.h
 
 build/hal_vdp.o: src/hal_vdp.c include/vdp.h include/m68k.h
 	@mkdir -p build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+build/mapview.o: src/mapview.c include/mapview.h include/render.h include/vdp.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 build/widescreen.o: src/widescreen.c include/widescreen.h include/render.h include/vdp.h

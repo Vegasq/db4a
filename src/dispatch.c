@@ -9,6 +9,7 @@
 #include "buildmenu.h"
 #include "probe.h"
 #include "widescreen.h"
+#include "mapview.h"
 #include <string.h>
 #include <stdlib.h>
 #include "hal.h"
@@ -291,8 +292,10 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         /* Draw the map columns the cartridge leaves out, so the widescreen
            extension has something true to show. Observer only -- no cycles,
            no registers touched. Costs two compares per block when off. */
-        if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B)
+        if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B) {
             widescreen_note_column(pc);
+            mapview_observe(pc);
+        }
         if (pc == WS_SAT_DMA) widescreen_append_sprites();
         /* A native override replaces the recompiled block with hand-written C
            that does the same job and returns the same next PC. Looked up after
@@ -453,8 +456,10 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         /* Draw the map columns the cartridge leaves out, so the widescreen
            extension has something true to show. Observer only -- no cycles,
            no registers touched. Costs two compares per block when off. */
-        if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B)
+        if (pc == WS_COL_PLANE_A || pc == WS_COL_PLANE_B) {
             widescreen_note_column(pc);
+            mapview_observe(pc);
+        }
         if (pc == WS_SAT_DMA) widescreen_append_sprites();
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
