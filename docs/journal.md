@@ -2406,3 +2406,121 @@ exact, `check-cursor`, `check-state`, `check-menu`. The faithful 320x224 path
 is byte-identical at frames 1320, 2800, 6000, 9000 and 12000, as is a 400x256
 replay without mouse control, both compared against binaries differing only in
 `cursor.o`.
+
+---
+
+## 2026-08-24 — D2 in widescreen, and what D4 actually is
+
+Two acceptance criteria from `docs/acceptance.md`: D2, the pre-mission screens
+taking the pointer at every size, and D4, the picture not jumping when a menu
+or console opens.
+
+### D2 — the pointer on the pre-mission screens at 400 wide
+
+`tests/buildmenu.sh` already probed the build console in widescreen;
+`tests/menus.sh` probed nothing but 320. It now probes house selection and the
+mentat's YES/NO at `DB4A_WIDE=400` as well.
+
+The offset was measured rather than assumed, which is the whole trap the
+buildmenu comments warn about:
+
+```bash
+DB4A_LOAD=build/house.state DB4A_SCENE=1 ./build/db4a "$ROM" 130   # 004500
+DB4A_LOAD=build/yesno.state DB4A_SCENE=1 ./build/db4a "$ROM" 130   # 024724
+```
+
+Neither scene is in `render.c`'s gameplay set, so both are centred and
+`render_world_offset()` returns 40, not 80 — the same answer the console gets,
+for the same reason.
+
+**The coordinates are the part that needed thought.** A widescreen probe only
+tests the logical-to-game conversion if the number means something different
+with and without it. The shields are 80 px wide and 88 apart, so no coordinate
+can flip between two different shields under a 40 px offset — but 200 and 290
+land in the gaps if taken as game coordinates, so they select Ordos and
+Harkonnen only when the conversion happens. The mentat's plates span x 193..271,
+which makes the obvious 270 useless: it is inside them either way. 290 is not.
+
+Verified by breaking it: with `- render_world_offset()` deleted from
+`src/main.c`, three of the new probes fail (Ordos, Harkonnen, mentat NO) and
+the rest still pass, which is exactly the set that should be able to tell.
+
+### D4 — the premise was wrong, and the real defect is elsewhere
+
+Task #28 said the build console runs under scene `$004500`, is therefore
+centred rather than right-anchored, and so the picture jumps 40 px and grows
+pillarbox bars the moment the console opens.
+
+The scene claim checks out — `DB4A_SCENE=1` on `build/buildmenu.state` prints
+`004500`, and the console frame at 400 wide has exactly 40 black columns down
+each side. The visible consequence does not. **The cartridge fades to black
+across its own screen changes.** Rendering every frame and recording the
+brightest pixel either side of each offset change (`DB4A_LOG_JUMP=1`,
+added for this) over `data/recordings/power.txt`, which opens and closes the
+console three times:
+
+```
+  [jump] frame  2557 offset 40 -> 80  peak 238 -> 238  scene 006D0C  VISIBLE
+  [jump] frame  2616 offset 80 -> 40  peak   0 ->   0  scene 000000  covered-by-black
+  [jump] frame  2685 offset 40 -> 80  peak   0 ->   0  scene 006D0C  covered-by-black
+  [jump] frame  2913 offset 80 -> 40  peak   0 ->   0  scene 000000  covered-by-black
+  [jump] frame  2981 offset 40 -> 80  peak   0 ->   0  scene 006D0C  covered-by-black
+  [jump] frame  3447 offset 80 -> 40  peak   0 ->   0  scene 000000  covered-by-black
+  [jump] frame  3548 offset 40 -> 80  peak   0 ->   0  scene 006D0C  covered-by-black
+```
+
+23 blank frames before the console appears, 5 after it goes. Same in
+`wide.txt` and `level1atredis.txt`: every console transition covered, one
+visible change per run.
+
+That one is **entering a mission**. The cartridge turns the display on and
+draws the mission map for five frames while `$FFFFE002` still holds `$000000`,
+then installs `$006D0C`:
+
+```
+  2551  display off, scene 000000
+  2552  LIT, offset 40, content x  65..320     <- map on screen, no HUD yet
+  2556  LIT, offset 40, content x  65..320
+  2557  LIT, offset 80, content x 105..360     <- the jump
+```
+
+Five frames, once per mission.
+
+**None of #28's three options reaches it.** (a) is the wrong scene entirely —
+and `$004500` is also house selection, which right-anchoring would leave with
+an 80 px bar down one side. (c) cannot help, because the offending frames are
+before any console exists, and it would make the picture's geometry depend on
+`DB4A_MENU_MOUSE`, since `probe_watch` is only called with mouse control on.
+
+(b) was implemented and measured rather than argued about — anchor on whether a
+sprite lies entirely at x >= 240, as `render.c`'s own comment block suggests.
+It is ten times worse:
+
+```
+anchor = scene pointer       1 visible change
+anchor = HUD on screen      10 visible changes
+```
+
+Six of them inside `$024724`, the mentat, which has sprites in that region and
+so flickers in and out of "gameplay" while the player reads it; three are the
+console itself, which would be dragged hard right and drawn lopsided; and the
+mission-entry jump survives anyway, moving from 2557 to 2558. Reverted.
+
+Fixing mission entry needs a signal that says "a mission is on screen" one
+frame before `$FFFFE002` does. `mapview_ready()` is not it — it only becomes
+true once the cartridge draws a map column, and reads 0 for the whole of
+`power.txt`. `CAM_X`/`CAM_Y` are already the mission's values by frame 2539 and
+are `0000 0000` on the title screen, so they are a candidate, but they keep
+their value between missions and would misfire on later `$000000` stretches.
+Left alone rather than guessed at: a wrong guess here moves the picture
+mid-mission, which is worse than the 100 ms it would save.
+
+`make check-jump` (`tests/nojump.sh`) asserts what holds — every menu and
+console transition covered by black — and pins the one exception so that fixing
+it makes the test say so.
+
+Verified: `check-menu`, `check-menus`, `check-jump`, `check-native` (472185
+calls, 0 mismatched), `check-res` all six sizes exact, `check-cursor`,
+`check-state`, `tests/mouse.sh`. The faithful 320x224 path is byte-identical at
+frames 1320, 2800, 6000, 9000 and 12000 of `level1atredis.txt`, compared in a
+clean tree against the same frames from before the change.

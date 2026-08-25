@@ -61,10 +61,26 @@ Fixing A3 is task #32 and is orthogonal to widescreen.
 | # | Criterion | Command | Status |
 |---|---|---|---|
 | D1 | Pointing at a build-console cell selects it, at every size | `make check-menu` | MET at 320 and 400 |
-| D2 | House select and mentat answers take the pointer, at every size | `make check-menus` | MET at 320 only |
+| D2 | House select and mentat answers take the pointer, at every size | `make check-menus` | MET at 320 and 400 |
 | D3 | The cursor reaches every pixel of the view | `make check-cursor` | MET |
-| D4 | The picture does not jump when a menu or console opens | none yet | **NOT MET** (task #28) |
+| D4 | The picture does not jump when a menu or console opens | `make check-jump` | MET for menus and consoles; one 5-frame exception at mission entry |
 | D5 | Arrow keys scroll the map while mouse control is on | none yet | **NOT MET** (task #26) |
+
+**D4, as measured.** The original statement of task #28 was that the build
+console runs under scene `$004500`, is therefore not anchored like gameplay,
+and so the picture jumps 40 px and grows pillarbox bars the moment the console
+opens. The scene claim is right; the visible consequence is not. The cartridge
+fades to black across its own screen changes -- 23 blank frames before the
+console appears and 5 after it goes -- so every one of those offset changes
+happens behind a black screen. `make check-jump` reports six such changes in
+`data/recordings/power.txt` and all six are covered.
+
+What IS visible is a different transition: entering a mission. The cartridge
+turns the display on and draws the mission map for five frames while
+`$FFFFE002` still holds `$000000`, then installs `$006D0C`, and the picture
+slides 40 px sideways at 400 wide. None of the three fixes proposed under #28
+address that -- see docs/widescreen.md, "Anchoring, and what D4 actually
+measures".
 
 ## E. Production readiness
 

@@ -411,6 +411,48 @@ int main(int argc, char **argv) {
                       frames, ha, hb, g, e);
           } }
 
+        /* DB4A_LOG_JUMP: acceptance criterion D4 turned into a measurement.
+         *
+         * "The picture must not jump when a menu or console opens" means the
+         * horizontal offset the renderer picks must never change on a frame
+         * the player can SEE. It is not enough to look at where the offset
+         * changes, because the game fades to black across most of its own
+         * screen changes and a swap behind a black screen is invisible. So
+         * report each change together with the brightest pixel in the frame
+         * before and after it, and call it VISIBLE only when either side is
+         * lit. tests/nojump.sh counts the VISIBLE ones.
+         *
+         * =2 additionally prints offset, peak and scene for EVERY frame,
+         * which is how the classification was surveyed in the first place.
+         *
+         * Needs DB4A_RENDER_ALL=1: headless renders only at the DB4A_SHOTS
+         * frames, so without it FB holds whatever the last shot left and every
+         * peak reads as that frame's. */
+        { static int logj = -1;
+          if (logj < 0) { const char *e = getenv("DB4A_LOG_JUMP");
+                          logj = e ? atoi(e) : 0;
+                          if (e && !logj) logj = 1; }
+          if (logj) {
+              int peak = 0;
+              for (int y = 0; y < fb_height; y++)
+                  for (int x = 0; x < fb_width; x++)
+                      for (int c = 0; c < 3; c++)
+                          if (FB[y][x][c] > peak) peak = FB[y][x][c];
+              const uint8_t *rr = hal_ram_ptr(0);
+              uint32_t sc = ((uint32_t)rr[0xE002] << 24) | ((uint32_t)rr[0xE003] << 16)
+                          | ((uint32_t)rr[0xE004] << 8)  |  rr[0xE005];
+              static int last_off = -1, last_peak = 0;
+              int off = render_world_offset();
+              if (logj > 1)
+                  printf("  [jump] frame %5u offset %d peak %3d scene %06X\n",
+                         frames, off, peak, sc);
+              else if (last_off >= 0 && off != last_off)
+                  printf("  [jump] frame %5u offset %d -> %d  peak %d -> %d  scene %06X  %s\n",
+                         frames, last_off, off, last_peak, peak, sc,
+                         (last_peak || peak) ? "VISIBLE" : "covered-by-black");
+              last_off = off; last_peak = peak;
+          } }
+
         for (unsigned k = 0; k < nshots; k++) {
             if (frames == shot_at[k] && shot_prefix) {
                 char path[512];
