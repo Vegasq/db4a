@@ -257,6 +257,10 @@ check-native: build/db4a
 check-menu: build/db4a
 	./tests/buildmenu.sh
 
+## check-map - the map renderer agrees with the tilemap the cartridge drew
+check-map: build/db4a
+	./tests/mapfidelity.sh
+
 ## check-res - the cartridge's own picture survives every view size
 check-res: build/db4a
 	./tests/resolutions.sh
