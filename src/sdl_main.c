@@ -156,11 +156,15 @@ int main(int argc, char **argv) {
                    printf("view: %dx%d window %dx%d\n", fb_width, fb_height, fb_width * scale, fb_height * scale);
                    /* Say which way the units switch resolved. It changes what
                       the game DOES, not just how it looks, so it should not be
-                      something you have to guess at from the picture. */
-                   { const char *u = cfg("DB4A_WIDE_UNITS");
+                      something you have to guess at from the picture.
+                      getenv, not cfg: widescreen.c reads it that way because it
+                      is a comparison control rather than a player setting, and
+                      a banner that consults a different source than the code
+                      does is worse than no banner. */
+                   { const char *u = getenv("DB4A_WIDE_UNITS");
                      printf("            units in the widened strip: %s\n",
-                            (u && !atoi(u)) ? "off (identical to a 320 run)"
-                                            : "on (widescreen run diverges)"); } }
+                            (u && atoi(u)) ? "on (widescreen run diverges)"
+                                           : "off (identical to a 320 run)"); } }
                else printf("DB4A_WIDE must be 320..%d\n", FB_W); } }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
