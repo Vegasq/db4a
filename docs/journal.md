@@ -2524,3 +2524,154 @@ calls, 0 mismatched), `check-res` all six sizes exact, `check-cursor`,
 `check-state`, `tests/mouse.sh`. The faithful 320x224 path is byte-identical at
 frames 1320, 2800, 6000, 9000 and 12000 of `level1atredis.txt`, compared in a
 clean tree against the same frames from before the change.
+
+## 2026-08-25 — B5: the cap was arbitrary, and the build was already wrong below it
+
+B5 asks whether view sizes beyond 512x256 work, or whether the cap is
+deliberate. Measured, it was neither.
+
+**The 512x256 cap was already producing a wrong picture.**
+`widescreen_extend()` fills `(width - 320)/8 + 2` tile columns west of the
+cartridge's view. The nametable is a **64-column ring**, and the cartridge's own
+320 pixels straddle **41** of those columns — 40 only when hscroll lands exactly
+on a tile boundary, and `cam_col()` deliberately rounds west to the first of
+them. So past roughly 496 wide the fill laps the ring and overwrites columns the
+cartridge itself drew. `DB4A_MAPCHECK` over `wide.txt`, comparing the
+cartridge's OWN 320x224 against the map it should hold:
+
+```
+488 wide   0.03%      504 wide   0.49%      640 wide  11.72%
+496 wide   0.06%      512 wide   1.12%      800 wide  28.20%
+```
+
+0.03% is the B3 baseline. The shipped cap was sitting at 1.12%.
+
+Clamping `need` to the 23 columns the ring can spare holds it at 0.03% at
+**every** size up to 1024x1024. The clamp costs nothing, and that is measurable
+rather than assumed: the margin has been drawn from the game's map rather than
+from the tilemap since mapview landed, and rendering `wide.txt` with the fill
+disabled outright gives byte-identical frames at five sampled frames. What the
+fill still covers is the window before mapview has learned the map base.
+
+**Where the real cap is: 1024x1024, and the cartridge says so.** The camera
+limits it writes — `$FFE3D2`/`$FFE3D4` and `$FFE3CE`/`$FFE3D0` — read X
+512..1216 and Y 512..1312 in both missions measured, which with the 320x224 the
+camera frames is a world **exactly 1024 pixels square**. At that size the whole
+map is on screen and the camera is pinned; anything larger can only add
+backdrop. Rendered at 1280x1024 to confirm: 98.5% of the margin is black, and
+the non-black pixel count is identical to 1024x1024's. `own_camera_limit()` now
+clamps against the far limit so the two cannot cross on a smaller map.
+
+**What it costs.** `FB` is 3 bytes a pixel and `plane_hi`, `plane_any` and
+`taken` are 1 each, so 6 bytes a pixel:
+
+```
+ 512x256    768 KiB        1024x768   4.50 MiB
+ 640x480   1.76 MiB        1024x1024  6.00 MiB
+```
+
+All BSS, so the binary on disk does not grow and untouched pages are never
+faulted in. Peak RSS with every frame rendered, 300 frames of gameplay:
+
+```
+320x224   7.97 MB      640x480    9.36 MB
+512x256   7.92 MB      1024x1024 11.92 MB
+```
+
+**The sprite table never saturates**, which was the one hardware limit a much
+larger view could plausibly have exhausted. `widescreen_append_sprites()` stops
+at the cartridge's own `SAT_MAX` of 80, so it is now counted rather than argued
+about. Over the whole of `level1atredis.txt`:
+
+```
+ 400x224   sprite table full on 0 of 14661 frames, 0 pieces dropped
+ 640x480   sprite table full on 0 of 14661 frames, 0 pieces dropped
+1024x1024  sprite table full on 0 of 14661 frames, 0 pieces dropped
+```
+
+The population is 34 sprite pieces a frame against a table of 80, and appending
+plateaus at 3.9 a frame from 640x480 upward because there are no further units
+to find. **SAT_MAX does not limit usable view size.**
+
+What DOES limit it is fog of war, and that is the game's, not ours. At frame
+14500 of mission 1 the explored region is about 77 000 pixels; a 640x480 view
+already contains all of it, and 1024x1024 shows the same 77 000 with more black
+around them. A bigger window buys resolution of the map you have not been to.
+
+`splash.c` centred its notice on `FB_W`, the ALLOCATION, not `fb_width`. At 320
+the text already sat 96 px right of centre and nobody had noticed, because
+`put()` clips; raising the allocation would have pushed it off screen entirely.
+Now centred on the live width.
+
+Verified: `check-res` extended to 640x480, 800x600 and 1024x1024 — the
+cartridge's own 320x224 byte-exact inside all nine sizes; `check-native`
+(472185 calls, 0 mismatched), `check-mission`, `check-cursor`, `check-margins`,
+`check-jump`, `check-state`, `check-menu`, `check-menus`, `tests/mouse.sh`.
+Frames 1320, 2800, 6000, 9000 and 12000 of `level1atredis.txt` at 320x224 are
+byte-identical to the tree before the change.
+
+## 2026-08-25 — D5 (task #26): the arrow keys and the clamp box that came back
+
+Reported: with `DB4A_MOUSE=1` the arrow keys no longer scroll the map.
+Reproduced headlessly from the mission-1 state at frame 9000, holding RIGHT for
+200 frames:
+
+```
+no mouse control    camera X 699 -> 1194   scrolled 495 px
+mouse control on    camera X 699 ->  699   scrolled   0 px
+```
+
+The cursor walked to x=296 and sat there for the remaining 190 frames. All four
+directions were dead the same way.
+
+**296 is not a coincidence.** It is both the maximum the cartridge's own cursor
+clamp box allows and — because `cursor_scroll_band()` defaults to 24 — exactly
+where the modern scroll threshold sits. The cursor can reach the threshold and
+never pass it, so the distance past it is always zero, so the velocity is always
+zero. `db4a.conf.example` already warned about this shape of fault under
+`mouse_clamp`: *"if the two meet there is no depth to measure and the map will
+not scroll at all."* What it did not say is that the ROM's box could come back
+and make them meet.
+
+It came back because the frontend suppresses steering while a keyboard direction
+is held — which is right, the keys should win — and `mouse_steer()` was the only
+thing that ever replaced the ROM's box. So on exactly the frames the player uses
+the arrows, the box reverts.
+
+**The first fix did not work, and the reason is worth recording.** Moving the
+box write into `native_cursor_scroll()` looked obviously correct: it runs every
+gameplay frame regardless of who is steering. It changed nothing. `DB4A_WATCH=FFBF1E`
+over one frame says why:
+
+```
+FFBF1E <- 013C  from block 00706C     ours   (316)
+FFBF1E <- 0128  from block 004DA8     the cartridge's (296)
+```
+
+`$4DA8` rewrites the box **every frame** — not once per mission, which is what
+`src/mouse.c` claimed and what the first fix was built on — and it runs after
+both the cursor routine at `$6DF8` and the scroll at `$706C`. Anything written
+from inside the frame is stale before `$6DF8` next reads it.
+
+So `mouse_own_clamp_box()` is called from `system_frame()`, ahead of the VBlank
+handler that contains all three writers. That is also the only place that gives
+every path the same behaviour: SDL, the headless harness, and replay of a
+recorded session.
+
+After, holding a direction for 200 frames from the same state:
+
+```
+right 403 px   up 453 px   down 236 px   left 187 px
+right 403 px   up 453 px   (at DB4A_WIDE=400)
+```
+
+down and left stop early because the map does. `tests/mouse.sh` gains the case
+and fails on the previous tree with 0 px. It also checks the other half of the
+contract — that the pointer still takes the cursor the moment it moves — because
+a fix that gave the keyboard the cursor by taking it from the mouse would pass
+everything else and be worthless.
+
+`src/main.c`'s harness now mirrors the frontend's gate: steering is skipped while
+the scripted d-pad holds a direction. It tracks what the SCRIPT asked for, never
+the pad itself, because steering used to press directions and gating on the pad
+self-locks — that trap is already recorded in the comment there.
