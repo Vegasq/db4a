@@ -2675,3 +2675,77 @@ everything else and be worthless.
 the scripted d-pad holds a direction. It tracks what the SCRIPT asked for, never
 the pad itself, because steering used to press directions and gating on the pad
 self-locks — that trap is already recorded in the comment there.
+
+## 2026-08-25 — the defaults, and the settings file that could not say no
+
+`remaster` shipped its two headline features off by default. Mouse control was
+opt-in from the day it landed, widescreen has been opt-in since the merge, and
+`make play WIDE=400` was how anyone actually saw either. That is backwards for
+a branch whose entire purpose is those departures: the faithful build already
+exists, on `master`, and someone running `remaster` has already chosen not to
+have it.
+
+Flipping them turned out to be blocked on something smaller, and it is the part
+worth recording.
+
+**Every boolean setting was a presence test.** `if (cfg("DB4A_MUTE"))`,
+`if (cfg("DB4A_MOUSE"))`, and three more. `cfg()` returns the string or NULL, so
+the test asks "is this key set at all" — and `mouse = 0` in `db4a.conf` sets the
+key. It reads as yes.
+
+That is harmless while every default is off, because nobody needs to write `0`;
+you turn a thing on by adding a line and off by deleting it. It becomes a real
+fault the moment a default is ON, because then removing the line is not the off
+switch — there is no off switch, and the one a player would reach for does the
+opposite of what it says. Two settings had already hit this and hand-rolled
+`e && *e == '0'` around it (`MENU_MOUSE`, `PLACE_SCROLL`), which is the same
+patch applied twice without the underlying gap being closed.
+
+`cfg_bool(name, default)` closes it: 0/no/off/false and 1/yes/on/true in either
+case, an empty value read as no so `DB4A_MOUSE= make play` means what a shell
+user expects, and a warning rather than a guess when the value is neither —
+because a typo silently meaning yes is exactly how someone ends up believing
+they turned something off.
+
+`PLACE_SCROLL` is the one to be careful with, and `tests/test_config.c` pins it:
+the setting names the CARTRIDGE's behaviour, so the override is its inverse and
+unset follows mouse control. `!cfg_bool("DB4A_PLACE_SCROLL", !mouse_enabled())`
+reproduces all six cases.
+
+**Where the defaults live matters more than what they are.** Both flips are in
+`src/sdl_main.c` only. `render.c`'s `int fb_width = 320` is shared by both
+binaries and stays at 320, and the headless binary keeps reading `DB4A_WIDE`
+with `getenv` rather than `cfg`. So no config file and no default can change the
+size of the frames a comparison test renders. Confirmed directly: with
+`wide = 400, mouse = 1` in a conf file, `./build/db4a` ignores both. And no test
+drives `build/db4a-sdl` at all, which is what makes the flip provably invisible
+to the suite.
+
+The off switches are real rather than approximate. `wide = 320` gives back the
+cartridge's own view byte-for-byte — `make check-res` proves the cartridge's own
+picture is EXACT inside nine view sizes up to 1024x1024 — and `mouse = 0` hands
+the cursor back to the keyboard and pad.
+
+```
+view: 400x224 window 1200x672
+      widescreen: 80 px of extra map on the left during play;
+      `wide = 320` in db4a.conf gives back the original view
+mouse control: on -- left=A, right=B, middle=C
+               `mouse = 0` in db4a.conf turns it off
+```
+
+**One thing the flip makes true that was not before.** The cursor native
+override is gated on mouse control, and CLAUDE.md's note that it is gated
+"instead of being on by default" was written when mouse control was opt-in. It
+is now the default path, so `remaster` pays its 0.62%-of-pixels interleave cost
+on every run. Bounded, measured, and the price of the branch's headline feature
+— but interleaving on absolute cycle position stopped being optional cleanup
+when this default flipped.
+
+**Found on the way in.** The widescreen banner had two faults in one line: it
+read `DB4A_WIDE_UNITS` through `cfg()` while `src/widescreen.c` reads it with
+`getenv`, so a `wide_units` line in a config file moved the banner and not the
+behaviour; and its polarity was left over from when that switch defaulted on, so
+the one line whose stated purpose is that you should not have to guess whether a
+widescreen run diverges from a 320 one was reporting that it did, by default,
+when it does not.

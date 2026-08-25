@@ -130,6 +130,10 @@ static uint8_t *load_rom(const char *path, size_t *len) {
     fclose(f); *len = (size_t)n; return d;
 }
 
+/* The view this branch comes up at. 320 is the cartridge's; see the block in
+   main() for why the default lives here rather than in render.c. */
+#define WIDE_DEFAULT 400
+
 int main(int argc, char **argv) {
     if (argc < 2) { fprintf(stderr, "usage: %s <rom> [scale]\n", argv[0]); return 2; }
     int scale = (argc > 2) ? atoi(argv[2]) : 3;
@@ -139,33 +143,51 @@ int main(int argc, char **argv) {
     uint8_t *rom = load_rom(argv[1], &romlen);
     if (!rom) return 1;
 
-    /* Widescreen (docs/widescreen.md). Off unless asked for: menus and
-       cutscenes are 320-wide compositions, and every comparison against the
-       reference runs at 320.
+    /* Widescreen (docs/widescreen.md), ON by default on this branch -- it is
+       what remaster is for. `wide = 320` in db4a.conf gives back the
+       cartridge's own view, and the cartridge's own 320 pixels are identical
+       either way, so that is a real off switch rather than an approximation.
+       400 rather than more because it is the width the play-testing and the
+       recordings are at; the ceiling is the map itself at FB_W.
+
+       Menus, the mentat and the cutscenes are 320-wide compositions with
+       nothing to anchor a wider one, but they do not need excluding here:
+       render.c gates the widened strip on the gameplay scene handlers and
+       centres the 320 composition everywhere else.
+
        Read through cfg() so it can live in db4a.conf -- it is a player
-       setting. The headless binary deliberately keeps its own getenv: a
-       stray `wide =` line in a config file must not be able to change the
-       size of the frames the comparison tests render. */
+       setting. The headless binary deliberately keeps its own getenv AND its
+       own 320 default: a stray `wide =` line in a config file must not be able
+       to change the size of the frames the comparison tests render, and
+       neither must this default. That is why the flip lives here and not in
+       render.c's initialiser, which both binaries share. */
     { const char *t = cfg("DB4A_TALL");
       if (t) { int v = atoi(t);
                if (v >= 224 && v <= FB_H) fb_height = v;
                else printf("DB4A_TALL must be 224..%d\n", FB_H); } }
     { const char *w = cfg("DB4A_WIDE");
+      fb_width = WIDE_DEFAULT;
       if (w) { int v = atoi(w);
-               if (v >= 320 && v <= FB_W) { fb_width = v;
-                   printf("view: %dx%d window %dx%d\n", fb_width, fb_height, fb_width * scale, fb_height * scale);
-                   /* Say which way the units switch resolved. It changes what
-                      the game DOES, not just how it looks, so it should not be
-                      something you have to guess at from the picture.
-                      getenv, not cfg: widescreen.c reads it that way because it
-                      is a comparison control rather than a player setting, and
-                      a banner that consults a different source than the code
-                      does is worse than no banner. */
-                   { const char *u = getenv("DB4A_WIDE_UNITS");
-                     printf("            units in the widened strip: %s\n",
-                            (u && atoi(u)) ? "on (widescreen run diverges)"
-                                           : "off (identical to a 320 run)"); } }
-               else printf("DB4A_WIDE must be 320..%d\n", FB_W); } }
+               if (v >= 320 && v <= FB_W) fb_width = v;
+               else printf("DB4A_WIDE must be 320..%d, using %d\n", FB_W, fb_width); }
+      printf("view: %dx%d window %dx%d%s\n", fb_width, fb_height,
+             fb_width * scale, fb_height * scale,
+             fb_width == 320 ? " (the cartridge's own)" : "");
+      if (fb_width > 320) {
+          printf("      widescreen: %d px of extra map on the left during play;\n",
+                 fb_width - 320);
+          printf("      `wide = 320` in db4a.conf gives back the original view\n");
+          /* Say which way the units switch resolved. It changes what the game
+             DOES, not just how it looks, so it should not be something you
+             have to guess at from the picture.
+             getenv, not cfg: widescreen.c reads it that way because it is a
+             comparison control rather than a player setting, and a banner that
+             consults a different source than the code does is worse than no
+             banner. */
+          { const char *u = getenv("DB4A_WIDE_UNITS");
+            printf("      units in the widened strip: %s\n",
+                   (u && atoi(u)) ? "on (widescreen run diverges)"
+                                  : "off (identical to a 320 run)"); } } }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError()); return 1;
@@ -229,7 +251,15 @@ int main(int argc, char **argv) {
     }
 
     { const char *g = cfg("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
-    if (cfg_bool("DB4A_MOUSE", 0)) {
+    /* Mouse control ON by default on this branch, for the same reason as
+       widescreen: opt-in meant most people never saw the thing the branch
+       exists for. `mouse = 0` turns it off and hands the cartridge's own
+       three-pixels-a-frame cursor back to the keyboard and the pad.
+
+       This also makes the cursor native override (src/cursor.c) the default
+       path, because it is gated on mouse control -- see docs/natives.md for
+       what that costs at the Z80 interleave. */
+    if (cfg_bool("DB4A_MOUSE", 1)) {
         mouse_enable(1);
         menu_enable(1);
         menus_enable(1);
@@ -237,6 +267,9 @@ int main(int argc, char **argv) {
         printf("               the cursor goes where you point; the outer %d px\n",
                cursor_scroll_band());
         printf("               scroll the map (DB4A_MOUSE_EDGE, DB4A_SCROLL_MAX)\n");
+        printf("               `mouse = 0` in db4a.conf turns it off\n");
+    } else {
+        printf("mouse control: off -- keyboard and pad only, as the cartridge\n");
     }
 
     apply_key_overrides();

@@ -19,6 +19,9 @@
 # does mean "do not mute" -- it used to mean the opposite, because the value
 # was never read and merely writing the line was taken as yes.
 #
+# On this build the default is NOT always off: `wide` and `mouse` are on unless
+# you say otherwise, so 0 is how you turn one off.
+#
 # The environment always wins
 # ---------------------------
 # If a variable is set in the environment it beats this file, so you can try a
@@ -133,9 +136,12 @@
 
 # wide = 400
 #
-#   EXPERIMENTAL. Widens the view from the cartridge's 320 pixels to the width
-#   given here, between 320 and 1024. Left out entirely, the game runs at 320
-#   and nothing below applies.
+#   ON BY DEFAULT on this build, at 400. The view width, between 320 and 1024.
+#
+#   `wide = 320` is the off switch, and it is a real one rather than an
+#   approximation of one: the cartridge's own 320 pixels come out byte-identical
+#   either way, which `make check-res` proves at nine sizes up to 1024x1024. If
+#   you want the cartridge's view, ask for 320 and you have it exactly.
 #
 #   Why 1024 and not more. That is the size of the game's own map. The
 #   cartridge tells us so itself: the camera limits it writes leave a world
@@ -158,12 +164,13 @@
 #   ground you have never explored stays dark exactly as the cartridge would
 #   leave it.
 #
-#   Why it is still marked experimental: it is a departure from the cartridge,
-#   it has not had the play-testing the 320 path has, and the wider the view
-#   the more of the screen is fog of war rather than scenery.
+#   Worth knowing before you widen it further: it is a departure from the
+#   cartridge, 400 is the width the recordings and the play-testing are at, and
+#   the wider the view the more of the screen is fog of war rather than scenery.
+#   That last one is why the default is 400 and not the 1024 the map allows.
 #
-#   The game's own 320 pixels are unaffected either way: with widescreen off,
-#   output is byte-identical to the faithful build.
+#   The game's own 320 pixels are unaffected either way: at `wide = 320` output
+#   is byte-identical to the faithful build on master.
 #
 #   docs/widescreen.md records the measurements, and the three possible ways
 #   forward.
@@ -205,11 +212,13 @@
 # Mouse control                                      (remaster branch only)
 # =========================================================================
 
-# mouse = 1
+# mouse = 0
 #
-#   Point at the map and the game's cursor goes there. Left button is A,
-#   right is B, middle is C. Off by default; with it off the keyboard and pad
-#   behave exactly as the cartridge intends.
+#   ON BY DEFAULT on this build. Point at the map and the game's cursor goes
+#   there. Left button is A, right is B, middle is C.
+#
+#   `mouse = 0` turns it off, and then the keyboard and pad behave exactly as
+#   the cartridge intends.
 #
 #   Worth knowing why this is not just "steering": the cartridge moves its
 #   own cursor at most three pixels a frame, so crossing the screen takes
