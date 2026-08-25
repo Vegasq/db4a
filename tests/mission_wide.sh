@@ -28,7 +28,11 @@ for size in "400 224" "400 240" "512 256"; do
     python3 - "$TMP" "$1" "$2" <<'PY'
 import sys
 tmp, w, h = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-SAT_LO, SAT_HI = 0xE428, 0xE6A8          # the sprite shadow: ours to append to
+# Since phase 2 the object layer is drawn from the game's list rather than
+# appended to its table, so nothing of ours reaches RAM at all and the
+# comparison is over the WHOLE of it. The window is kept at zero width so that
+# any future write shows up rather than hiding here.
+SAT_LO, SAT_HI = 0, 0
 worst = 0
 for fr in (6000, 9000, 12000, 15000, 18000):
     a = open(f"{tmp}/b.{fr}.ram", 'rb').read()
@@ -39,7 +43,7 @@ for fr in (6000, 9000, 12000, 15000, 18000):
     if outside:
         print("    frame %5d: %d bytes differ OUTSIDE the sprite shadow, first $%04X"
               % (fr, len(outside), outside[0]))
-print("  %3dx%-3d  mission RAM identical outside the sprite shadow: %s"
+print("  %3dx%-3d  mission RAM bit-identical to the 320 run: %s"
       % (w, h, "yes" if not worst else "NO"))
 raise SystemExit(0 if not worst else 1)
 PY
@@ -47,4 +51,4 @@ PY
 done
 
 [ $fail -eq 0 ] || { echo "mission at size: FAIL"; exit 1; }
-echo "mission at size: the recorded mission plays out identically at every size"
+echo "mission at size: the recorded mission is bit-identical at every size"

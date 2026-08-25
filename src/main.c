@@ -570,6 +570,12 @@ int main(int argc, char **argv) {
         printf("   return to %06X : %lu samples\n", waiter_addr[i], waiter_hits[i]); }
     invariant_report();
     pad_report();
+    objects_report();
+    mapview_report();
+    widescreen_check_report();
+    vdp_dump();
+    psg_report();
+    ym_report();
     vdp_nt_report();
     /* DB4A_VRAM=file writes VRAM followed by CRAM, for offline inspection of
        what the game actually put in the tilemaps. */
@@ -583,36 +589,6 @@ int main(int argc, char **argv) {
       if (ws_band_calls && getenv("DB4A_LOG_WIDE"))
           fprintf(stderr, "[wsb] band-count calls %lu, of which extension-only %lu\n",
                   ws_band_calls, ws_band_ext); }
-    { extern unsigned long ws_appended, ws_append_frames;
-      { extern unsigned long ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx;
-        extern unsigned long ws_cap_pieces, ws_cap_frames;
-        if (ws_calls && getenv("DB4A_LOG_WIDE")) {
-            fprintf(stderr, "[wsa] calls=%lu objs=%lu pieces=%lu | full=%lu kept=%lu tooFar=%lu yx=%lu\n",
-                    ws_calls, ws_objs, ws_pieces, ws_rej_full, ws_rej_kept, ws_rej_far, ws_rej_yx);
-            /* The 80-entry sprite table is the one hardware limit a much larger
-               view could plausibly exhaust, so report it plainly. */
-            fprintf(stderr, "[wsa] sprite table full on %lu of %lu frames, %lu pieces dropped\n",
-                    ws_cap_frames, ws_calls, ws_cap_pieces);
-        } }
-      if (ws_append_frames && getenv("DB4A_LOG_WIDE"))
-          fprintf(stderr, "[wsa] appended %lu sprites over %lu frames (%.1f/frame)\n",
-                  ws_appended, ws_append_frames, (double)ws_appended / (double)ws_append_frames); }
-    objects_report();
-    mapview_report();
-    widescreen_check_report();
-    vdp_dump();
-    psg_report();
-    ym_report();
-    if (wav) {
-        uint32_t data = (uint32_t)(wav_samples * 4), riff = data + 36;
-        uint8_t v[4];
-        v[0]=(uint8_t)riff; v[1]=(uint8_t)(riff>>8); v[2]=(uint8_t)(riff>>16); v[3]=(uint8_t)(riff>>24);
-        fseek(wav, 4, SEEK_SET);  fwrite(v, 1, 4, wav);
-        v[0]=(uint8_t)data; v[1]=(uint8_t)(data>>8); v[2]=(uint8_t)(data>>16); v[3]=(uint8_t)(data>>24);
-        fseek(wav, 40, SEEK_SET); fwrite(v, 1, 4, wav);
-        fclose(wav);
-        printf("wrote %lu samples (%.2f s of audio)\n", wav_samples, wav_samples / (double)PSG_RATE);
-    }
     render_frame();
     { const char *out = getenv("DB4A_PPM");
       if (out && render_write_ppm(out) == 0) printf("wrote framebuffer to %s\n", out); }

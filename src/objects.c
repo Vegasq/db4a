@@ -168,6 +168,65 @@ void objects_predict(void) {
     }
 }
 
+/* The same walk as objects_predict(), with the screen culls and the band
+ * budget removed, keeping only what falls in the margin.
+ *
+ * It runs from the renderer rather than from a block hook, so it reads object
+ * state the cartridge has already advanced this frame -- including the blink
+ * flag, which by then holds the decision the cartridge made rather than the
+ * one it was about to make. That is the right state to draw from. */
+unsigned objects_margin(struct obj_piece *out, unsigned max, int ext, int exth) {
+    if (ext <= 0 && exth <= 0) return 0;
+    unsigned n = 0;
+    uint32_t o = 0xFFFF0000u | m68k_read16(OBJ_HEAD);
+    for (int guard = 0; guard < 512 && (o & 0xFFFFu) && n < max; guard++) {
+        unsigned f = m68k_read8(o + 7);
+        if (f & 0x80u) goto next;                    /* $10BE hidden */
+        if ((f & 0x20u) && (f & 0x10u)) goto next;   /* blinked out   */
+        {
+        int ox, oy;
+        obj_screen(o, &ox, &oy);
+        uint32_t a4 = m68k_read32(o + 8);
+        int pieces = (int16_t)m68k_read16(a4);
+        a4 += 2;
+        for (int k = 0; k <= pieces && n < max; k++, a4 += 0xC) {
+            int w = (int16_t)m68k_read16(a4);
+            int h = (int16_t)m68k_read16(a4 + 2);
+            int y = oy + (int16_t)m68k_read16(a4 + 4);
+            int x = ox + (int16_t)m68k_read16(a4 + 0xA);
+
+            /* Off the sides the view does not grow: the cartridge's bounds. */
+            if (x > 0x1BF) continue;
+            if (y + h < 0x80) continue;
+
+            /* Keep only what its culls DROPPED -- anything it kept is already
+               in the table and drawn by the hardware path. */
+            int off_west  = (x + w < 0x80);
+            int off_south = (y > 0x15F);
+            if (!off_west && !off_south) continue;
+            if (off_west  && x + w < 0x80 - ext)  continue;
+            if (off_south && y > 0x15F + exth)    continue;
+
+            out[n].x = x;
+            out[n].y = y;
+            out[n].size = (uint8_t)(m68k_read16(a4 + 6) >> 8);
+            {
+                uint16_t at = m68k_read16(a4 + 8);
+                uint16_t v = (uint16_t)(at & 0x9FFFu);
+                v ^= (uint16_t)(m68k_read16(o + 6) & 0xF800u);
+                if (at & 0x6000u) { v = (uint16_t)(v & 0x9FFFu); v |= at; }
+                else              { v |= (uint16_t)(at & 0x6000u); }
+                out[n].attr = v;
+            }
+            n++;
+        }
+        }
+    next:
+        o = 0xFFFF0000u | m68k_read16(o + 0xE);
+    }
+    return n;
+}
+
 void objects_verify(void) {
     static int on = -1;
     if (on < 0) on = getenv("DB4A_OBJCHECK") ? 1 : 0;

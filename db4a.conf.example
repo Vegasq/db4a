@@ -188,33 +188,6 @@
 #   believes is visible, so the margins depend on ground it has drawn recently.
 
 
-# wide_units = 1
-#
-#   Only meaningful with `wide` set, and you almost certainly do not want it.
-#
-#   Units in the widened strip are drawn either way. The default route adds
-#   them to the sprite list AFTER the cartridge has finished with it, so the
-#   game's own run is untouched. This setting instead widens the cartridge's
-#   own culling test, which works but changes what the game DOES: a few more
-#   sprites are emitted, a few more instructions run, and the frame timing
-#   shifts with them, so the same recorded inputs replayed at 400 and at 320
-#   drift apart. Kept only so the two can be compared.
-#
-#   Terrain and buildings in the strip come from the tilemap and are free.
-#   Units are sprites, and the cartridge discards a sprite whose right edge is
-#   still left of the screen before it ever reaches the hardware -- so a wider
-#   view shows correct ground with nothing standing on it. Keeping those
-#   sprites means widening that test, which is a change to what the game DOES,
-#   not to how it is drawn: a few more sprites are emitted, a few more
-#   instructions run, and the frame timing shifts with them.
-#
-#   The consequence worth knowing: a widescreen game is then a slightly
-#   different game. The same recorded inputs replayed at 400 and at 320 drift
-#   apart -- by frame 6000 of the mission-1 recording, most of the picture
-#   differs. Nothing is broken; it is simply a different battle. Set this to 0
-#   if you would rather a recording reproduce exactly, and accept an empty
-#   strip.
-
 
 # splash = 0
 #

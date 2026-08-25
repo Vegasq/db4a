@@ -300,7 +300,7 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
             mapview_observe(pc);   /* vertical scrolling finds the map too */
         }
         if (pc == OBJ_EMITTER) objects_predict();
-        if (pc == WS_SAT_DMA) { objects_verify(); widescreen_append_sprites(); }
+        if (pc == OBJ_SAT_DMA) objects_verify();
         /* A native override replaces the recompiled block with hand-written C
            that does the same job and returns the same next PC. Looked up after
            find_block deliberately: an override must sit on a real block entry,
@@ -467,7 +467,7 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
             mapview_observe(pc);   /* vertical scrolling finds the map too */
         }
         if (pc == OBJ_EMITTER) objects_predict();
-        if (pc == WS_SAT_DMA) { objects_verify(); widescreen_append_sprites(); }
+        if (pc == OBJ_SAT_DMA) objects_verify();
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
