@@ -14,12 +14,13 @@
  * Slots are claimed at startup and only when the feature that wants them is
  * enabled, so an unused build compares against nothing.
  */
-#define PROBE_SLOTS 4
+#define PROBE_SLOTS 5
 
 #define PROBE_BUILD_CONSOLE 0   /* $8462  the console's d-pad handler   */
 #define PROBE_HOUSE_SELECT  1   /* $4808  the shield highlight's slide  */
 #define PROBE_MENTAT_ASK    2   /* $25CAE the YES/NO loop head          */
 #define PROBE_STARPORT      3   /* $916C  the Starport's d-pad handler  */
+#define PROBE_TITLE_MENU    4   /* $178C8 the title menu's input loop   */
 
 extern uint32_t probe_pc[PROBE_SLOTS];
 extern uint8_t  probe_hit[PROBE_SLOTS];

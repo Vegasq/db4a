@@ -12,7 +12,8 @@ Logged with `DB4A_LOG_SCENE=1`, which prints the function pointer at
 
 | scene | screen | interactive? |
 |---|---|---|
-| `00017C32` | Virgin / Westwood intro, DUNE title | no |
+| `00017C32` | Virgin / Westwood intro | no |
+| (none) | DUNE title, then the START GAME menu at frame 2164 | not yet |
 | `00013144` | attract-mode terrain tutorial, after ~4000 idle frames | no |
 | `00004500` | **house selection** | **yes** |
 | `00024724` | mentat: house description, then the join question | **yes**, at the question |
@@ -20,9 +21,16 @@ Logged with `DB4A_LOG_SCENE=1`, which prints the function pointer at
 | `00006D0C` | gameplay (and the build console, as a sub-mode) | done |
 | `0000608E` | placing a building | done |
 
-**There is no main menu.** Booting with no input at all goes intro -> title ->
-attract loop; there is no New Game / Options screen to click. The flow is
-intro, house selection, mentat, region map, mission.
+**The title menu has no scene of its own.** `$FFFFE002` holds `00017C32` from
+frame 351 to 1404 and then goes back to zero, because the planet zoom, the DUNE
+title and the START GAME / OPTIONS / TUTORIAL menu are one routine that waits
+for vblank itself rather than returning to the dispatcher -- the same shape as
+the mentat's YES/NO. So it is identified by its input loop `$178C8` running,
+which is what `src/skipintro.c` watches. This survey's first pass concluded
+there was no main menu at all, on the strength of that scene log; the menu is
+plainly there on screen from frame 2164.
+
+The flow is intro, title menu, house selection, mentat, region map, mission.
 
 ```bash
 DB4A_LOG_SCENE=1 ./build/db4a "$ROM" 6000        # unattended boot
