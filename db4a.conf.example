@@ -132,9 +132,15 @@
 
 # wide = 400
 #
-#   EXPERIMENTAL, and known to still look wrong in motion. Widens the view
-#   from the cartridge's 320 pixels to the width given here, between 320 and
-#   512. Left out entirely, the game runs at 320 and nothing below applies.
+#   EXPERIMENTAL. Widens the view from the cartridge's 320 pixels to the width
+#   given here, between 320 and 1024. Left out entirely, the game runs at 320
+#   and nothing below applies.
+#
+#   Why 1024 and not more. That is the size of the game's own map. The
+#   cartridge tells us so itself: the camera limits it writes leave a world
+#   exactly 1024 pixels square in both missions measured, so a 1024-wide view
+#   shows the whole map at once and holds the camera still. Ask for more and
+#   the extra can only be empty space.
 #
 #   What it does. During GAMEPLAY the whole picture is shifted right by the
 #   extra width, which keeps the HUD flush against the right edge with its
@@ -143,13 +149,17 @@
 #   to anchor, so the 320 composition is centred and the surplus is left as
 #   black bars rather than stretched.
 #
-#   Why it is not finished. The game only ever writes tiles for the 320
-#   pixels it believes are visible. The extra columns are therefore
-#   reconstructed from whatever the tilemap happens to still hold there,
-#   which is last frame's leftovers rather than real map. It looks convincing
-#   in a still frame and wrong once the view moves. Two rounds of fixes made
-#   the captured frames correct and play still disagreed, which is why it
-#   ships off by default and behind this warning.
+#   Where the extra picture comes from. The game only ever writes tiles for
+#   the 320 pixels it believes are visible, so the margin is drawn from the
+#   game's own MAP DATA instead -- the same grid the cartridge expands into
+#   tiles, read straight out of work RAM. That has no dependence on which way
+#   you last scrolled and no leftovers to show. It cannot invent map, so
+#   ground you have never explored stays dark exactly as the cartridge would
+#   leave it.
+#
+#   Why it is still marked experimental: it is a departure from the cartridge,
+#   it has not had the play-testing the 320 path has, and the wider the view
+#   the more of the screen is fog of war rather than scenery.
 #
 #   The game's own 320 pixels are unaffected either way: with widescreen off,
 #   output is byte-identical to the faithful build.
@@ -160,8 +170,13 @@
 # tall = 240
 #
 #   The same idea as `wide`, downwards: the number of scanlines to show,
-#   between 224 and 256. Left out, the game runs at the 224 lines a Mega Drive
-#   shows in its usual mode.
+#   between 224 and 1024. Left out, the game runs at the 224 lines a Mega Drive
+#   shows in its usual mode. 1024 is the map's own height, for the same reason
+#   1024 is the limit on `wide`.
+#
+#   Anything is allowed between those, so 640x480 and 800x600 work as well as
+#   the old 400x240. `make check-res` proves the cartridge's own 320x224 comes
+#   out byte-identical inside all nine sizes it tries, up to 1024x1024.
 #
 #   The extra lines appear BELOW the cartridge's own picture, and are filled
 #   the same way the widened strip is -- real map, with the units standing in

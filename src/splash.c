@@ -90,8 +90,15 @@ static void text(int x, int y, const char *s, int scale, const unsigned char rgb
     }
 }
 
+/* Centred on the LIVE width, not the allocation.
+ *
+ * This used to divide FB_W, the buffer's width, which is not the width anyone
+ * is looking at: at the default 320 the notice sat 96 pixels right of centre,
+ * and raising the allocation to hold a 1024-wide view would have pushed it off
+ * the screen entirely. put() clips, so the fault was quiet -- it looked like a
+ * layout choice rather than a bug. */
 static void centred(int y, const char *s, int scale, const unsigned char rgb[3]) {
-    text((FB_W - text_w(s, scale)) / 2, y, s, scale, rgb);
+    text((fb_width - text_w(s, scale)) / 2, y, s, scale, rgb);
 }
 
 /* Deliberately plain. This is a notice, not a title card: it states what the
@@ -118,7 +125,7 @@ void splash_draw(unsigned frame) {
     static const unsigned char LINK[3]  = {130, 200, 170 };
 
     for (int y = 0; y < fb_height; y++)
-        for (int x = 0; x < FB_W; x++)
+        for (int x = 0; x < fb_width; x++)
             put(x, y, BG);
 
     centred(28, "DB4A", 5, TITLE);
