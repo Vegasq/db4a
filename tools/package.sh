@@ -214,13 +214,36 @@ and names the package to install.
 Controls
 --------
 
+    the mouse       point at the map and the cursor goes there
+    left / right /
+      middle click  A / B / C
     arrows          D-pad
     Q / W / E       A / B / C          (Z/X/C and Space/Alt/Shift also work)
     Enter           Start              (Tab also works)
     F5 / F9         save / load a state -- the cartridge has no battery save
     P               pause
     ` or F          fast-forward while held
+    F11             fullscreen
     Esc             quit
+
+Pointing also works in the menus: the Construction Yard's build console, the
+Starport, house selection and the mentat's yes/no. Gamepads are picked up
+automatically.
+
+
+What is different from the Mega Drive
+------------------------------------
+
+Two things are on by default here that the cartridge never did, because they
+are the point of this build:
+
+  * the view is 400 pixels wide instead of 320, opening more map on the left
+    during play
+  * the mouse drives the cursor, which on the cartridge crawls at three pixels
+    a frame
+
+Either can be turned off in db4a.conf -- `wide = 320` and `mouse = 0` -- and
+with both off you are looking at the cartridge's own picture, pixel for pixel.
 
 
 Settings
@@ -231,8 +254,9 @@ explained in place and commented out at its default, so you can uncomment a
 line, restart, and see what changes. The start-up banner prints what the file
 actually resolved to, so you can tell whether your edit was picked up.
 
-Worth knowing about: `gain` (volume), `mute`, `fullscreen` and `integer`,
-`splash` (how long the start-up notice is held; `splash = 0` skips it).
+Worth knowing about: `wide` and `mouse` (above), `gain` (volume), `mute`,
+`fullscreen` and `integer`, and `splash` (how long the start-up notice is held;
+`splash = 0` skips it).
 
 
 Reporting a bug
