@@ -10,6 +10,7 @@
 #include "probe.h"
 #include "widescreen.h"
 #include "mapview.h"
+#include "objects.h"
 #include <string.h>
 #include <stdlib.h>
 #include "hal.h"
@@ -71,8 +72,8 @@ static void regs_probe(uint32_t pc) {
         if (seen++ >= cap) return;
         fprintf(stderr, "[regs] %06X d0=%08X d1=%08X d2=%08X d3=%08X d6=%08X d7=%08X\n",
                 pc, CPU.d[0], CPU.d[1], CPU.d[2], CPU.d[3], CPU.d[6], CPU.d[7]);
-        fprintf(stderr, "[regs] %06X a2=%08X a3=%08X a4=%08X a5=%08X a6=%08X\n",
-                pc, CPU.a[2], CPU.a[3], CPU.a[4], CPU.a[5], CPU.a[6]);
+        fprintf(stderr, "[regs] %06X a0=%08X a1=%08X a2=%08X a3=%08X a4=%08X a5=%08X a6=%08X\n",
+                pc, CPU.a[0], CPU.a[1], CPU.a[2], CPU.a[3], CPU.a[4], CPU.a[5], CPU.a[6]);
         return;
     }
 }
@@ -298,7 +299,8 @@ uint32_t m68k_run_until(uint32_t pc, uint64_t deadline) {
         } else if (pc == WS_ROW_PLANE_A || pc == WS_ROW_PLANE_B) {
             mapview_observe(pc);   /* vertical scrolling finds the map too */
         }
-        if (pc == WS_SAT_DMA) widescreen_append_sprites();
+        if (pc == OBJ_EMITTER) objects_predict();
+        if (pc == WS_SAT_DMA) { objects_verify(); widescreen_append_sprites(); }
         /* A native override replaces the recompiled block with hand-written C
            that does the same job and returns the same next PC. Looked up after
            find_block deliberately: an override must sit on a real block entry,
@@ -464,7 +466,8 @@ uint32_t m68k_run(uint32_t pc, unsigned long max_blocks) {
         } else if (pc == WS_ROW_PLANE_A || pc == WS_ROW_PLANE_B) {
             mapview_observe(pc);   /* vertical scrolling finds the map too */
         }
-        if (pc == WS_SAT_DMA) widescreen_append_sprites();
+        if (pc == OBJ_EMITTER) objects_predict();
+        if (pc == WS_SAT_DMA) { objects_verify(); widescreen_append_sprites(); }
         pc = BLOCK_FN[i]();
         m68k_blocks_run++;
     }
