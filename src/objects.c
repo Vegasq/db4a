@@ -14,6 +14,9 @@
 #define CAM_Y       0x00FFE3C0u
 
 static struct obj_entry pred[SAT_MAX];
+/* Provenance, for diagnosing a mismatch: which object and piece produced it. */
+static uint32_t pred_obj[SAT_MAX], pred_piece[SAT_MAX];
+static int      pred_ox[SAT_MAX], pred_screen[SAT_MAX];
 static unsigned npred;
 
 static unsigned long chk_frames, chk_entries, chk_bad, chk_count_bad;
@@ -52,7 +55,13 @@ static void obj_screen(uint32_t o, int *ox, int *oy) {
         d4 -= (int)(int16_t)m68k_read16(CAM_X);
         d5 -= (int)(int16_t)m68k_read16(CAM_Y);
         if (f & 0x04u) {                             /* $1140 adjust        */
-            unsigned k = m68k_read8(pos - 0xCu + 0x72u) & 7u;
+            /* $1148 does `lea -$c(a0), a0`, but a0 is already pos+2 -- the
+               post-increment at $1126 moved it -- so the index byte is at
+               pos + 2 - 12 + $72 = pos + $68. Reading pos + $66 instead picks
+               up the neighbouring byte, which differs often enough to shift
+               one sprite by one pixel and no more: 1.7% of entries wrong, all
+               of them x off by exactly 1. */
+            unsigned k = m68k_read8(pos + 0x68u) & 7u;
             d4 += (int16_t)m68k_read16(ADJ_TABLE + k * 4u);
             d5 += (int16_t)m68k_read16(ADJ_TABLE + k * 4u + 2u);
         }
@@ -136,6 +145,10 @@ void objects_predict(void) {
                 if ((uint8_t)(cap_w + cap_w) >= band_w[bi]) continue;  /* $123A */
             }
         emit:
+            pred_obj[npred]    = o;
+            pred_piece[npred]  = a4;
+            pred_ox[npred]     = ox;
+            pred_screen[npred] = (m68k_read8(o + 7) & 0x40u) ? 1 : 0;
             pred[npred].y = y;
             pred[npred].x = x;
             pred[npred].size_link = m68k_read16(a4 + 6);
@@ -176,8 +189,14 @@ void objects_verify(void) {
                 if (getenv("DB4A_OBJDBG")) {
                     static int shown = 0;
                     if (shown < 10) { shown++;
-                        fprintf(stderr, "[obj] slot %2u  got y=%4d x=%4d attr=%04X | pred y=%4d x=%4d attr=%04X\n",
-                                n, y, x, attr, pred[n].y & 0x3FF, pred[n].x & 0x1FF, pred[n].attr); }
+                        uint32_t oo = pred_obj[n], pp = pred_piece[n];
+                        uint32_t pos = m68k_read32(oo);
+                        fprintf(stderr, "[obj] slot %2u got x=%4d pred x=%4d | obj=%06X flags=%02X screen=%d "
+                                        "pos=%06X w0=%04X w1=%04X ox=%d xoff=%d camx=%d\n",
+                                n, x, pred[n].x & 0x1FF, oo, m68k_read8(oo + 7), pred_screen[n],
+                                pos, m68k_read16(pos), m68k_read16(pos + 2), pred_ox[n],
+                                (int16_t)m68k_read16(pp + 0xA),
+                                (int)(int16_t)m68k_read16(CAM_X)); }
                 }
             }
         }

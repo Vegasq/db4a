@@ -260,6 +260,10 @@ check-native: build/db4a
 check-menu: build/db4a
 	./tests/buildmenu.sh
 
+## check-objects - our reading of the object list reproduces the sprite table
+check-objects: build/db4a
+	./tests/objects.sh
+
 ## check-map - the map renderer agrees with the tilemap the cartridge drew
 check-map: build/db4a
 	./tests/mapfidelity.sh
