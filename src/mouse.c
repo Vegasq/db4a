@@ -141,6 +141,46 @@ static int clampi(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
+/* Ownership of the cursor's clamp box, split out from mouse_steer().
+ *
+ * ---------------------------------------------------------------------------
+ * Why this is not part of the steering
+ * ---------------------------------------------------------------------------
+ * It was, and that was task #26: "with mouse control on the arrow keys no
+ * longer scroll the map". Reproduced headlessly from a mission save state,
+ * holding RIGHT for 200 frames:
+ *
+ *     no mouse           camera 699 -> 1194   (scrolled 495 px)
+ *     mouse control on   camera 699 ->  699   (scrolled   0 px)
+ *
+ * The cursor walked to x=296 and stopped there for the remaining 190 frames.
+ *
+ * 296 is not a coincidence. The frontend suppresses steering while a keyboard
+ * direction is held -- correctly, so the keys win -- and mouse_steer() was the
+ * only thing that ever replaced the cartridge's own clamp box. So on exactly
+ * the frames the player is using the arrows, the box reverts to the ROM's
+ * 24..296, while cursor_scroll_band() still puts the scroll threshold at
+ * 320-24 = 296. The cursor may reach the threshold and may never pass it, the
+ * distance past it is therefore always zero, and a zero distance is a zero
+ * velocity. db4a.conf.example already warned about this shape of fault under
+ * `mouse_clamp`: "if the two meet there is no depth to measure and the map
+ * will not scroll at all". It did not say that the ROM's box could come back
+ * and make them meet.
+ *
+ * The box is a property of MOUSE MODE, not of the pointer having moved, so it
+ * belongs somewhere that runs every gameplay frame regardless of who is
+ * driving. src/cursor.c's override of $706C is exactly that, and already owns
+ * the camera limits on the same argument. */
+void mouse_own_clamp_box(void) {
+    if (!enabled || !in_gameplay()) return;
+    int c    = mouse_clamp_margin();
+    int ext  = cursor_west_extension();
+    write_word(BOUND_MIN_X, c - ext);
+    write_word(BOUND_MIN_Y, c);
+    write_word(BOUND_MAX_X, SCREEN_W - c);
+    write_word(BOUND_MAX_Y, SCREEN_H - c);
+}
+
 int mouse_steer(int target_x, int target_y) {
     if (!enabled) return 0;
 
@@ -182,11 +222,10 @@ int mouse_steer(int target_x, int target_y) {
     int minx = c - ext, miny = c, maxx = SCREEN_W - c, maxy = SCREEN_H - c;
 
     /* Take ownership of the clamp box. The ROM writes it once per mission from
-       $4DA8, so setting it every frame is enough to keep it ours. */
-    write_word(BOUND_MIN_X, minx);
-    write_word(BOUND_MIN_Y, miny);
-    write_word(BOUND_MAX_X, maxx);
-    write_word(BOUND_MAX_Y, maxy);
+       $4DA8, so setting it every frame is enough to keep it ours. Done here as
+       well as from src/cursor.c so the box is already ours on the same frame
+       the pointer moves, rather than from the next one. */
+    mouse_own_clamp_box();
 
     int px = clampi(target_x, -ext, SCREEN_W - 1);
     int py = clampi(target_y, 0, SCREEN_H - 1);
