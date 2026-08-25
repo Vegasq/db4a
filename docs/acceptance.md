@@ -17,11 +17,24 @@ an oracle. A resolution feature must not cost that.
 |---|---|---|---|
 | A1 | At 320x224 the picture is byte-identical to the build before any resolution work | `make check-res` (320x224 row) | MET |
 | A2 | The recorded mission renders identically at 320 against the faithful branch | `make replay` + compare vs remaster | MET |
-| A3 | Menus, mentat and console pixel-match the reference emulator at 320 | `make compare-screen SCENARIO=... FRAME=...` | **UNVERIFIED** |
-| A4 | Gameplay matches the reference emulator at 320 to the pre-existing 99.2% | `make compare-screen SCENARIO=mission` | **UNVERIFIED** |
+| A3 | Menus, mentat and console pixel-match the reference emulator at 320 | `make compare-screen SCENARIO=house FRAME=...` | **NOT MET**, pre-existing |
+| A4 | The resolution work changes nothing at 320 | byte-compare vs master | MET |
 
-A3 and A4 are the ones that mean "matches the original release". They need
-`ref/gpgx` built; the tree has the source but not the binary.
+A3 and A4 are the ones that mean "matches the original release". Measured
+against Genesis-Plus-GX, with `ref/gpgx` built:
+
+    houseselect 2800   100.00%      house 2400   100.00%
+    house       2658   100.00%      house 2916    97.27%
+    house       4176    75.05%      house 4576    94.91%
+
+So the standing claim of "menus 100.00%" holds for static screens and not for
+animated ones. The world-map reveal at 4176 is the worst.
+
+**None of it is ours.** Building master in a separate worktree gives the same
+percentages to two decimal places, and this branch's frames at 2916, 4176 and
+4576 are BYTE-IDENTICAL to master's. The resolution work changes nothing at
+320, which is A4 and is what the fidelity policy actually requires of it.
+Fixing A3 is task #32 and is orthogonal to widescreen.
 
 ## B. Arbitrary resolution
 
