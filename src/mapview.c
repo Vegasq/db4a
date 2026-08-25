@@ -42,48 +42,81 @@ static int base_agrees(uint32_t cand) {
     int camx = (int)(int16_t)m68k_read16(CAM_X);
     int camy = (int)(int16_t)m68k_read16(CAM_Y);
     uint32_t na = (uint32_t)(VDP.reg[2] & 0x38) << 10;
-    int good = 0, seen = 0;
-    for (int ty = 8; ty < 20; ty++) {
-        for (int tx = 4; tx < 36; tx += 2) {
+
+    /* Exact agreement over a DIVERSE sample.
+     *
+     * An earlier version accepted 90% and did not look at what it was
+     * comparing. Both were wrong. Nine tenths leaves room for a base that is
+     * merely close, and a screen of unexplored map is one tile repeated --
+     * where almost any base agrees and the sample proves nothing. A search
+     * over work RAM duly found a decoy that passed and then mismatched 58% of
+     * the picture. Demand every sampled tile, and demand the sample carry
+     * enough distinct entries to be worth agreeing with. */
+    uint16_t seen[16]; int nseen = 0, checked = 0, bad = 0;
+    for (int ty = 6; ty < 22; ty++) {
+        for (int tx = 3; tx < 37; tx += 2) {
             int col = (camx >> 3) + tx, row = (camy >> 3) + ty;
             uint32_t e = na + (uint32_t)(((row & 31) * 64 + (col & 63)) * 2);
             uint16_t got = (uint16_t)((VDP.vram[e & 0xFFFF] << 8)
                                       | VDP.vram[(e + 1) & 0xFFFF]);
-            seen++;
-            if (got == mapview_entry(0, col, row)) good++;
+            checked++;
+            if (got != mapview_entry(0, col, row)) { bad++; continue; }
+            int fresh = 1;
+            for (int i = 0; i < nseen; i++) if (seen[i] == got) { fresh = 0; break; }
+            if (fresh && nseen < 16) seen[nseen++] = got;
         }
     }
     map_base = save;
-    return seen && good * 10 >= seen * 9;      /* 90%: sprites and edits move a few */
+    /* Not exact: the cartridge writes a little of its own over the tilemap, so
+       even the right base disagrees on a fraction of a percent. Not lax
+       either: a wrong base is wrong nearly everywhere. And diverse, because a
+       screen of unexplored map is one tile repeated, where any base agrees and
+       the sample proves nothing -- that is how a search over work RAM found a
+       decoy that passed and then mismatched 58% of the picture. */
+    return checked >= 200 && nseen >= 6 && bad * 25 <= checked;
 }
 
+/* Learn where the map lives, from any draw the cartridge makes.
+ *
+ * COLUMN draws ($7504 / $7468) happen when the camera crosses a tile boundary
+ * horizontally; ROW draws ($764E / $75B0) when it crosses one vertically. Both
+ * pass the same three things -- d1's low word is the nametable address of the
+ * first entry, a3 the map pointer for it, d0 the sub-position -- so either
+ * will do, and taking both is what lets a session that only ever scrolls up
+ * and down find the map at all. Resuming a save state and scrolling
+ * vertically used to leave the margin falling back to the tilemap, which
+ * wraps its 256-pixel plane and smears the top of the screen along the bottom.
+ *
+ * The nametable tells us the column only modulo 64 and the row only modulo 32,
+ * and the cartridge draws at whichever edge it is heading for, so neither can
+ * be resolved by proximity to the camera. Rather than reason about it, every
+ * candidate that could be on screen is TRIED and the one that reproduces what
+ * the cartridge has already drawn is kept. Guessing here is what once put the
+ * base a lap out -- $40, exactly 16 cells -- and every tile wrong after it. */
 void mapview_observe(uint32_t pc) {
     if (map_base) return;
-    int plane_b = (pc == WS_COL_PLANE_B);
+    int plane_b = (pc == WS_COL_PLANE_B || pc == WS_ROW_PLANE_B);
     uint32_t nb = plane_b ? (uint32_t)(VDP.reg[4] & 0x07) << 13
                           : (uint32_t)(VDP.reg[2] & 0x38) << 10;
     uint32_t off = (CPU.d[1] & 0xFFFFu) - nb;
     int ntcol = (int)((off & 0x7Eu) >> 1);
+    int ntrow = (int)((off >> 7) & 31u);
     int camx  = (int)(int16_t)m68k_read16(CAM_X);
     int camy  = (int)(int16_t)m68k_read16(CAM_Y);
-    int wrow  = (camy >> 3) - 1;               /* the margin row above the top */
+    int cbase = camx >> 3, rbase = camy >> 3;
 
-    if ((int)((CPU.d[0] & 0x18u) >> 3) != (wrow & 3)) return;
-
-    /* The nametable column is known only modulo 64, and the cartridge draws at
-       whichever edge it is scrolling towards -- so the column can be a tile
-       west of the camera or forty east of it. Rather than guess the lap, try
-       every one that could be on screen and keep the one that reproduces what
-       the cartridge drew. Guessing here is what put the base a lap out (0x40,
-       exactly 16 cells) and every tile wrong after it. */
-    int base = camx >> 3;
-    for (int lap = -1; lap <= 1; lap++) {
-        int wcol = base + ((ntcol - base) & 63) + lap * 64;
-        if (wcol - base < -8 || wcol - base > 56) continue;
+    for (int lc = -1; lc <= 1; lc++) {
+        int wcol = cbase + ((ntcol - cbase) & 63) + lc * 64;
+        if (wcol - cbase < -8 || wcol - cbase > 56) continue;
         if ((int)((CPU.d[0] & 6u) >> 1) != (wcol & 3)) continue;
-        uint32_t cand = CPU.a[3] - (uint32_t)((wcol >> 2) * (int)CELL_COL)
-                                 - (uint32_t)((wrow >> 2) * (int)CELL_ROW);
-        if (base_agrees(cand)) { map_base = cand; return; }
+        for (int lr = -1; lr <= 1; lr++) {
+            int wrow = rbase + ((ntrow - rbase) & 31) + lr * 32;
+            if (wrow - rbase < -8 || wrow - rbase > 40) continue;
+            if ((int)((CPU.d[0] & 0x18u) >> 3) != (wrow & 3)) continue;
+            uint32_t cand = CPU.a[3] - (uint32_t)((wcol >> 2) * (int)CELL_COL)
+                                     - (uint32_t)((wrow >> 2) * (int)CELL_ROW);
+            if (base_agrees(cand)) { map_base = cand; return; }
+        }
     }
 }
 

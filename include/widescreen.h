@@ -54,4 +54,12 @@ uint32_t native_sprite_band_count(void);
 #define WS_COL_PLANE_A 0x007504u
 #define WS_COL_PLANE_B 0x007468u
 
+/* The ROW-drawing twins, entered when the view scrolls vertically. They take
+ * the same three parameters in the same registers -- d1 the nametable address
+ * of the first entry, a3 the map pointer, d0 the sub-position -- and cover all
+ * 64 columns of a row. mapview uses them so that a session which only ever
+ * scrolls up and down can still find the map. */
+#define WS_ROW_PLANE_A 0x00764Eu
+#define WS_ROW_PLANE_B 0x0075B0u
+
 #endif
