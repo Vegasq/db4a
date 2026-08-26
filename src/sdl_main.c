@@ -156,7 +156,7 @@ int main(int argc, char **argv) {
        produces samples in frame-sized bursts, and queueing keeps all the state
        on this thread. DB4A_MUTE=1 skips opening the device entirely. */
     SDL_AudioDeviceID audio = 0;
-    if (!cfg("DB4A_MUTE")) {
+    if (!cfg_bool("DB4A_MUTE", 0)) {
         SDL_AudioSpec want, have;
         SDL_zero(want);
         want.freq     = PSG_RATE;
@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
          editing db4a.conf can see whether it was picked up. */
       const char *st = cfg("DB4A_STATE"), *ky = cfg("DB4A_KEYS");
       printf("settings: gain=%d mute=%s state=%s keys=%s\n",
-             audio_gain, cfg("DB4A_MUTE") ? "yes" : "no",
+             audio_gain, cfg_bool("DB4A_MUTE", 0) ? "yes" : "no",
              st ? st : "build/state.db4a", ky ? ky : "(default)"); }
     printf("controls: arrows = D-pad, Q/W/E = A/B/C, Enter = Start, Esc = quit\n");
     printf("          also accepted: Z/X/C, Space = A, Alt = B, Shift = C, Tab = Start\n");

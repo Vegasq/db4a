@@ -14,9 +14,10 @@
 # Keys are the environment-variable names without the DB4A_ prefix, so
 # `gain = 8` in this file is the same as running with DB4A_GAIN=8.
 #
-# Anything that just needs to be "on" takes 1. Setting it to 0 is NOT the same
-# as leaving it out for every option -- where 0 means something specific, it
-# says so below.
+# A setting that is simply on or off takes 1/yes/on/true or 0/no/off/false, in
+# either case. Leaving the line out gives you the default. `mute = 0` really
+# does mean "do not mute" -- it used to mean the opposite, because the value
+# was never read and merely writing the line was taken as yes.
 #
 # The environment always wins
 # ---------------------------
