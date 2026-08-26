@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>db4a &mdash; Dune: The Battle for Arrakis, rebuilt native</title>
+<meta name="description" content="A community remaster of Dune: The Battle for Arrakis (Mega Drive, 1993). The cartridge's 68000 code is statically recompiled into C: one native Linux binary, with mouse control, widescreen and save states.">
+<meta property="og:title" content="db4a &mdash; Dune: The Battle for Arrakis, rebuilt native">
+<meta property="og:description" content="A community remaster of the Mega Drive original. Mouse control, widescreen, save states &mdash; running from statically recompiled 68000 code, not an emulator.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="img/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top">db4a</a>
+    <nav class="topnav">
+      <a href="#mouse">Mouse</a>
+      <a href="#widescreen">Widescreen</a>
+      <a href="#quality">Comforts</a>
+      <a href="#accuracy">Accuracy</a>
+      <a href="#get">Get it</a>
+      <a href="https://github.com/Vegasq/db4a">Source</a>
+    </nav>
+  </div>
+</div>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div>
+      <p class="eyebrow">Unofficial &middot; <b>community remaster</b> &middot; Mega Drive, 1993</p>
+      <h1>db4a</h1>
+      <p class="h1sub">Dune: The Battle for Arrakis,<br>rebuilt as a native binary.<span class="caret">_</span></p>
+      <p class="lede">Not an emulator running a cartridge in a generic machine. The game's
+      68000 code is <b>statically recompiled into C</b>, compiled into the executable and
+      linked against an SDL2 hardware layer. What you run is one native program that plays
+      the game.</p>
+      <p>On top of that faithful base sits the part this page is about: it plays with a
+      <b>mouse</b>, it plays <b>wider than a Mega Drive could</b>, and it saves state
+      wherever you like.</p>
+      <div class="cta">
+        <a class="btn" href="https://github.com/Vegasq/db4a">Source on GitHub</a>
+        <a class="btn ghost" href="#get">How to build it</a>
+      </div>
+      <p class="dim" style="font-size:13.5px">You supply your own ROM. This project ships
+      no game data &mdash; no cartridge, no extracted assets &mdash; and never will.</p>
+    </div>
+    <figure>
+      <div class="screen"><img src="img/title.png" alt="The Dune: The Battle for Arrakis title screen, rendered by db4a" width="320" height="224"></div>
+      <figcaption>Every screenshot here is <b>db4a's own output</b>, captured headlessly from the running build.</figcaption>
+    </figure>
+  </div>
+</header>
+
+<section id="mouse">
+  <div class="wrap">
+    <div class="sec-head"><h2>Mouse control</h2></div>
+    <p class="sec-sub">On by default. Left button is A, right is B, middle is C &mdash; and the
+    cursor is under your pointer on the same frame you move it.</p>
+
+    <div class="feature">
+      <div class="fcopy">
+        <span class="tag">The cartridge cannot do this</span>
+        <h3>Written, not steered</h3>
+        <p>The cartridge moves its own cursor at most <b>three pixels a frame</b>, so crossing
+        the screen takes over two seconds. No amount of nudging a d-pad emulation makes that
+        keep up with a pointer. So db4a writes the cursor position directly instead.</p>
+        <p>Its scrolling rule had to go too: the original scrolls whenever the cursor leaves a
+        box in the middle of the screen about a quarter of its width. That is fine for a
+        d-pad and unusable with a mouse, because the map lurches the moment you point away
+        from centre. A <b>24-pixel band at the screen edges</b> replaces it, with speed ramped
+        by how far into the band you have pushed.</p>
+        <ul class="ticks">
+          <li>The system pointer hides wherever the game draws a cursor of its own.</li>
+          <li>Arrow keys still scroll the map with mouse control on.</li>
+          <li>The view no longer re-centres when a building is ready to place &mdash; the
+              pointer is already where you are looking.</li>
+        </ul>
+      </div>
+      <figure>
+        <div class="screen"><img src="img/gameplay-late.png" alt="An Atreides base in db4a, mid-mission" width="400" height="224"></div>
+        <figcaption>Mission one, <b>played to victory</b> and replayed frame for frame as a regression test.</figcaption>
+      </figure>
+    </div>
+
+    <div class="feature flip">
+      <div class="fcopy">
+        <span class="tag cool">Menus too</span>
+        <h3>Point at a thing to pick it</h3>
+        <p>Pointer selection reaches the screens where it matters. In the Construction Yard's
+        build console, pointing at an icon selects it &mdash; showing its name and price &mdash;
+        and left click builds it. The Starport takes the pointer. So do house selection and the
+        mentat's yes-or-no.</p>
+        <p>Each of those is covered by a test that points at a cell and requires the game to
+        have selected it: <code>make check-menu</code> and <code>make check-menus</code>.</p>
+      </div>
+      <div class="shots two">
+        <figure>
+          <div class="screen"><img src="img/console.png" alt="The Construction Yard build console with CONCRETE selected" width="400" height="224"></div>
+          <figcaption>Build console &mdash; <b>name and price</b> on hover</figcaption>
+        </figure>
+        <figure>
+          <div class="screen"><img src="img/mentat.png" alt="The mentat asking whether to join House Atreides" width="400" height="224"></div>
+          <figcaption>The mentat's <b>yes or no</b>, clickable</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="widescreen">
+  <div class="wrap">
+    <div class="sec-head"><h2>Widescreen</h2></div>
+    <p class="sec-sub">On by default at 400&times;224. Anything from 320 to 1024 works in either
+    direction, so 640&times;480 and 800&times;600 do too.</p>
+
+    <div class="feature">
+      <div class="fcopy">
+        <h3>More map, not a stretched picture</h3>
+        <p>During gameplay the whole picture shifts right, which keeps the HUD flush against
+        the right edge with its backdrop still underneath it, and the new space opens on the
+        left as <b>more map</b>. Menus, the mentat and the cutscenes are 320-wide compositions
+        with nothing to anchor a wider one, so they are centred rather than stretched.</p>
+        <p>The extra picture is drawn from the game's own <b>map data, read straight out of
+        work RAM</b>. The cartridge only ever writes tiles for the 320 pixels it believes are
+        visible, so reading those back gives you leftovers that depend on which way you last
+        scrolled. Map data has no such dependence. It cannot invent map either: ground you
+        have never explored stays dark, exactly as the cartridge would leave it.</p>
+        <p><code>wide = 320</code> is a real off switch, not an approximation of one. The
+        cartridge's own 320 pixels come out <b>byte-identical</b> either way &mdash; proven at
+        nine view sizes up to 1024&times;1024, with the recorded mission replaying unchanged
+        at every one of them.</p>
+      </div>
+      <div class="cmp">
+        <div>
+          <p class="label"><b>320&times;224</b> &mdash; what the cartridge shows</p>
+          <div class="screen narrow"><img src="img/gameplay-320.png" alt="The same moment at the cartridge's 320x224" width="320" height="224"></div>
+        </div>
+        <div>
+          <p class="label"><b>400&times;224</b> &mdash; the same frame, same scale</p>
+          <div class="screen"><img src="img/gameplay-wide.png" alt="The same moment at 400x224, showing more map on the left" width="400" height="224"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature flip">
+      <div class="fcopy">
+        <span class="tag calm">Up to the size of the map itself</span>
+        <h3>Why the ceiling is 1024</h3>
+        <p>The cartridge tells us so itself. The camera limits it writes leave a world exactly
+        <b>1024 pixels square</b> in both missions measured, so a 1024-wide view shows the whole
+        map at once and holds the camera still. Anything beyond that could only be empty space.</p>
+        <p>400 is the default rather than the maximum for a plainer reason: the wider the view,
+        the more of your screen is fog of war rather than scenery.</p>
+      </div>
+      <figure>
+        <div class="screen"><img src="img/gameplay-640.png" alt="The same mission running at 640x480" width="640" height="480"></div>
+        <figcaption>The same mission at <b>640&times;480</b>. Extra lines fill in below, from the same map data.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="quality">
+  <div class="wrap">
+    <div class="sec-head"><h2>Comforts</h2></div>
+    <p class="sec-sub">The small things a 1993 cartridge had no way to offer. None of them
+    change what the game simulates.</p>
+    <div class="grid">
+      <div class="card bevel">
+        <h4>Save states</h4>
+        <p><kbd>F5</kbd> writes, <kbd>F9</kbd> reads. The whole machine is recorded, and a
+        build that changes the CPU or chip layout refuses an old file rather than loading it
+        corrupt.</p>
+      </div>
+      <div class="card bevel">
+        <h4>Pause &amp; fast-forward</h4>
+        <p><kbd>P</kbd> pauses. Hold <kbd>`</kbd> (backtick) or <kbd>F</kbd> to run fast &mdash; useful
+        for the long stretches where you are waiting on spice.</p>
+      </div>
+      <div class="card bevel">
+        <h4>Fullscreen &amp; integer scaling</h4>
+        <p><kbd>F11</kbd> toggles fullscreen. Integer scaling makes every source pixel the same
+        number of screen pixels, at the cost of black borders.</p>
+      </div>
+      <div class="card bevel">
+        <h4>Gamepads &amp; remapping</h4>
+        <p>Pads are picked up automatically. Any face button can be rebound without a rebuild:
+        <code>keys = a=q,b=w,c=r</code>.</p>
+      </div>
+      <div class="card bevel">
+        <h4>A settings file</h4>
+        <p><code>db4a.conf</code> sits next to the binary, so you can tinker and restart without
+        a shell. The startup banner prints what actually resolved.</p>
+      </div>
+      <div class="card bevel">
+        <h4>Record &amp; replay</h4>
+        <p>Sessions record deterministically and replay frame for frame &mdash; keyboard and
+        pointer alike. It is how the regression tests are made.</p>
+      </div>
+      <div class="card bevel">
+        <h4>Menus that keep up</h4>
+        <p>Menu selection arrives in one step instead of crawling across the screen at the
+        cartridge's pace.</p>
+      </div>
+      <div class="card bevel">
+        <h4>Hand it to a friend</h4>
+        <p><code>make dist</code> packages the game, your cartridge and a config into one
+        folder that runs anywhere: <code>./play.sh</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="houses">
+  <div class="wrap">
+    <div class="houses">
+      <figure>
+        <div class="screen"><img src="img/houses.png" alt="House selection: Atreides, Ordos and Harkonnen shields" width="640" height="448"></div>
+        <figcaption>All three houses load and play. Point at a shield and click.</figcaption>
+      </figure>
+      <div>
+        <div class="sec-head"><h2>The same game</h2></div>
+        <p>The fidelity policy is <b>faithful first</b>. The base build matches the cartridge
+        closely enough that a reference emulator stays usable as a correctness oracle, and every
+        departure from it lives on a separate branch as a deliberate, reviewable patch.</p>
+        <p class="dim">So the remaster is not a reinterpretation. It is the 1993 game, with the
+        controls it would have had if it had been written for a machine with a mouse.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="accuracy">
+  <div class="wrap">
+    <div class="sec-head"><h2>How closely it matches</h2></div>
+    <p class="sec-sub">All of it reproducible from a clean checkout. The project's own rule is
+    that a heuristic gets labelled as a heuristic.</p>
+    <div class="cols2">
+      <div>
+        <table class="stats">
+          <tr><td>CPU</td><td><b class="ok">19667 / 19667</b> SingleStepTests m68000 vectors</td></tr>
+          <tr><td>Z80</td><td><b class="ok">zexdoc</b>, plus per-instruction T-state timing</td></tr>
+          <tr><td>Menus</td><td><b class="ok">Pixel-exact</b> against Genesis-Plus-GX</td></tr>
+          <tr><td>Gameplay</td><td><b>99.2%</b> &mdash; the residual is unit positions a pixel or two out</td></tr>
+          <tr><td>Pacing</td><td>PAL <b>49.7015 Hz</b>, 0.0002% drift</td></tr>
+          <tr><td>Audio</td><td>YM2612 + PSG, audible; <b class="warn">fidelity outstanding</b></td></tr>
+          <tr><td>Build</td><td><b>~35 s</b> from clean, no warnings</td></tr>
+        </table>
+      </div>
+      <div>
+        <div class="note bevel">
+          <h4>What is not finished</h4>
+          <p><b>In-game audio is not right yet.</b> Both sound chips work and the music plays,
+          but balance and pacing are off.</p>
+          <p><b>Not every mission has been played.</b> The campaign's structure is verified
+          &mdash; all three houses, mission progression, victory and defeat &mdash; but the
+          later missions of each house have not been played through by hand.</p>
+          <p class="dim">Mission one is playable end to end and can be won or lost.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="get">
+  <div class="wrap">
+    <div class="sec-head"><h2>Get it</h2></div>
+    <p class="sec-sub">Linux, SDL2, and a cartridge you own.</p>
+    <div class="cols2">
+      <div>
+        <h3>Build and play</h3>
+<pre><span class="c"># the remaster branch is the one with mouse and widescreen</span>
+git clone https://github.com/Vegasq/db4a
+<span class="p">cd</span> db4a &amp;&amp; git checkout remaster
+
+make          <span class="c"># generate, build, run the unit tests (~35 s)</span>
+make play     <span class="c"># play</span>
+
+make play WIDE=320    <span class="c"># the cartridge's own view</span>
+DB4A_MOUSE=0 make play <span class="c"># keyboard and pad only</span></pre>
+        <p class="dim">Developed on Fedora 44; any distribution with SDL2 and the analysis
+        tools should work. <code>master</code> holds the faithful recompile with no
+        modernisation at all.</p>
+      </div>
+      <div>
+        <h3>The ROM</h3>
+        <p>Place a legally obtained dump of the European cartridge here:</p>
+<pre>roms/Dune-The-Battle-for-Arrakis_Genesis_EN/
+    Dune - The Battle for Arrakis (E).bin
+
+sha1  133cc86b43afe133fc9c9142b448340c17fa668e</pre>
+        <p><code>make verify-rom</code> checks it. The build reads the ROM to generate code and
+        the binary loads it at runtime; <b>neither the ROM nor anything extracted from it is
+        distributed here.</b></p>
+        <p class="dim">Obtaining it is your responsibility. In most places that means dumping a
+        cartridge you own.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="what">
+  <div class="wrap">
+    <div class="houses">
+      <div>
+        <div class="sec-head"><h2>How it works</h2></div>
+        <p><b>Static recompilation.</b> 68000 basic blocks are translated into generated C
+        functions, each returning the next PC, driven by a flat dispatch loop. Indirect
+        transfers are computed return values rather than nested calls, so the C stack never
+        grows.</p>
+        <p>That was chosen over a hand decompilation &mdash; realistically person-years for a
+        1 MiB cartridge &mdash; and over extracting the assets into a new engine. The deciding
+        factor: the game's main state machine dispatches through a function pointer held in
+        RAM, so static analysis alone cannot reach most of the ROM.</p>
+        <p><b>Instruction semantics are defined exactly once</b>, as data. The recompiler and
+        every generated test come from the same definition, so an instruction cannot behave one
+        way in one place and differently in another.</p>
+        <p class="dim">Some game logic is now ours: the cursor's edge-scrolling is reimplemented
+        in C, and a checker runs both implementations on every call, diffing RAM, registers,
+        flags, cycles and the exit PC.</p>
+      </div>
+      <div class="relics">
+        <figure class="box">
+          <img src="img/box.jpg" alt="The Mega Drive box art for Dune: The Battle for Arrakis" width="620" height="1152">
+          <figcaption>The 1993 box</figcaption>
+        </figure>
+        <figure class="cart">
+          <img src="img/cart.jpg" alt="The European Mega Drive cartridge" width="900" height="573">
+          <figcaption>The European cartridge db4a reads</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="rule"></div>
+    <p><b>db4a</b> is an unaffiliated technical exercise in binary translation, made by the
+    community. It is not a Sega release and is not connected to the rights holders.</p>
+    <p><i>Dune: The Battle for Arrakis</i> is &copy; Virgin Interactive / Westwood Studios.
+    Box and cartridge photography is used here to identify the game it rebuilds; screenshots
+    are of db4a's own output. No game data is included in this project.</p>
+    <p><a href="https://github.com/Vegasq/db4a">github.com/Vegasq/db4a</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
