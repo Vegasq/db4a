@@ -10,9 +10,16 @@
 #include <stdio.h>
 
 /* setenv/unsetenv are POSIX and absent from MinGW's UCRT, where the runtime
-   offers _putenv_s instead. Setting a variable to the empty string is how that
-   API removes it. Only the test needs this: src/config.c reads the
-   environment with getenv, which is standard C. */
+   offers _putenv_s instead. Only the test needs this: src/config.c reads the
+   environment with getenv, which is standard C.
+
+   Note what the Windows CRT cannot express: _putenv_s(k, "") REMOVES the
+   variable rather than setting it to an empty string, and the shell agrees --
+   `set X=` in cmd deletes X. So "present but empty" does not exist there, and
+   the one case below that depends on it is skipped rather than asserted with
+   a different expectation. Skipping says the platform cannot represent the
+   input; asserting `got 1` would say the code behaves differently, which is
+   not true. */
 #if defined(_WIN32)
 #include <stdlib.h>
 static int setenv(const char *k, const char *v, int overwrite) {
@@ -60,8 +67,15 @@ int main(void) {
     chk("true",                      with("true", 0), 1);
     chk("TRUE is case-insensitive",  with("TRUE", 0), 1);
 
-    /* `DB4A_MUTE= make play` is how a shell says no. */
+    /* `DB4A_MUTE= make play` is how a shell says no. Unrepresentable on
+       Windows, where setting a variable to empty deletes it -- see the note by
+       the shim above. */
+#if defined(_WIN32)
+    printf("  skip empty is off, not present     (the Windows CRT deletes"
+           " a variable set to empty)\n");
+#else
     chk("empty is off, not present", with("", 1), 0);
+#endif
 
     /* A typo must not read as yes. It warns on stderr and falls back. */
     printf("  (a warning on stderr is expected next)\n");
