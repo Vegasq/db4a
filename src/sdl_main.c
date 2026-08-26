@@ -180,7 +180,7 @@ int main(int argc, char **argv) {
     /* Fullscreen uses the DESKTOP flavour: it keeps the current display mode
        and scales into it rather than changing the monitor's resolution, so
        there is no mode switch and alt-tab behaves. */
-    if (cfg("DB4A_FULLSCREEN"))
+    if (cfg_bool("DB4A_FULLSCREEN", 0))
         SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
@@ -194,7 +194,7 @@ int main(int argc, char **argv) {
        support), so sizing from it letterboxes the real content inside a
        permanently 512-wide window. */
     SDL_RenderSetLogicalSize(ren, fb_width, fb_height);
-    if (cfg("DB4A_INTEGER")) {
+    if (cfg_bool("DB4A_INTEGER", 0)) {
         SDL_RenderSetIntegerScale(ren, SDL_TRUE);
         printf("integer scaling: on\n");
     }
@@ -229,7 +229,7 @@ int main(int argc, char **argv) {
     }
 
     { const char *g = cfg("DB4A_GAIN"); if (g) { int n = atoi(g); if (n > 0 && n <= 64) audio_gain = n; } }
-    if (cfg("DB4A_MOUSE")) {
+    if (cfg_bool("DB4A_MOUSE", 0)) {
         mouse_enable(1);
         menu_enable(1);
         menus_enable(1);
@@ -446,7 +446,7 @@ int main(int argc, char **argv) {
            over our window, so the desktop is unaffected. */
         if (mouse_enabled()) {
             static int keep = -1;
-            if (keep < 0) keep = cfg("DB4A_SYSCURSOR") ? 1 : 0;
+            if (keep < 0) keep = cfg_bool("DB4A_SYSCURSOR", 0);
             int want_hidden = !keep && mouse_steering_active();
             static int hidden = -1;
             if (want_hidden != hidden) {
