@@ -593,6 +593,16 @@ int main(int argc, char **argv) {
     vdp_dump();
     psg_report();
     ym_report();
+    if (wav) {
+        uint32_t data = (uint32_t)(wav_samples * 4), riff = data + 36;
+        uint8_t v[4];
+        v[0]=(uint8_t)riff; v[1]=(uint8_t)(riff>>8); v[2]=(uint8_t)(riff>>16); v[3]=(uint8_t)(riff>>24);
+        fseek(wav, 4, SEEK_SET);  fwrite(v, 1, 4, wav);
+        v[0]=(uint8_t)data; v[1]=(uint8_t)(data>>8); v[2]=(uint8_t)(data>>16); v[3]=(uint8_t)(data>>24);
+        fseek(wav, 40, SEEK_SET); fwrite(v, 1, 4, wav);
+        fclose(wav);
+        printf("wrote %lu samples (%.2f s of audio)\n", wav_samples, wav_samples / (double)PSG_RATE);
+    }
     vdp_nt_report();
     /* DB4A_VRAM=file writes VRAM followed by CRAM, for offline inspection of
        what the game actually put in the tilemaps. */
