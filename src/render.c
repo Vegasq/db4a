@@ -289,6 +289,7 @@ int render_world_offset(void) {
 }
 
 void render_frame(void) {
+    mapview_poll();        /* the base, from the game's pointer, before any draw */
     mapview_check();
     widescreen_extend();   /* draw the map columns the cartridge leaves out */
     uint32_t nt_a = (uint32_t)(VDP.reg[2] & 0x38) << 10;
