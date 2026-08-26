@@ -45,7 +45,24 @@ DB4A_REPLAY=data/recordings/level1atredis.txt DB4A_WIDE=640 DB4A_TALL=480 \
 
 # house selection
 make playthrough SCENARIO=houseselect
+
+# the campaign gallery: the same recording carries on past mission one.  It
+# wins around frame 15200, plays the briefing, enters mission two by 17400,
+# and reaches Defeat once the enemy is left to work.
+DB4A_REPLAY=data/recordings/level1atredis.txt DB4A_WIDE=400 \
+    DB4A_SHOTS=15400,16200,16800,48000,58000 DB4A_PPM=build/shots/m2 \
+    ./build/db4a "$ROM" 90000
+
+# the other two houses, scripted rather than recorded -- the same input
+# schedule tests/houses.sh uses, with one extra 'right' per house
+DB4A_PRESS="2400:start,2760:right,2820:right,3100:b,3300:b,3500:b,3700:b,3900:b,4100:b,4300:b,4500:b,4700:b,4900:b,5100:b,5300:b" \
+    DB4A_HOLD=8 DB4A_WIDE=400 DB4A_SHOTS=2900,3250,4400,6400 \
+    DB4A_PPM=build/shots/hs2 ./build/db4a "$ROM" 6600
 ```
+
+Menu and cutscene captures are taken at 400 wide and cropped to the centre
+320 (`-crop 320x224+40+0`), because those screens are 320-wide compositions
+that db4a centres rather than stretches.
 
 `img/gameplay-320.png` and `img/gameplay-wide.png` are the **same frame** of the
 same replay at two view widths, which is what makes the comparison on the page
