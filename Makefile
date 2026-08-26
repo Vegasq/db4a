@@ -208,13 +208,18 @@ check-houses: build/db4a
 	./tests/houses.sh
 
 ## test - build and run all unit tests
-test: build/test_flags build/test_ea build/test_sem build/test_psg build/test_ym build/test_z80_timing
+test: build/test_flags build/test_ea build/test_sem build/test_psg build/test_ym build/test_z80_timing build/test_config
 	./build/test_flags
 	./build/test_ea
 	./build/test_sem
 	./build/test_psg
 	./build/test_ym
 	./build/test_z80_timing
+	./build/test_config
+
+build/test_config: tests/test_config.c src/config.c include/config.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) tests/test_config.c src/config.c -o $@
 
 build/test_flags: tests/test_flags.c include/m68k.h
 	@mkdir -p build

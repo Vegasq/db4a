@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <strings.h>
 
 #define MAX_KEYS 64
 static struct { char key[32]; char val[192]; } entries[MAX_KEYS];
@@ -65,4 +66,21 @@ const char *cfg(const char *env_name) {
         if (!k[j] && !entries[i].key[j]) return entries[i].val;
     }
     return NULL;
+}
+
+int cfg_bool(const char *env_name, int dflt) {
+    const char *v = cfg(env_name);
+    if (!v) return dflt;
+    /* `DB4A_MUTE= make play` is the shell's way of saying no, so honour it as
+       one rather than as a present-and-therefore-yes. */
+    if (!*v) return 0;
+    static const char *const no[]  = { "0", "no",  "off", "false", NULL };
+    static const char *const yes[] = { "1", "yes", "on",  "true",  NULL };
+    for (unsigned i = 0; no[i];  i++) if (!strcasecmp(v, no[i]))  return 0;
+    for (unsigned i = 0; yes[i]; i++) if (!strcasecmp(v, yes[i])) return 1;
+    /* Neither. Say so and fall back, because silently reading a typo as yes is
+       how a player ends up believing they turned something off. */
+    fprintf(stderr, "%s: \"%s\" is not yes or no -- using %s\n",
+            env_name, v, dflt ? "yes" : "no");
+    return dflt;
 }

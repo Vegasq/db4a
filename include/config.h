@@ -23,4 +23,15 @@
 void        config_load(void);              /* call once at startup */
 const char *cfg(const char *env_name);      /* env first, then the file, else NULL */
 
+/* A setting that is on or off, with a default for when nobody said.
+ *
+ * Testing cfg() for non-NULL is NOT good enough: it asks whether the key is
+ * present, and `mute = 0` in db4a.conf is present. That reads as yes, so the
+ * one line a player would write to keep the sound on silences it instead.
+ * Accepts 0/no/off/false and 1/yes/on/true either case, treats an empty value
+ * as off so `DB4A_MUTE= make play` works the way a shell reader expects, and
+ * warns rather than guessing when the value is neither.
+ */
+int         cfg_bool(const char *env_name, int dflt);
+
 #endif
