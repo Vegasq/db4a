@@ -22,6 +22,11 @@
    DB4A_GAIN overrides for anyone who wants it louder or quieter. */
 #define AUDIO_GAIN audio_gain
 static int audio_gain = 4;
+/* Stereo frames of ramp applied after an intro skip lands -- see the landing
+   site for why. A second reaches full level long before the player's next
+   input matters, and is long enough to read as a fade rather than a glitch. */
+#define SKIP_FADE_FRAMES (PSG_RATE)
+static unsigned skip_fade;
 #include "input.h"
 #include "system.h"
 #include "invariant.h"
@@ -598,6 +603,20 @@ int main(int argc, char **argv) {
                  the last quarter-second of the intro. */
               t0 = SDL_GetTicks64() - (Uint64)(frames * 1000.0 / PAL_HZ);
               if (audio) SDL_ClearQueuedAudio(audio);
+              /* The soundtrack is part of the fast-forwarded state, so the piece
+                 scoring the title sequence is joined 43-odd seconds in: whatever
+                 was playing at the press cuts to silence for the 0.7 s the skip
+                 takes, then the theme snaps back mid-phrase at full mix, with
+                 notes keyed during the skipped span entering without their
+                 attacks.
+                 .
+                 The music itself is provably right -- capture a skipped run and
+                 an unattended one and the samples after the landing are
+                 bit-identical, prefix and suffix accounting for every byte -- so
+                 this belongs in the output stage and not in the emulation.
+                 Ramping the mix in also removes the step-click where the new
+                 stream starts at a non-zero sample. */
+              skip_fade = SKIP_FADE_FRAMES;
           } }
         pc = system_frame(pc);
         if (m68k_last_unknown) {
@@ -627,6 +646,12 @@ int main(int argc, char **argv) {
                 int32_t p = (i < pn) ? pbuf[i] : 0;
                 l = (l + p) * AUDIO_GAIN;
                 r = (r + p) * AUDIO_GAIN;
+                if (skip_fade) {            /* ramp up after an intro skip */
+                    unsigned done = SKIP_FADE_FRAMES - skip_fade;
+                    l = (int32_t)((int64_t)l * done / SKIP_FADE_FRAMES);
+                    r = (int32_t)((int64_t)r * done / SKIP_FADE_FRAMES);
+                    skip_fade--;
+                }
                 if (l >  32767) l =  32767;
                 if (l < -32768) l = -32768;
                 if (r >  32767) r =  32767;
