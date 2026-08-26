@@ -543,6 +543,16 @@ Because it is rebased, the fixture frames in `tests/menus.sh` and the seeds in
 `data/seeds.txt` belong on `master` even when a `remaster`-only feature is what
 exposed them, so both branches get them.
 
+**Pushing `remaster` publishes a release.** `.github/workflows/release.yml`
+builds a package on Windows and Linux and replaces the rolling pre-release
+tagged `remaster-latest`. Rolling rather than versioned for the same reason
+the branch is rebased: every update to it is a force-push with new SHAs, and
+one release per rebase would be a page of near-identical entries. So a push to
+`remaster` is a publication -- treat it as one. `master` publishes nothing.
+
+The archives contain the cartridge, as `tools/package.sh` has always made them
+do; the release notes say so and point at README's Legal section.
+
 ## Repository layout
 
 ```

@@ -1,6 +1,7 @@
 # db4a
 
-A native Linux rebuild of **Dune: The Battle for Arrakis** (Mega Drive, 1993).
+A native rebuild of **Dune: The Battle for Arrakis** (Mega Drive, 1993), for
+Linux and Windows.
 
 Not an emulator running a ROM in a generic machine — the game's 68000 code is
 statically recompiled into C, compiled into the executable, and linked against
@@ -52,6 +53,33 @@ like save states are frontend-only and never alter emulation.
 - **Not every mission has been played.** The campaign's structure is verified
   (all houses, mission progression, win and lose), but the later missions of
   each house have not been played through.
+
+---
+
+## Download
+
+Ready-to-run builds of the **`remaster`** branch -- the one with mouse control
+and the widened view -- are published on every push to it:
+
+### [db4a remaster (latest)](https://github.com/Vegasq/db4a/releases/tag/remaster-latest)
+
+| | |
+|---|---|
+| `...-windows.zip` | Unzip anywhere and run `play.bat`. SDL2.dll is in the folder; there is nothing to install. |
+| `...-linux.tar.gz` | Needs SDL2 from your distribution; `./play.sh` says so and names the package if it is missing. |
+
+Each archive carries a `BUILD.txt` that identifies the build exactly -- quote
+it in a bug report -- and a `report/` directory for anything worth sending
+back. `play.sh --record` / `play.bat --record` writes your inputs to it, and a
+recording replays deterministically, so a bug caught in one can be reproduced
+rather than hunted for.
+
+That tag rolls. `remaster` is rebased onto `master` rather than merged, so it
+is force-pushed; the release is replaced on every push and always describes the
+current tip. Keep the file if you want to keep the build.
+
+The faithful `master` build, which matches the cartridge exactly, is not
+published -- build it from source.
 
 ---
 
