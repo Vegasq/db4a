@@ -12,8 +12,9 @@ $ make
 $ make play
 ```
 
-**You must supply your own ROM.** No game data is included in this repository,
-and none ever will be — see [Requirements](#requirements).
+**The cartridge is included in this repository**, because the build cannot run
+without it: the game's 68000 code is translated from the ROM at build time. See
+[Legal](#legal) for what that means and how to ask for its removal.
 
 ---
 
@@ -71,7 +72,8 @@ sudo dnf install -y python3-capstone binutils-m68k-linux-gnu asl SDL2-devel
 
 ### The ROM
 
-Place a legally obtained dump at:
+**Already present**, at the path below. `make verify-rom` checks it against the
+known-good SHA-1, and every analysis target depends on that check passing:
 
 ```
 roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin
@@ -82,13 +84,14 @@ size  1048576
 sha1  133cc86b43afe133fc9c9142b448340c17fa668e
 ```
 
-`make verify-rom` checks it. The build reads the ROM to generate code and the
-binary loads it at runtime; **neither the ROM nor anything extracted from it is
-distributed here.** `roms/` is gitignored, as are framebuffers, RAM dumps and
-audio captures, all of which are derived from the cartridge.
+The build reads it to generate code, and the binary loads it at runtime rather
+than baking it in. If it is ever removed from this repository (see
+[Legal](#legal)), put your own legally obtained dump at that exact path and
+everything works again -- the path and the SHA-1 are all the build cares about.
 
-Obtaining the ROM is your responsibility. In most jurisdictions this means
-dumping a cartridge you own.
+Everything *derived* from the cartridge is still gitignored: framebuffers, RAM
+dumps, save states, audio captures and packaged builds, every one of them
+regenerable from a `make` target.
 
 ---
 
@@ -290,9 +293,25 @@ a measurement pointed confidently in the wrong direction.
 
 ## Legal
 
-This repository contains original tools and code. It contains **no game data**:
-no ROM, no extracted assets, no dumps of cartridge memory.
+*Dune: The Battle for Arrakis* is **© Virgin Interactive / Westwood Studios**.
+Westwood was acquired by Electronic Arts in 1998, so the rights are EA's today.
+This project is unaffiliated with any of them, and is a technical exercise in
+binary translation.
 
-*Dune: The Battle for Arrakis* is © Virgin Interactive / Westwood Studios. This
-project is an unaffiliated technical exercise in binary translation and requires
-you to supply your own legally obtained copy of the game.
+**The repository includes a copy of the cartridge**, at
+`roms/Dune-The-Battle-for-Arrakis_Genesis_EN/`. It is here for one reason: the
+build translates the ROM's 68000 code into C, so without it the project cannot
+be built at all — not from a clean checkout, and not in CI. Nothing about the
+game's age changes who owns it, and no claim is made here that including it is
+permitted.
+
+**If a rights holder asks for it to be removed, it will be removed** — promptly,
+and from the history rather than just the tip, so clones stop carrying it. Open
+an issue or contact the repository owner. The rest of the project stands without
+it: every tool, every test and every line of hand-written C here is original
+work, and the build falls back to requiring a user-supplied dump exactly as it
+did before.
+
+Everything else derived from the cartridge stays out of the repository, and
+`.gitignore` enforces it: framebuffers, RAM dumps, save states, audio captures
+and packaged builds are all regenerable from a `make` target.
