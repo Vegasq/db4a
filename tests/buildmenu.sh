@@ -11,7 +11,8 @@ set -eu
 cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
 ST=build/buildmenu.state
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d build/tmp.XXXXXX)   # relative: db4a is native on Windows, /tmp is not
+trap 'rm -rf "$TMP"' EXIT
 
 # Frame 2645 of the power-station recording sits in the console with the
 # highlight on EXIT. NOT 2660: the recording presses A there, so a state saved

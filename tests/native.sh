@@ -23,7 +23,8 @@ cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
 REC=data/recordings/level1atredis.txt
 FRAMES=${FRAMES:-12000}
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d build/tmp.XXXXXX)   # relative: db4a is native on Windows, /tmp is not
+trap 'rm -rf "$TMP"' EXIT
 
 echo "-- per-call equivalence, $FRAMES frames of the recorded mission"
 DB4A_NATIVE=check DB4A_REPLAY=$REC ./build/db4a "$ROM" "$FRAMES" >/dev/null 2>"$TMP/err"
