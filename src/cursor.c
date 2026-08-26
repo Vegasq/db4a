@@ -355,9 +355,12 @@ static int32_t max_speed(void) {
     return v;
 }
 
-uint32_t native_cursor_scroll(void) {
-    CPU.a[0] = CUR_X;                          /* the lea the block opens with */
-
+/* The modern scroll, shared by normal play and by placing a building.
+ *
+ * Both the cartridge's routines -- $706C in play, $64D2 while placing -- carry
+ * their own copy of the same edge-scroll arithmetic, so the replacement is
+ * shared the same way rather than written twice. */
+static void modern_band_scroll(void) {
     int     modern = mouse_enabled();
     int     m      = cursor_scroll_band();
     int32_t cap    = modern ? max_speed() : ROM_CAP;
@@ -418,7 +421,11 @@ uint32_t native_cursor_scroll(void) {
                       snap, cap, shift, 42, 80, 34, 24 };
     scroll_axis(&x);
     scroll_axis(&y);
+}
 
+uint32_t native_cursor_scroll(void) {
+    CPU.a[0] = CUR_X;                          /* the lea the block opens with */
+    modern_band_scroll();
     /* $71E0 reloads both scroll outputs from RAM and applies them to the
        camera, so nothing needs to be left in registers beyond what the blocks
        we replaced would have left. */
@@ -438,10 +445,20 @@ uint32_t native_cursor_scroll(void) {
  * the map out from under a pointer that is already where the player is
  * looking.
  *
- * Rather than reimplement the routine, this takes the outcome it produces when
- * the cursor is already inside the dead zone -- no scroll -- and rejoins the
- * ROM at $66F4, its own tail, which reads the two scroll outputs, applies them
- * (zero, so nothing moves) and returns the way it always does.
+ * This used to take the outcome the routine produces when the cursor is
+ * already inside the dead zone -- NO SCROLL AT ALL -- and rejoin the ROM at
+ * $66F4. That killed the auto-centring, which was the point, and with it every
+ * other reason the view moves: while a building was waiting to be placed the
+ * map could not be scrolled by any means, mouse or arrows, so a site off the
+ * current screen could not be reached. Measured by holding left through a
+ * placement in data/recordings/tour.txt: CAM_X pinned at 1695 for the whole
+ * hold, against 1283 -> 1060 with the cartridge's own routine back.
+ *
+ * So it now runs the same modern band scroll as normal play and writes its
+ * result to the two scroll outputs, rejoining the ROM at $66F4, which reads
+ * them and applies them the way it always does. The auto-centring is still
+ * gone -- it lived in the dead zone's extent shift, which this does not
+ * reproduce -- but the player can scroll again.
  *
  * Skipping the routine outright is not an option: all twelve callers reach
  * $64D2 by bra/beq/jmp rather than bsr/jsr, so it has no return address of its
@@ -461,9 +478,13 @@ uint32_t native_placement_scroll(void) {
     CPU.a[0] = CUR_X;                      /* the lea the block opens with */
     ww(OUT_X, 0);
     ww(OUT_Y, 0);
+    modern_band_scroll();
     /* What the routine's own no-scroll path costs, summed from the blocks it
        replaces: $64D2 110, $6516 58, $6528 26, $6530 18, $659E 46, $65B6 58,
-       $6600 50, $6610 26, $6618 18, $668A 46, $66A4 58. */
+       $6600 50, $6610 26, $6618 18, $668A 46, $66A4 58. Approximate now that
+       the shared scroll runs and bills its own blocks on top: this override is
+       a deliberate behaviour change, so no checker holds it to the cartridge's
+       cycle count. */
     CPU.cycles += 514;
     return 0x66F4u;
 }
