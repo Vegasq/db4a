@@ -2799,3 +2799,51 @@ the first run reported "gave up after 3600 frames".
 Verified: `make check-skipintro` (lands on frame 2164, that frame identical to
 the unattended run's, refused once the menu is up, and `skipintro = 0` sits
 through it), plus the suite unchanged.
+
+## 2026-08-25 — the intro skip splices the soundtrack, and the emulation is innocent
+
+Reported as "some funkiness with music when we skip intro". The symptom is a
+hard splice: whatever is playing at the press cuts off mid-note, there is about
+0.7 s of dead silence while the fast-forward runs, and then the title theme
+snaps in some 43 seconds into the piece -- mid-phrase, at full mix, with notes
+that were keyed on during the skipped span sounding without their attacks, plus
+a step-click where the new stream starts at a non-zero sample.
+
+**The emulation is provably right, which is the useful half of this.** Capture a
+skipped run and an unattended one and compare the raw samples:
+
+```
+DB4A_WAV=A.wav ./build/db4a "$ROM" 3000
+DB4A_WAV=B.wav DB4A_SKIP_AT=800 ./build/db4a "$ROM" 3000
+
+common prefix         : 2840260 bytes = frame 800.3
+common suffix         : 2968236 bytes = 836.3 frames
+prefix+suffix covers B: 5808496 of 5808496 bytes -> ENTIRELY
+audio missing from B  : 4843000 bytes = 1364.5 frames   (the skipped span)
+```
+
+B is A's first 800 frames followed by A from frame 2164, bit-for-bit, with
+nothing else in it. Tempo, Timer A, the envelopes and the Z80 driver all come
+through the skip intact -- which they had to, since the skip runs the frames
+rather than fabricating a state, but it is worth having measured rather than
+assumed. Save states either side of the landing differ in two bytes, and those
+are uninitialised struct padding in `z80bus_t`, not state.
+
+So nothing is damaged. The soundtrack position is simply part of what gets
+fast-forwarded, and the player hears one point of the score cut to another.
+That puts the fix in the output stage, not the emulation: a one-second ramp
+armed where the skip lands, beside the existing `t0` rebase and the queue
+clear. The theme fades up instead of slamming in, and starting the ramp at zero
+also kills the step-click.
+
+It lives in `src/sdl_main.c` and touches no emulation state at all -- confirmed
+by re-running the headless capture after the change and getting a byte-identical
+file. `check-skipintro` still reports the landed frame identical to the
+unattended run.
+
+**What this does not do** is start the theme from the top. That needs the music
+re-cued at the landing through the game's own play-sound entry at `$2DDAE`,
+which means reverse-engineering the track id and the mailbox protocol, and which
+writes sound-driver state -- deliberately outside what the skip does today,
+since "arrives in exactly the state waiting would have produced" is the property
+the whole feature is built on. A separate decision, not a bug fix.
