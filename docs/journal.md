@@ -2947,8 +2947,11 @@ it has not been explained frame by frame.
 ## 2026-08-25 — the black bar was ours: a guard that outlived its measurement
 
 Reported from play and pinned down from a save state the player took at the
-moment it was visible (`data/states/worms-report.state`, a later Atreides
+moment it was visible (a later Atreides
 mission, `CAM_X=1493` inside limits 112..1696 -- nowhere near a camera edge).
+The state itself is not in the repository and cannot be: it is a dump of
+cartridge memory. `data/recordings/tour-password.txt` is the session that
+reached that mission, through the Options screen's password entry.
 
 The bar is **39 pixels wide, with a straight vertical edge**: 138 of 217 rows
 have their first lit pixel at exactly x=39. Fog has a blobby, cell-aligned
