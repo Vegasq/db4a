@@ -3023,3 +3023,48 @@ At 640 wide the same state keeps a 44-pixel black edge, and it is NOT fog: the
 cells under it hold real plane-B tiles (143, 127, 142, 139, 138), none of them
 the map's fog tile `$00B`. Something else bounds the fill that far west. It
 does not affect the default 400, which is where this was reported.
+
+## 2026-08-25 — placing a building meant not being able to look for a site
+
+Reported from play: with a building waiting to be placed, the map could not be
+scrolled by any means -- neither the pointer at the screen edge nor the arrow
+keys -- so a site off the current screen could not be reached.
+
+The cause is the override that suppresses the auto-centring. Placement runs its
+own copy of the edge-scroll routine at `$64D2`, and `native_placement_scroll`
+replaced it with the outcome that routine produces when the cursor is already
+inside its dead zone: `OUT_X = OUT_Y = 0`, rejoining the ROM at `$66F4`. That
+removes the auto-centring, which was the point -- and with it every other
+reason the view moves.
+
+Measured by holding LEFT through a placement in `data/recordings/tour.txt`:
+
+```
+  override on (before)   CAM_X 1695 -> 1695 -> 1695     pinned
+  PLACE_SCROLL=1         CAM_X 1283 -> 1240 -> 1060     scrolls
+  override on (after)    CAM_X 1408 -> 1365 -> 1185     scrolls
+```
+
+### The fix
+
+The modern band scroll is now factored out of `native_cursor_scroll` and run by
+both overrides. Placement writes its result to the same two scroll outputs and
+rejoins `$66F4`, which reads and applies them as it always does.
+
+The auto-centring stays gone, and for a reason worth stating precisely: it does
+not live in the scrolling, it lives in the DEAD ZONE. The cartridge computes
+that zone as `[120 - extent, 200 - extent]`, shifted by the building's own
+size so its centre is dragged into view. The band scroll does not reproduce
+that shift -- it scrolls only within `mouse_edge` pixels of the screen edge, so
+a cursor anywhere in the middle of the screen produces no scroll at all.
+
+**Honest limit on that half.** The four placement onsets in `tour.txt` move the
+camera 0 px both with the override and with the cartridge's own routine,
+because the player kept the cursor mid-screen throughout, so this recording
+cannot exhibit the lurch either way. The claim above is therefore structural --
+the extent shift is not reproduced -- rather than measured against a frame
+where the cartridge visibly lurches. A recording that parks the cursor at a
+screen edge as a building completes would settle it, and does not exist yet.
+
+`check-cursor`, `check-native` (9093 calls, 0 mismatched), `check-menu`,
+`check-state` and `check-mission` (bit-identical at three sizes) pass.
