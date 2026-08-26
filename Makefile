@@ -176,11 +176,11 @@ build/test_z80_timing: tests/test_z80_timing.c src/z80.c include/z80.h
 
 build/test_ym: tests/test_ym.c src/ym2612.c include/ym2612.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+	$(CC) $(CFLAGS) -Iinclude $(filter %.c,$^) -o $@ -lm   # .c only: a .h in $^ makes clang try to precompile it
 
 build/test_psg: tests/test_psg.c src/psg.c include/psg.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+	$(CC) $(CFLAGS) -Iinclude $(filter %.c,$^) -o $@ -lm   # .c only: a .h in $^ makes clang try to precompile it
 
 build/ym2612.o: src/ym2612.c include/ym2612.h include/psg.h
 	@mkdir -p build

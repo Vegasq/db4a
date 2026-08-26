@@ -8,6 +8,20 @@
  * more booleans and one that inverts, so it carries the extra cases too. */
 #include "config.h"
 #include <stdio.h>
+
+/* setenv/unsetenv are POSIX and absent from MinGW's UCRT, where the runtime
+   offers _putenv_s instead. Setting a variable to the empty string is how that
+   API removes it. Only the test needs this: src/config.c reads the
+   environment with getenv, which is standard C. */
+#if defined(_WIN32)
+#include <stdlib.h>
+static int setenv(const char *k, const char *v, int overwrite) {
+    (void)overwrite;
+    return _putenv_s(k, v);
+}
+static int unsetenv(const char *k) { return _putenv_s(k, ""); }
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 
