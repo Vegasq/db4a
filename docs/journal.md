@@ -2847,3 +2847,99 @@ which means reverse-engineering the track id and the mailbox protocol, and which
 writes sound-driver state -- deliberately outside what the skip does today,
 since "arrives in exactly the state waiting would have produced" is the property
 the whole feature is built on. A separate decision, not a bug fix.
+
+## 2026-08-25 — the black bar at a mission's start: nothing to learn from yet
+
+Reported from a live session: the left strip goes black "sometimes". It is not
+sometimes. It is every mission, for as long as the camera stands still.
+
+Reproduced from `data/recordings/tour.txt` at `WIDE=400`, measuring the lit
+fraction of the strip (x < 80) against the 80 columns beside it (x 80..160):
+
+```
+  frame 3109   gameplay begins
+  3110-3200    strip  6.5% lit   neighbouring columns  97% lit
+  3201         the first column or row draw of the whole mission
+  3210         strip 56.7%
+  3220         strip 97.0%
+```
+
+Two seconds of black bar, ending on the first scroll. The cause is not the
+margin renderer: `render.c` reads the map only when `mapview_ready()`, and
+until then falls through to the tilemap, which the cartridge maintains for its
+own 320 pixels only. West of that, at a mission's start, it has never written
+anything.
+
+**The base was knowable the whole time.** `DB4A_LOG_MAPV=1`, added here, prints
+what each candidate scored:
+
+```
+  [mapv]   cand=FF7D9C checked=272 nseen=1 bad=0   -> rejected: sample not diverse
+  [mapv]   cand=FF759C checked=272 nseen=0 bad=272 -> rejected: sample not diverse
+```
+
+The correct base reproduced **272 of 272** sampled tiles on the very first
+draw, and was refused 24 times running. `base_agrees` demands a diverse sample
+-- six distinct entries -- and a mission opens on one repeated shroud tile, so
+`nseen` is 1 however right the candidate is. That gate was added for a good
+reason (a decoy found by searching work RAM once passed on a uniform screen and
+then mismatched 58% of the picture), but it was being applied to a candidate
+that is not searched at all: it is the cartridge's own `a3` minus the cell
+offset, with only the lap in doubt.
+
+Worse than the two seconds: **a session that never scrolls never learns at
+all.** The scripted Harkonnen and Ordos runs in `tests/houses.sh` reach
+gameplay and sit there, and their margin was on the tilemap fallback for the
+entire run.
+
+### The game knows where its map is
+
+`DB4A_RAMDUMP` at frame 3150 -- before any draw -- has exactly one longword in
+work RAM pointing into the map region:
+
+```
+  FFE404 = 00FF7D9C        the base the draws would agree on 50 frames later
+```
+
+Same value in mission 1, mission 2, and all three houses.
+
+So `mapview_poll()` reads `$FFE404` once per rendered frame. It **proposes**;
+`base_agrees` still decides, exactly as strictly as before. A diverse screen
+confirms it outright. A uniform one -- what a mission opens on -- can only say
+the candidate is exact over the sample, so the base is taken PROVISIONALLY and
+every subsequent draw either confirms it or drops it. Nothing draws the margin
+until it has reproduced what the cartridge itself put on screen.
+
+### Result
+
+```
+  [mapv] base=FF7D9C provisional from $FFE404          (mission start)
+  [mapv] base=FF7D9C CONFIRMED by a draw at pc=007468 (draw 25)
+  [mapv] base=FF7D9C tiles=14611272 mismatched=48 (0.00%) frames=7420
+```
+
+Zero drops over the 10612-frame session. The strip at frame 3150 goes from
+6.5% to 36.5% lit; the remainder is genuine shroud and must stay black, which
+is why the number is not 97%. Visually the terrain now runs continuously into
+the margin where there is terrain to run.
+
+`check-res`, `check-map`, `check-margins`, `check-mission`, `check-state`,
+`check-houses`, `check-cursor` and the unit tests all pass unchanged --
+including the cartridge's own picture staying byte-identical at nine view sizes
+and the recorded mission staying bit-identical at four.
+
+### Gotcha, recorded so it is not rediscovered
+
+**Headless renders only at the `DB4A_SHOTS` frames**, so anything hanging off
+`render_frame` -- `mapview_check`, and now `mapview_poll` -- does not run
+without `DB4A_RENDER_ALL=1`. An earlier pass at this concluded the base was
+never learned in *any* recording, which was entirely an artifact of the
+diagnostic never running.
+
+### Still open
+
+In the last 3000 frames of `tour.txt` the cartridge's own view is black while
+the margin shows map, and 2.0M cells are counted `unfilled` -- the cartridge
+leaving `$0000` where it has nothing to show. That is the documented
+camera-limit case rather than a disagreement (mismatched stays at 0.00%), but
+it has not been explained frame by frame.

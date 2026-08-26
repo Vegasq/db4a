@@ -40,8 +40,15 @@
 uint32_t mapview_base(void);
 int      mapview_ready(void);
 
-/* Called on the cartridge's column-draw entry to learn the base. */
+/* Called on the cartridge's column-draw entry to learn, confirm or drop the
+ * base. */
 void mapview_observe(uint32_t pc);
+
+/* Called once per rendered frame. Proposes the base from the game's own
+ * pointer at $FFE404, so the margin works before the first scroll -- and
+ * before any draw exists to learn from. Validated, never trusted: see the
+ * comment on the definition. */
+void mapview_poll(void);
 
 
 /* The nametable entry for one tile of the world, straight from the map.

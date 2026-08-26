@@ -11,10 +11,30 @@
 #define SHROUD     0x00FFC198u     /* set: map values >= $67 draw as tile 0 */
 #define CAM_X      0x00FFE3BEu
 #define CAM_Y      0x00FFE3C0u
+#define MAP_PTR    0x00FFE404u     /* the game's own pointer to cell (0, 0) */
 #define CELL_ROW   0x100u          /* bytes per cell row  */
 #define CELL_COL   4u              /* bytes per cell      */
 
 static uint32_t map_base;          /* address of cell (0, 0) */
+
+/* DB4A_LOG_MAPV=1 -- why the margin is still falling back to the tilemap.
+ *
+ * The margin reads the map only once the base is known; until then it falls
+ * through to the tilemap, which the cartridge maintains for its own 320
+ * pixels only. So "how many draws until the base is learned" is exactly how
+ * long a black bar sits at the left edge of a new mission, and whether those
+ * draws are happening at all is the difference between a missing hook and a
+ * rejected candidate. */
+static int mapv_log(void) {
+    static int on = -1;
+    if (on < 0) on = getenv("DB4A_LOG_MAPV") ? 1 : 0;
+    return on;
+}
+static unsigned long obs_draws;
+
+/* A base is PROVISIONAL until a diverse sample confirms it; see
+   mapview_poll. */
+static int base_confirmed;
 
 uint32_t mapview_base(void)  { return map_base; }
 int      mapview_ready(void) { return map_base != 0; }
@@ -36,7 +56,7 @@ int      mapview_ready(void) { return map_base != 0; }
  * belongs to: try the base, and compare a band of tiles across the middle of
  * the screen against the nametable. A base that is wrong by a lap is wrong by
  * 16 cells and disagrees almost everywhere, so this rejects it immediately. */
-static int base_agrees(uint32_t cand) {
+static int base_agrees(uint32_t cand, int *exact) {
     uint32_t save = map_base;
     map_base = cand;
     int camx = (int)(int16_t)m68k_read16(CAM_X);
@@ -73,7 +93,17 @@ static int base_agrees(uint32_t cand) {
        screen of unexplored map is one tile repeated, where any base agrees and
        the sample proves nothing -- that is how a search over work RAM found a
        decoy that passed and then mismatched 58% of the picture. */
-    return checked >= 200 && nseen >= 6 && bad * 25 <= checked;
+    /* Exact and unique is a second, weaker kind of evidence -- see
+       mapview_observe. Reported separately so the diverse rule below stays
+       exactly as strict as it was. */
+    if (exact) *exact = (checked >= 200 && bad == 0);
+    int ok = checked >= 200 && nseen >= 6 && bad * 25 <= checked;
+    if (mapv_log())
+        fprintf(stderr, "[mapv]   cand=%06X checked=%d nseen=%d bad=%d -> %s\n",
+                cand, checked, nseen, bad,
+                ok ? "AGREES" : (nseen < 6 ? "rejected: sample not diverse"
+                                           : "rejected: disagrees"));
+    return ok;
 }
 
 /* Learn where the map lives, from any draw the cartridge makes.
@@ -94,7 +124,8 @@ static int base_agrees(uint32_t cand) {
  * the cartridge has already drawn is kept. Guessing here is what once put the
  * base a lap out -- $40, exactly 16 cells -- and every tile wrong after it. */
 void mapview_observe(uint32_t pc) {
-    if (map_base) return;
+    if (map_base && base_confirmed) return;
+    obs_draws++;
     int plane_b = (pc == WS_COL_PLANE_B || pc == WS_ROW_PLANE_B);
     uint32_t nb = plane_b ? (uint32_t)(VDP.reg[4] & 0x07) << 13
                           : (uint32_t)(VDP.reg[2] & 0x38) << 10;
@@ -104,6 +135,8 @@ void mapview_observe(uint32_t pc) {
     int camx  = (int)(int16_t)m68k_read16(CAM_X);
     int camy  = (int)(int16_t)m68k_read16(CAM_Y);
     int cbase = camx >> 3, rbase = camy >> 3;
+    int n_exact = 0;
+    uint32_t only_exact = 0;
 
     for (int lc = -1; lc <= 1; lc++) {
         int wcol = cbase + ((ntcol - cbase) & 63) + lc * 64;
@@ -115,8 +148,67 @@ void mapview_observe(uint32_t pc) {
             if ((int)((CPU.d[0] & 0x18u) >> 3) != (wrow & 3)) continue;
             uint32_t cand = CPU.a[3] - (uint32_t)((wcol >> 2) * (int)CELL_COL)
                                      - (uint32_t)((wrow >> 2) * (int)CELL_ROW);
-            if (base_agrees(cand)) { map_base = cand; return; }
+            int exact = 0;
+            if (base_agrees(cand, &exact)) {
+                map_base = cand;
+                base_confirmed = 1;
+                if (mapv_log())
+                    fprintf(stderr, "[mapv] base=%06X CONFIRMED by a draw at "
+                                    "pc=%06X (draw %lu)\n", map_base, pc, obs_draws);
+                return;
+            }
+            if (exact) { n_exact++; only_exact = cand; }
         }
+    }
+
+    /* A provisional base gets tested by every draw until something diverse
+       enough comes along to confirm it. If it stops reproducing the tilemap
+       exactly, drop it rather than keep drawing from it. */
+    if (map_base && !(n_exact == 1 && only_exact == map_base)) {
+        if (mapv_log())
+            fprintf(stderr, "[mapv] provisional base=%06X DROPPED at draw %lu\n",
+                    map_base, obs_draws);
+        map_base = 0;
+    }
+}
+
+/* Take the base from the game's own pointer, once per frame.
+ *
+ * Learning from a draw alone leaves the margin black at the start of every
+ * mission, because the cartridge draws no column or row until the camera
+ * crosses a tile boundary -- measured on data/recordings/tour.txt: gameplay
+ * begins at frame 3109 and the first draw of any kind is at frame 3201, so
+ * the strip sat at 6.5% lit for two seconds while the columns beside it were
+ * at 97%. A player who never scrolls never gets a margin at all, which is
+ * what the scripted Harkonnen and Ordos runs do.
+ *
+ * $FFE404 is the game's own pointer to cell (0, 0). It was found by dumping
+ * work RAM and looking for the base the draws had already agreed on, and it
+ * holds that same value in mission 1, mission 2 and all three houses, before
+ * any draw has happened.
+ *
+ * It is still not TRUSTED. The pointer only proposes; base_agrees decides, by
+ * requiring the candidate to reproduce the tilemap the cartridge has already
+ * written. A diverse screen confirms it outright; a uniform one -- which is
+ * what a mission opens on, every tile the same shroud -- can only say the
+ * candidate is exact over the sample, so it is taken PROVISIONALLY and the
+ * first draw either confirms or drops it. That is the same standard as
+ * before: nothing draws the margin until it has reproduced what the cartridge
+ * itself put on screen. */
+void mapview_poll(void) {
+    if (map_base || !render_widescreen_gameplay()) return;
+    uint32_t cand = m68k_read32(MAP_PTR);
+    if ((cand & 0xFF0000u) != 0xFF0000u) return;   /* must point into work RAM */
+    int exact = 0;
+    if (base_agrees(cand, &exact)) {
+        map_base = cand;
+        base_confirmed = 1;
+        if (mapv_log())
+            fprintf(stderr, "[mapv] base=%06X CONFIRMED from $FFE404\n", map_base);
+    } else if (exact) {
+        map_base = cand;
+        if (mapv_log())
+            fprintf(stderr, "[mapv] base=%06X provisional from $FFE404\n", map_base);
     }
 }
 
