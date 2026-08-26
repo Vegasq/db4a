@@ -294,15 +294,19 @@
           <tr><td>Menus</td><td><b class="ok">Pixel-exact</b> against Genesis-Plus-GX</td></tr>
           <tr><td>Gameplay</td><td><b>99.2%</b> &mdash; the residual is unit positions a pixel or two out</td></tr>
           <tr><td>Pacing</td><td>PAL <b>49.7015 Hz</b>, 0.0002% drift</td></tr>
-          <tr><td>Audio</td><td>YM2612 + PSG, audible; <b class="warn">fidelity outstanding</b></td></tr>
+          <tr><td>Audio</td><td>YM2612 + PSG. Music starts <b class="ok">within 0.02 s</b> of the reference; envelope correlation <b>0.80</b></td></tr>
           <tr><td>Build</td><td><b>~35 s</b> from clean, no warnings</td></tr>
         </table>
       </div>
       <div>
         <div class="note bevel">
           <h4>What is not finished</h4>
-          <p><b>In-game audio is not right yet.</b> Both sound chips work and the music plays,
-          but balance and pacing are off.</p>
+          <p><b>Audio is a question of levels now, not timing.</b> The music bug is fixed:
+          the sound driver was losing a third of its Z80 interrupts, because the VDP holds
+          that interrupt as a level for one scanline and db4a was pulsing it. The music now
+          starts within <b>0.02 s</b> of the reference where it was 12.7 seconds late, and the
+          stream of chip writes matches to 0.3%. What is left is synthesis: the mix runs about
+          3.3 dB hot and its envelope correlates 0.80 against the reference rather than 1.0.</p>
           <p><b>Not every mission has been played.</b> The campaign's structure is verified
           &mdash; all three houses, mission progression, victory and defeat &mdash; but the
           later missions of each house have not been played through by hand.</p>
