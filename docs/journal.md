@@ -3068,3 +3068,66 @@ screen edge as a building completes would settle it, and does not exist yet.
 
 `check-cursor`, `check-native` (9093 calls, 0 mismatched), `check-menu`,
 `check-state` and `check-mission` (bit-identical at three sizes) pass.
+
+## 2026-08-26 — the Windows build, run for the first time rather than compiled
+
+CI has built db4a on Windows since the multiplatform commits, and that is all it
+did: the `build (windows)` job runs `make` and `make check-operands`, and the
+`checks` tier that drives the binary is Linux-only, on the stated grounds that
+nothing in it is platform-specific. Building the toolchain on an actual Windows
+10 machine — MSYS2, MINGW64 shell, gcc/SDL2/python-capstone from pacman — and
+running every `check-*` target showed that ground was wrong. The harness is
+platform-specific even though the code is not.
+
+`make` itself was clean: 31 s, seven unit binaries, all green, and the headless
+`build/db4a.exe` boots the cartridge and reports its usual counters. Two things
+about the output look like faults and are not, and both are now written down:
+GCC appends `.exe`, and `make` plus the MSYS2 shell resolve the Makefile's
+un-suffixed names to those files, so no `$(EXE)` variable is needed; and
+`db4a-sdl.exe` lands in the Windows GUI subsystem because SDL2's own pkg-config
+adds `-mwindows`, so its banner reaches a pipe or a file but not a bare console.
+
+### What actually broke
+
+Two of the fifteen checks. `check-native` and `check-skipintro` first failed
+with `cmp: command not found` — MSYS2's base install has no `diffutils` — and
+did so by printing "frame 6000 differs", which is a missing tool reported as a
+content mismatch. Installing diffutils fixed both, and the package list in the
+README and CLAUDE.md now names it.
+
+The interesting one was `check-cursor` and `check-margins`:
+
+```
+FileNotFoundError: '/tmp/tmp.6KljtFvx0V/e.9600.ram'
+  400x256  west edge , south edge   FAIL (want  / )
+```
+
+Nine harness scripts take a scratch directory from `mktemp -d`, which on MSYS2
+is an MSYS-only path — `/tmp` is `C:\msys64\tmp`, and the binaries the scripts
+drive are native Windows programs that resolve `/tmp/...` against the current
+drive root instead. Seven scripts got away with it because MSYS2 rewrites
+POSIX-looking paths in argv and in the environment as it launches a native
+process, so `DB4A_PPM=/tmp/tmp.XXXX/e` arrived as a Windows path. That rewrite
+cannot see a path embedded in a string, and both failing scripts interpolate one
+into a `python3 -c` program.
+
+The fix is `mktemp -d build/tmp.XXXXXX`. A relative path means the same thing to
+the shell and to the native binary because every one of these scripts already
+cd's to the repository root, there is no implicit rewriting in the middle, and
+the intermediates land under `build/`, where ground rule 2 says reproducible
+output belongs. It changes nothing on Linux or macOS.
+
+### The state of it
+
+Every target passes on Windows 10: `make`, `make check-operands`, and
+check-state, check-houses, check-native, check-menu, check-menus, check-cursor,
+check-map, check-margins, check-mission, check-res, check-jump, check-objects,
+check-mouse, check-skipintro.
+
+Two things were checked rather than assumed, because both would have been quiet.
+`core.autocrlf` is on for this checkout, so the working tree is CRLF; converting
+all of `tests/*.sh` to CRLF and re-running the checks confirmed MSYS2's bash and
+GNU make both tolerate it. And git classifies the committed cartridge as binary
+(`git ls-files --eol` reports `-text`), so a Windows checkout does not mangle
+the dump — which the CI `verify-rom` step had already been demonstrating without
+anyone saying why it was safe.

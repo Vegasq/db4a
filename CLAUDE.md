@@ -67,6 +67,35 @@ sudo dnf install -y python3-capstone binutils-m68k-linux-gnu asl SDL2-devel
 | `asl`                     | 68k assembler, for round-tripping experiments  |
 | `SDL2-devel`              | the HAL / renderer                             |
 
+### Windows
+
+Under MSYS2, from the **MINGW64** shell -- not MSYS, not UCRT64. `gcc` there
+builds a native Windows binary against the MSYS2 SDL2.
+
+```bash
+pacman -S --needed make diffutils coreutils \
+    mingw-w64-x86_64-gcc mingw-w64-x86_64-pkg-config mingw-w64-x86_64-SDL2 \
+    mingw-w64-x86_64-python mingw-w64-x86_64-python-capstone \
+    mingw-w64-x86_64-python-pillow
+```
+
+capstone and Pillow come from `pacman`, never `pip` -- pip has no wheel for
+MSYS2's Python and building from source fails looking for a DLL it never
+produced. `diffutils` (`cmp`) and Pillow are needed only by `check-*`.
+
+**The binaries are `build/db4a.exe`.** GCC appends the suffix; `make` and the
+MSYS2 shell both resolve the un-suffixed names to them, so the Makefile does
+not need an `$(EXE)` variable and should not grow one.
+
+**`db4a-sdl.exe` is a GUI-subsystem binary**, because SDL2's pkg-config adds
+`-mwindows`. Its banner and `DB4A_LOG_*` output reach a pipe or a file --
+which is what the MINGW64 shell gives it -- but not a bare `cmd.exe`.
+
+Verified on Windows 10: `make`, `make check-operands`, and every `check-*`
+target pass. `core.autocrlf` is on there, so the checkout is CRLF; MSYS2's
+bash and GNU make both tolerate it, and git treats the cartridge as binary
+(`git ls-files --eol` says `-text`) so the dump is not mangled.
+
 ---
 
 ## The base ROM
@@ -443,6 +472,14 @@ These cost real debugging time. Do not rediscover them.
   found the cursor code in minutes after static analysis had pointed at the
   wrong one of the two writers. Block granularity, which is what you feed back
   into `tools/` to disassemble. Covers byte, word and long writes.
+- **On MSYS2, never hand an absolute path to `db4a` or to `python3`.** Both are
+  native Windows programs; `/tmp/...` is an MSYS-only path they cannot resolve.
+  MSYS2 papers over this by rewriting POSIX-looking paths in argv and in the
+  environment as it launches a native process, which is why `DB4A_PPM=/tmp/x`
+  worked -- but the rewrite cannot see a path embedded in a string, so the same
+  path inside a `python3 -c` program arrived unconverted and the test reported
+  a missing file as a content mismatch. Harness scripts use `mktemp -d
+  build/tmp.XXXXXX`: a relative path means the same thing on both sides.
 
 - **capstone's m68k `detail` API reports `disp=0` for absolute addressing.**
   It cannot distinguish `jsr $1664.w` from `jsr (a0)` structurally. Parse

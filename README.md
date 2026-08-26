@@ -57,6 +57,10 @@ like save states are frontend-only and never alter emulation.
 
 ## Requirements
 
+Linux, macOS and Windows; CI builds and tests all three.
+
+### Linux
+
 Developed on Fedora 44; any distribution with these packages should work:
 
 ```bash
@@ -69,6 +73,40 @@ sudo dnf install -y python3-capstone binutils-m68k-linux-gnu asl SDL2-devel
 | `binutils-m68k-linux-gnu` | cross-checking capstone's output |
 | `asl` | 68k assembler, for round-tripping experiments |
 | `SDL2-devel` | video, input and audio |
+
+### macOS
+
+```bash
+brew install sdl2
+python3 -m pip install capstone
+```
+
+### Windows
+
+Through [MSYS2](https://www.msys2.org/), from its **MINGW64** shell -- not the
+MSYS or the UCRT64 one. `gcc` there produces a native Windows binary linked
+against the MSYS2 SDL2.
+
+```bash
+pacman -S --needed make diffutils coreutils \
+    mingw-w64-x86_64-gcc mingw-w64-x86_64-pkg-config mingw-w64-x86_64-SDL2 \
+    mingw-w64-x86_64-python mingw-w64-x86_64-python-capstone \
+    mingw-w64-x86_64-python-pillow
+```
+
+capstone and Pillow come from `pacman`, never `pip`: pip has no wheel for
+MSYS2's Python, so it falls back to building capstone from source, wants
+cmake, and then fails looking for a DLL it never produced. `diffutils` (for
+`cmp`) and Pillow are used only by the `check-*` targets -- `make` itself
+needs neither.
+
+Two things look wrong and are not. `make` writes `build/db4a.exe` and
+`build/db4a-sdl.exe`, because GCC appends the suffix; both `make` and the
+MSYS2 shell resolve the names the Makefile uses to those files, so nothing
+needs changing. And `db4a-sdl.exe` is linked into the Windows GUI subsystem,
+because SDL2's own pkg-config adds `-mwindows` -- so the start-up banner and
+the `DB4A_LOG_*` diagnostics reach a pipe or a file, as they do from the
+MINGW64 shell, but not a bare `cmd.exe` window.
 
 ### The ROM
 
