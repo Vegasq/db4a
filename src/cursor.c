@@ -451,10 +451,10 @@ uint32_t native_cursor_scroll(void) {
 /* DB4A_PLACE_SCROLL: unset follows mouse control, 0 forces this override on,
  * 1 forces the cartridge behaviour back. */
 int placement_override_active(void) {
-    const char *e = cfg("DB4A_PLACE_SCROLL");
-    if (e && *e == '0') return 1;
-    if (e && *e == '1') return 0;
-    return mouse_enabled();
+    /* The setting names the CARTRIDGE's behaviour, so the override is its
+       inverse: place_scroll=1 puts the re-centring back and takes the override
+       off. Unset, it follows mouse control. */
+    return !cfg_bool("DB4A_PLACE_SCROLL", !mouse_enabled());
 }
 
 uint32_t native_placement_scroll(void) {

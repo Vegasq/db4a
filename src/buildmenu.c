@@ -101,8 +101,7 @@ void menu_enable(int on) {
 
 /* One switch for every menu screen the pointer can drive. */
 int menu_mouse_wanted(void) {
-    const char *e = cfg("DB4A_MENU_MOUSE");
-    return !(e && *e == '0');
+    return cfg_bool("DB4A_MENU_MOUSE", 1);
 }
 
 int buildmenu_open(void) { return enabled && open_console != NULL; }

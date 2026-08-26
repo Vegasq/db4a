@@ -4,7 +4,8 @@
  * setting was `if (cfg("DB4A_X"))`, which asks whether the key is present --
  * and `mute = 0` in db4a.conf is present. So the one line a player would write
  * to keep the sound on silenced it instead, and nothing in the build noticed.
- * The cases below are the ones that go wrong quietly. */
+ * The cases below are the ones that go wrong quietly. This branch adds five
+ * more booleans and one that inverts, so it carries the extra cases too. */
 #include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,6 +53,22 @@ int main(void) {
     printf("  (a warning on stderr is expected next)\n");
     chk("junk falls back to on",     with("yse", 1), 1);
     chk("junk falls back to off",    with("yse", 0), 0);
+
+    /* placement_override_active() is the inverse of its setting, and this
+       branch is where that setting exists. The name describes the CARTRIDGE's
+       behaviour, so place_scroll=1 puts the re-centring back and takes the
+       override OFF, and unset follows mouse control. Modelled here rather than
+       called, because getting the inversion backwards is silent. */
+    printf("place_scroll inversion\n");
+    for (int mouse = 0; mouse <= 1; mouse++) {
+        char name[64];
+        snprintf(name, sizeof name, "unset follows mouse=%d", mouse);
+        chk(name, !with(NULL, !mouse), mouse);
+        snprintf(name, sizeof name, "=1 cartridge back, mouse=%d", mouse);
+        chk(name, !with("1", !mouse), 0);
+        snprintf(name, sizeof name, "=0 override on, mouse=%d", mouse);
+        chk(name, !with("0", !mouse), 1);
+    }
 
     if (fails) { printf("\n%d FAILED\n", fails); return 1; }
     printf("\nall cfg_bool cases correct\n");
