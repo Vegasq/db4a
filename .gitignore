@@ -1,5 +1,14 @@
 build/
-roms/
+
+# The cartridge IS committed -- see README's Legal section for who owns it and
+# how to ask for its removal. Everything else that lands in roms/ is not: the
+# directory is ignored and the one dump the build depends on is un-ignored by
+# name, so an alternate or bad dump cannot be swept in by `git add -A`.
+roms/*
+!roms/Dune-The-Battle-for-Arrakis_Genesis_EN/
+roms/Dune-The-Battle-for-Arrakis_Genesis_EN/*
+!roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin
+
 *.o
 *.bin.disasm
 __pycache__/
