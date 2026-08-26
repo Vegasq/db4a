@@ -1,0 +1,17 @@
+# Line endings are LF, in the repository and in every checkout.
+#
+# Without this a Windows checkout with core.autocrlf=true holds CRLF, while
+# MSYS2's git -- which has autocrlf off -- reads that same worktree as though
+# every line of every file had been rewritten: 120 files, 33680 insertions,
+# 33680 deletions. tools/package.sh asks git whether the tree is clean, so the
+# packages it built on Windows were all stamped "-dirty" and their BUILD.txt
+# claimed "WITH UNCOMMITTED CHANGES" against a checkout nobody had touched.
+#
+# The two gits have to agree, and LF is what the repository already stores.
+* text=auto eol=lf
+
+# The cartridge is bytes, not text. git works this out for itself -- see
+# `git ls-files --eol`, which reports -text -- but only from a NUL byte in the
+# first 8 KiB, and being wrong here would corrupt the dump silently until
+# verify-rom caught it.
+*.bin -text
