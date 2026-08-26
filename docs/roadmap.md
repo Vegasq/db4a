@@ -78,14 +78,17 @@ Stating these to prevent scope drift:
 - **Not a new engine.** Game logic comes from the recompiled original, not a
   reimplementation.
 - **Not multiplayer**, and not a rebalance of game design.
-- **No game data is redistributed.** See below.
+- **No game data beyond the cartridge itself.** See below.
 
 ## Distribution constraint
 
-The build **loads a user-supplied ROM at runtime**. No game data is committed
-to this repository or shipped with the binary — the repo contains tools and
-generated source only. This is why `roms/` is gitignored and why the ROM path
-is a runtime argument rather than baked in.
+The build **loads the ROM at runtime** rather than baking it into the binary,
+and the path is an argument. That was originally so that no game data need be
+committed; since 2026-08-25 the cartridge is committed anyway, because code
+generation cannot run without it. The separation is still worth keeping: it is
+what lets the ROM be removed on request without touching a line of code, and
+what keeps everything DERIVED from the cartridge — framebuffers, RAM dumps,
+save states, captures — out of the repository.
 
 ## Portability constraints
 

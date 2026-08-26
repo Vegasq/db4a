@@ -15,7 +15,8 @@ cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
 REC=data/recordings/level1atredis.txt
 FR=6000,9000,12000,15000,18000
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d build/tmp.XXXXXX)   # relative: db4a is native on Windows, /tmp is not
+trap 'rm -rf "$TMP"' EXIT
 
 DB4A_REPLAY=$REC DB4A_SHOTS=$FR DB4A_RAMDUMP=1 DB4A_PPM="$TMP/b" \
     ./build/db4a "$ROM" 18100 >/dev/null 2>&1

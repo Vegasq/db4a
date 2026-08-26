@@ -29,7 +29,8 @@ set -eu
 cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
 REC=data/recordings/level1atredis.txt
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d build/tmp.XXXXXX)   # relative: db4a is native on Windows, /tmp is not
+trap 'rm -rf "$TMP"' EXIT
 fail=0
 
 # ---- A. the margin shows the true map ------------------------------------

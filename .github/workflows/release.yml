@@ -1,0 +1,138 @@
+# Release builds for remaster.
+#
+# remaster is REBASED onto master and force-pushed rather than merged, so every
+# update to it arrives as a push carrying new SHAs. Cutting a numbered release
+# per push would fill the releases page with one near-identical entry per
+# rebase, so this publishes a single rolling pre-release, `remaster-latest`,
+# replaced each time. The download URL stays put; the history stays in git.
+#
+# Windows and Linux only for now. macOS builds in CI but has never had a
+# package built for it -- tools/package.sh calls sha1sum, which macOS does not
+# ship, so that needs doing before a mac asset can be added here.
+#
+# Each job builds from scratch and runs the unit tests (tools/package.sh calls
+# `make all`) plus one harness check, so a release cannot be cut from a tree
+# that does not build. The full CI workflow runs on the same push, in parallel.
+
+name: Release
+
+on:
+  push:
+    branches: [remaster]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: package (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and capstone
+        run: |
+          sudo apt-get update && sudo apt-get install -y libsdl2-dev
+          python3 -m pip install --break-system-packages capstone || python3 -m pip install capstone
+      - name: Build and run the unit tests
+        run: make
+      - name: Start skips the intro
+        run: make check-skipintro
+      - name: Package
+        run: ./tools/package.sh -B -t -n "db4a-remaster-${GITHUB_SHA:0:7}-linux"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: build/dist/*.tar.gz
+          if-no-files-found: error
+
+  windows:
+    name: package (windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            coreutils
+            diffutils
+            git
+            zip
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-capstone
+      # MSYS2's git is a separate installation from the one actions/checkout
+      # ran, and does not have this tree on its safe.directory list.
+      # tools/package.sh asks git for the branch and commit, so it needs to.
+      - name: Let MSYS2's git read the checkout
+        run: git config --global --add safe.directory "$(pwd)"
+      - name: Build and run the unit tests
+        run: make
+      - name: Start skips the intro
+        run: make check-skipintro
+      # Produces the folder, SDL2.dll and play.bat included, and zips it.
+      - name: Package
+        run: ./tools/package.sh -B -t -n "db4a-remaster-${GITHUB_SHA:0:7}-windows"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: build/dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: publish remaster-latest
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Replace the rolling pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          ls -lh assets
+
+          short=${GITHUB_SHA:0:7}
+          {
+            echo "Automatic build of \`remaster\` at [\`$short\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)."
+            echo
+            echo '| download | for |'
+            echo '|---|---|'
+            echo '| `*-windows.zip` | Windows x86-64. Unzip anywhere and run `play.bat` -- SDL2.dll is in the folder, there is nothing to install. |'
+            echo "| \`*-linux.tar.gz\` | Linux x86-64, built on GitHub's \`ubuntu-latest\`. Needs SDL2 from your distribution; \`./play.sh\` says so and names the package if it is missing. |"
+            echo
+            echo 'Both archives carry `BUILD.txt`, which identifies the build exactly. Quote it in a bug report, and send `report/` with it.'
+            echo
+            echo '**This tag rolls.** `remaster` is rebased onto `master` rather than merged, so it is force-pushed; this release is deleted and recreated on every push and always describes the current tip. Anything you want to keep, keep the file.'
+            echo
+            echo 'The archives contain the cartridge, because the translated code reads its graphics, maps and sound data out of it at run time. See the Legal section of the repository README.'
+          } > notes.md
+
+          # Delete rather than edit: it is the one operation that leaves no
+          # stale asset behind from a previous build. The tag goes with it, and
+          # the second line clears a tag left behind without a release.
+          gh release delete remaster-latest --yes --cleanup-tag || true
+          git push --delete origin remaster-latest || true
+
+          gh release create remaster-latest \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "db4a remaster ($short)" \
+              --notes-file notes.md \
+              assets/*

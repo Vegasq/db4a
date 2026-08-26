@@ -3068,3 +3068,140 @@ screen edge as a building completes would settle it, and does not exist yet.
 
 `check-cursor`, `check-native` (9093 calls, 0 mismatched), `check-menu`,
 `check-state` and `check-mission` (bit-identical at three sizes) pass.
+
+## 2026-08-26 — the Windows build, run for the first time rather than compiled
+
+CI has built db4a on Windows since the multiplatform commits, and that is all it
+did: the `build (windows)` job runs `make` and `make check-operands`, and the
+`checks` tier that drives the binary is Linux-only, on the stated grounds that
+nothing in it is platform-specific. Building the toolchain on an actual Windows
+10 machine — MSYS2, MINGW64 shell, gcc/SDL2/python-capstone from pacman — and
+running every `check-*` target showed that ground was wrong. The harness is
+platform-specific even though the code is not.
+
+`make` itself was clean: 31 s, seven unit binaries, all green, and the headless
+`build/db4a.exe` boots the cartridge and reports its usual counters. Two things
+about the output look like faults and are not, and both are now written down:
+GCC appends `.exe`, and `make` plus the MSYS2 shell resolve the Makefile's
+un-suffixed names to those files, so no `$(EXE)` variable is needed; and
+`db4a-sdl.exe` lands in the Windows GUI subsystem because SDL2's own pkg-config
+adds `-mwindows`, so its banner reaches a pipe or a file but not a bare console.
+
+### What actually broke
+
+Two of the fifteen checks. `check-native` and `check-skipintro` first failed
+with `cmp: command not found` — MSYS2's base install has no `diffutils` — and
+did so by printing "frame 6000 differs", which is a missing tool reported as a
+content mismatch. Installing diffutils fixed both, and the package list in the
+README and CLAUDE.md now names it.
+
+The interesting one was `check-cursor` and `check-margins`:
+
+```
+FileNotFoundError: '/tmp/tmp.6KljtFvx0V/e.9600.ram'
+  400x256  west edge , south edge   FAIL (want  / )
+```
+
+Nine harness scripts take a scratch directory from `mktemp -d`, which on MSYS2
+is an MSYS-only path — `/tmp` is `C:\msys64\tmp`, and the binaries the scripts
+drive are native Windows programs that resolve `/tmp/...` against the current
+drive root instead. Seven scripts got away with it because MSYS2 rewrites
+POSIX-looking paths in argv and in the environment as it launches a native
+process, so `DB4A_PPM=/tmp/tmp.XXXX/e` arrived as a Windows path. That rewrite
+cannot see a path embedded in a string, and both failing scripts interpolate one
+into a `python3 -c` program.
+
+The fix is `mktemp -d build/tmp.XXXXXX`. A relative path means the same thing to
+the shell and to the native binary because every one of these scripts already
+cd's to the repository root, there is no implicit rewriting in the middle, and
+the intermediates land under `build/`, where ground rule 2 says reproducible
+output belongs. It changes nothing on Linux or macOS.
+
+### The state of it
+
+Every target passes on Windows 10: `make`, `make check-operands`, and
+check-state, check-houses, check-native, check-menu, check-menus, check-cursor,
+check-map, check-margins, check-mission, check-res, check-jump, check-objects,
+check-mouse, check-skipintro.
+
+Two things were checked rather than assumed, because both would have been quiet.
+`core.autocrlf` is on for this checkout, so the working tree is CRLF; converting
+all of `tests/*.sh` to CRLF and re-running the checks confirmed MSYS2's bash and
+GNU make both tolerate it. And git classifies the committed cartridge as binary
+(`git ls-files --eol` reports `-text`), so a Windows checkout does not mangle
+the dump — which the CI `verify-rom` step had already been demonstrating without
+anyone saying why it was safe.
+
+## 2026-08-26 — releases for remaster, and the two things that had to be true first
+
+`remaster` now publishes a Windows and a Linux package on every push, as a
+single rolling pre-release tagged `remaster-latest`. Rolling rather than
+versioned because the branch is rebased onto `master` and force-pushed rather
+than merged: every update to it carries new SHAs, and one release per rebase
+would be a releases page full of near-identical entries. The download URL stays
+put and the history stays in git, where it already was.
+
+Two things had to be fixed before the packages were worth publishing, and
+neither was visible until something depended on it.
+
+### The tree was not dirty, but git said it was
+
+Windows git here has `core.autocrlf=true`, so the checkout is CRLF. MSYS2's git
+has it off, and reading the same worktree it reported 120 files changed, 33680
+insertions, 33680 deletions — every line of every file. Nothing had been
+touched. `tools/package.sh` asks git whether the tree is clean, so a package
+built in the MINGW64 shell was named `-dirty` and its BUILD.txt announced
+`WITH UNCOMMITTED CHANGES`. In a folder handed to a tester, that line is the
+only thing telling them which build they ran, and it was lying.
+
+`.gitattributes` now pins `* text=auto eol=lf`. The repository already stored
+LF — `git add --renormalize .` staged nothing but the new file — so this only
+changes what lands in a checkout, and makes that the same on every platform
+instead of a property of whichever git wrote it. `*.bin` is marked binary
+explicitly: git already classified the cartridge that way, but from a heuristic
+(a NUL byte in the first 8 KiB), and being wrong there would corrupt the dump
+quietly until verify-rom caught it.
+
+### The package only ran on the machine that built it
+
+`tools/package.sh` built a Unix package unconditionally: a bare `db4a`, a
+play.sh that runs `ldd`, a `.tar.gz`. In the MINGW64 shell that produced a
+folder that worked exactly where it was made, because `db4a.exe` needs
+`SDL2.dll` and there is no system package manager on the far side to supply
+one.
+
+Four things now follow from `uname -s` reporting MINGW/MSYS/CYGWIN: `.exe` on
+the binary, `SDL2.dll` copied in beside it, a `play.bat`, and a `.zip`. The DLL
+is the whole of the dependency problem — `ldd` reports it as the only non-system
+library, and `SDL2.dll` itself pulls in nothing further from mingw64 — so one
+file makes the folder self-contained.
+
+The launcher took two attempts. The first ran `db4a.exe` by name after `cd`-ing
+to its own directory, which is normally fine and was not:
+
+```
+'db4a.exe' is not recognized as an internal or external command
+```
+
+PowerShell hands a child `cmd` `NoDefaultCurrentDirectoryInExePath=1`, and
+under it the current directory is not searched. It now launches
+`"%HERE%db4a.exe"`, with `HERE` captured from `%~dp0` *before* any `shift` —
+because `shift` moves `%0` too, so `%~dp0` after one is the wrong path.
+
+Checked the way a person downloading it would: the .zip unpacked into an
+unrelated directory on a machine with no MSYS2 on PATH, `play.bat --record` run
+from cmd.exe. The game starts, `saves/` and `report/` appear, and a 13 KB
+recording lands in `report/`. The Unix branch was re-run behind a `uname` shim
+and is unchanged.
+
+### What is not covered
+
+macOS. It builds in CI and now runs a harness check there, but no package has
+ever been made for it: `tools/package.sh` calls `sha1sum`, which macOS does not
+ship — the Makefile already works around this with `shasum -a 1` and the script
+does not. That is written at the top of the release workflow rather than left
+to be discovered.
+
+The release jobs run `make` and `check-skipintro` before packaging, so a build
+that does not compile or start cannot be published, but they are not gated on
+the full CI run, which happens alongside on the same push.

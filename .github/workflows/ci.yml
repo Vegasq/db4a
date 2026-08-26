@@ -1,0 +1,172 @@
+# CI for db4a.
+#
+# Three tiers, because they need different things:
+#
+#   unit      no cartridge required -- the seven unit-test binaries are built
+#             from tools/semantics.py and hand-written C, not from the ROM.
+#             This is the tier that still works if the cartridge is ever
+#             removed from the repository (see README's Legal section).
+#   build     the full build on all three platforms. Needs the cartridge,
+#             because code generation translates it into C.
+#   checks    the heavier equivalence and replay tests. Linux only: they are
+#             slow. The code they exercise is not platform-specific, but the
+#             shell-and-python harness around it is -- two scripts handed an
+#             absolute /tmp path to a native Windows binary and reported the
+#             missing file as a content mismatch. So the build tier runs one
+#             cheap check (~3 s) on every platform to keep that honest.
+#
+# Portability, per docs/roadmap.md: src/ uses no POSIX-only headers and the
+# language baseline is C11 plus SDL2, so a platform is a build-system problem.
+# The build-system parts that actually differ are SDL2 discovery (pkg-config)
+# and the SHA-1 program (sha1sum vs shasum), both handled in the Makefile.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, remaster]
+
+# A new push to a PR makes the previous run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit tests (${{ matrix.os }}, no cartridge)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update && sudo apt-get install -y libsdl2-dev
+          else
+            brew install sdl2
+          fi
+      - name: Unit tests
+        run: make ROM=/nonexistent/none.bin test
+
+  unit-windows:
+    name: unit tests (windows, no cartridge)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            coreutils
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-python
+      - name: Unit tests
+        run: make ROM=/nonexistent/none.bin test
+
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and capstone
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update && sudo apt-get install -y libsdl2-dev
+          else
+            brew install sdl2
+          fi
+          python3 -m pip install --break-system-packages capstone || python3 -m pip install capstone
+      - name: The cartridge must be present
+        run: |
+          make verify-rom || {
+            echo "::error::The build translates the cartridge into C, so it cannot run without it."
+            echo "See README's Legal section for why it is in the repository and how to ask for removal."
+            exit 1
+          }
+      - name: Build and run the unit tests
+        run: make
+      - name: Every discovered instruction parses
+        run: make check-operands
+      # Cheap, and the only thing in the build tier that drives the binary
+      # through the shell harness: mktemp, ppm captures, cmp, the lot.
+      - name: Start skips the intro
+        run: make check-skipintro
+
+  build-windows:
+    name: build (windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            make
+            coreutils
+            diffutils
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-capstone
+      # capstone comes from MSYS2, not pip. pip has no wheel for MSYS2's Python,
+      # so it falls back to building from source, which wants cmake and then
+      # fails looking for a capstone.dll it never produced.
+      - name: The cartridge must be present
+        run: make verify-rom
+      - name: Build and run the unit tests
+        run: make
+      - name: Every discovered instruction parses
+        run: make check-operands
+      - name: Start skips the intro
+        run: make check-skipintro
+
+  checks:
+    name: equivalence and replay checks (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2, capstone and PIL
+        run: |
+          sudo apt-get update && sudo apt-get install -y libsdl2-dev python3-pil
+          python3 -m pip install --break-system-packages capstone || python3 -m pip install capstone
+      - name: Build
+        run: make
+      # Each of these is a property the project has broken at least once.
+      - name: Save state round trip
+        run: make check-state
+      - name: All three houses load
+        run: make check-houses
+      - name: C overrides match the cartridge code they replace
+        run: make check-native
+      - name: The cursor reaches the widened strip
+        run: make check-cursor
+      - name: Pointer selects build-console cells
+        run: make check-menu
+      - name: The cartridge's own view is exact at every size
+        run: make check-res
+      - name: The map renderer agrees with the cartridge
+        run: make check-map
+      - name: The widened view fills from the map and stops at its edge
+        run: make check-margins
+      - name: The recorded mission is bit-identical at every size
+        run: make check-mission

@@ -14,7 +14,8 @@ set -eu
 cd "$(dirname "$0")/.."
 ROM="roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin"
 ST=build/cursorfield.state
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d build/tmp.XXXXXX)   # relative: db4a is native on Windows, /tmp is not
+trap 'rm -rf "$TMP"' EXIT
 
 [ -f "$ST" ] || DB4A_REPLAY=data/recordings/level1atredis.txt \
     DB4A_SAVE_AT=9000:$ST ./build/db4a "$ROM" 9010 >/dev/null 2>&1

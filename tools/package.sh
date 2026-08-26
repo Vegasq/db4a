@@ -21,6 +21,16 @@ die() { printf '%s\n' "$*" >&2; exit 1; }
 root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not in a git checkout"
 cd "$root"
 
+# A Windows package differs from a Unix one in four ways, all of them following
+# from the same fact: the thing being shipped is a native Windows program.
+# It carries .exe, it has to bring SDL2.dll with it because there is no system
+# package manager on the far side to install one, its launcher is a .bat, and
+# .zip is the archive a Windows user can open without installing anything.
+case $(uname -s) in
+    MINGW*|MSYS*|CYGWIN*) host=windows; exe=.exe ;;
+    *)                    host=unix;    exe= ;;
+esac
+
 ROM_DEFAULT='roms/Dune-The-Battle-for-Arrakis_Genesis_EN/Dune - The Battle for Arrakis (E).bin'
 ROM_SHA=133cc86b43afe133fc9c9142b448340c17fa668e
 
@@ -38,7 +48,8 @@ usage: tools/package.sh [options]
   -o DIR      where to put the package     (default build/dist)
   -r ROM      the cartridge to ship        (default the Makefile's)
   -n NAME     package folder name          (default db4a-<branch>-<sha>)
-  -t          also write NAME.tar.gz beside the folder
+  -t          also write an archive beside the folder
+              (NAME.tar.gz, or NAME.zip when packaging on Windows)
   -B          do not build; package whatever is already in build/
   -f          package anyway when the ROM is not the known-good dump,
               or when the output would land in a tracked part of the repo
@@ -101,15 +112,26 @@ if [ "$dobuild" = 1 ]; then
     echo "== building"
     make all
 fi
-[ -x build/db4a-sdl ] || die "build/db4a-sdl is missing -- run without -B"
+[ -x "build/db4a-sdl$exe" ] || die "build/db4a-sdl$exe is missing -- run without -B"
 
 dest=$out/$name
 echo "== packaging $dest"
 rm -rf "$dest"
 mkdir -p "$dest/report"
 
-cp build/db4a-sdl "$dest/db4a"
+cp "build/db4a-sdl$exe" "$dest/db4a$exe"
 cp "$rom" "$dest/dune.bin"
+
+if [ "$host" = windows ]; then
+    # SDL2 is the only DLL the binary needs that Windows does not already have,
+    # and SDL2.dll itself pulls in nothing further from mingw64 -- so this one
+    # file makes the package self-contained. Found through ldd rather than
+    # hardcoded, so a different MSYS2 prefix still works.
+    dll=$(ldd "build/db4a-sdl$exe" | awk '/[Ss][Dd][Ll]2\.dll/ {print $3; exit}')
+    [ -n "${dll:-}" ] && [ -f "$dll" ] || die "cannot find SDL2.dll for build/db4a-sdl$exe
+  ldd said: $(ldd "build/db4a-sdl$exe" | grep -i sdl2 || echo '(nothing)')"
+    cp "$dll" "$dest/SDL2.dll"
+fi
 
 # The settings file is the tracked template, which is entirely comments, plus
 # one active line. `state` has to be set because the built-in default is
@@ -125,6 +147,59 @@ cp "$rom" "$dest/dune.bin"
 } > "$dest/db4a.conf"
 mkdir -p "$dest/saves"
 
+if [ "$host" = windows ]; then
+# cmd.exe is picky about line endings in a .bat -- a `goto` label with a bare
+# LF before it is not always found -- so this one is written with CRLF.
+sed 's/$/\r/' > "$dest/play.bat" <<'LAUNCHER'
+@echo off
+rem Start db4a. Double-click this file, or run it from a console.
+rem
+rem   play.bat                 play
+rem   play.bat 4               a bigger window (the number is a pixel scale)
+rem   play.bat --record        play, and save your inputs to report\
+rem   play.bat --replay FILE   play a recording back
+rem
+rem db4a.exe needs the cartridge named on its command line, which is the whole
+rem reason this file exists -- double-clicking the .exe would show its usage
+rem and quit.
+setlocal EnableExtensions
+rem %~dp0 is captured before any shift, because shift moves %0 too, and it is
+rem used to launch the exe by full path: a console with
+rem NoDefaultCurrentDirectoryInExePath set -- which is what PowerShell hands
+rem to a child cmd -- will not find db4a.exe by name in the current directory.
+set "HERE=%~dp0"
+cd /d "%HERE%"
+if not exist saves  md saves
+if not exist report md report
+
+rem Diagnostics are environment-only by design: they make one run behave
+rem unusually, so they do not belong in a file that persists across runs.
+if "%DB4A_SEEDS%"=="" set "DB4A_SEEDS=report\seeds.txt"
+
+if /i "%~1"=="--record" goto record
+if /i "%~1"=="--replay" goto replay
+"%HERE%db4a.exe" dune.bin %*
+goto :eof
+
+:record
+shift
+for /f %%t in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "stamp=%%t"
+set "DB4A_RECORD=report\session-%stamp%.txt"
+echo recording to %DB4A_RECORD% -- send it back with report\ if you hit a bug
+"%HERE%db4a.exe" dune.bin %1 %2 %3
+goto :eof
+
+:replay
+shift
+if "%~1"=="" (
+    echo usage: play.bat --replay FILE
+    exit /b 2
+)
+set "DB4A_REPLAY=%~1"
+shift
+"%HERE%db4a.exe" dune.bin %1 %2 %3
+LAUNCHER
+else
 cat > "$dest/play.sh" <<'LAUNCHER'
 #!/usr/bin/env bash
 # Start db4a. Run it from anywhere -- it works out where it lives.
@@ -169,6 +244,7 @@ case "${1:-}" in
 esac
 LAUNCHER
 chmod +x "$dest/play.sh"
+fi
 
 cat > "$dest/BUILD.txt" <<EOF
 db4a build identification -- quote this in any bug report.
@@ -180,12 +256,16 @@ built     $(date -u '+%Y-%m-%d %H:%M:%S UTC')
 host      $(uname -srm)
 compiler  $(${CC:-cc} --version 2>/dev/null | head -1)
 
-binary    sha1 $(sha1sum build/db4a-sdl | cut -d' ' -f1)
+binary    sha1 $(sha1sum "build/db4a-sdl$exe" | cut -d' ' -f1)
 cartridge sha1 $sha
           from $(basename "$rom")
 
 Links against SDL2 at run time:
-$(ldd build/db4a-sdl 2>/dev/null | grep -i sdl | sed 's/^[[:space:]]*/  /' || echo '  (ldd unavailable)')
+$(if [ "$host" = windows ]; then
+      echo "  SDL2.dll, shipped in this folder -- sha1 $(sha1sum "$dest/SDL2.dll" | cut -d' ' -f1)"
+  else
+      ldd build/db4a-sdl 2>/dev/null | grep -i sdl | sed 's/^[[:space:]]*/  /' || echo '  (ldd unavailable)'
+  fi)
 EOF
 
 cat > "$dest/README.txt" <<'EOF'
@@ -198,17 +278,7 @@ translated to C ahead of time and compiled into the program next to this file;
 sound data out of the cartridge.
 
 
-Running it
-----------
-
-    ./play.sh
-
-It needs SDL2 installed, and nothing else. If it is missing, play.sh says so
-and names the package to install.
-
-    ./play.sh 4              a bigger window (the number is a pixel scale)
-    ./play.sh --record       play, and write your inputs to report/
-    ./play.sh --replay FILE  play a recorded session back
+@RUNNING@
 
 
 Controls
@@ -268,7 +338,7 @@ Send back:
   * report/           -- anything the game wrote there
   * what you did, and what you expected instead
 
-`./play.sh --record` writes your inputs to report/. A recording replays
+`@PLAY@ --record` writes your inputs to report/. A recording replays
 deterministically, which means a bug captured in one can be reproduced exactly
 rather than hunted for -- it is by far the most useful thing you can send.
 
@@ -286,11 +356,45 @@ Save states are a convenience, not part of the original -- the cartridge had
 no save at all, so a mission was one sitting.
 EOF
 
+if [ "$host" = windows ]; then
+    play='play.bat'
+    running='Running it
+----------
+
+Double-click play.bat, or run it from a console. Everything it needs is in
+this folder -- SDL2.dll is here, and there is nothing to install.
+
+    play.bat 4               a bigger window (the number is a pixel scale)
+    play.bat --record        play, and write your inputs to report/
+    play.bat --replay FILE   play a recorded session back
+
+db4a.exe is the game itself, but it wants the cartridge named on its command
+line, so double-clicking it shows a usage message and quits. play.bat is the
+way in.'
+else
+    play='./play.sh'
+    running='Running it
+----------
+
+    ./play.sh
+
+It needs SDL2 installed, and nothing else. If it is missing, play.sh says so
+and names the package to install.
+
+    ./play.sh 4              a bigger window (the number is a pixel scale)
+    ./play.sh --record       play, and write your inputs to report/
+    ./play.sh --replay FILE  play a recorded session back'
+fi
+# awk rather than sed: the replacement is multi-line, and this way neither the
+# launcher name nor the block needs escaping.
+awk -v r="$running" -v pl="$play" '{ sub(/@RUNNING@/, r); gsub(/@PLAY@/, pl); print }' "$dest/README.txt" > "$dest/README.tmp"
+mv "$dest/README.tmp" "$dest/README.txt"
+
 # Anything the tester's own run writes lands here, so the folder they send
 # back is the folder they were given.
-cat > "$dest/report/README.txt" <<'EOF'
+cat > "$dest/report/README.txt" <<EOF
 Anything worth sending back is written into this directory: recorded sessions
-from ./play.sh --record, and seeds.txt if the game ever hits an unknown PC.
+from $play --record, and seeds.txt if the game ever hits an unknown PC.
 EOF
 
 echo
@@ -300,10 +404,21 @@ find "$dest" -type f | sed "s|^$dest/|   |" | sort
 if [ "$tarball" = 1 ]; then
     echo
     echo "== archiving"
-    tar -C "$out" -czf "$out/$name.tar.gz" "$name"
-    ls -lh "$out/$name.tar.gz" | awk '{print "   " $9 "  " $5}'
+    if [ "$host" = windows ]; then
+        # .zip, because it is the one archive a Windows user can open with
+        # nothing installed. -X drops the Unix uid/gid attribute fields, which
+        # mean nothing on the far side.
+        archive=$out/$name.zip
+        command -v zip >/dev/null 2>&1 || die "zip is not installed (pacman -S zip)"
+        rm -f "$archive"
+        ( cd "$out" && zip -qrX "$name.zip" "$name" )
+    else
+        archive=$out/$name.tar.gz
+        tar -C "$out" -czf "$archive" "$name"
+    fi
+    ls -lh "$archive" | awk '{print "   " $9 "  " $5}'
 fi
 
 echo
 echo "done: $dest"
-echo "      hand over the whole folder; ./play.sh is the entry point"
+echo "      hand over the whole folder; $play is the entry point"

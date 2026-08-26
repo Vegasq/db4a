@@ -15,8 +15,12 @@ CFLAGS  := -O1 -Wall -Wextra -Iinclude
 all: build/db4a build/db4a-sdl test
 
 ## verify-rom - confirm the base ROM is the known-good dump
+## sha1sum is GNU; macOS ships shasum instead. Both accept the same
+## "<sha>  <path>" line on stdin, so only the program name differs.
+SHA1C := $(shell command -v sha1sum >/dev/null 2>&1 && echo sha1sum || echo "shasum -a 1")
+
 verify-rom:
-	@echo "$(ROM_SHA)  $(ROM)" | sha1sum -c -
+	@echo "$(ROM_SHA)  $(ROM)" | $(SHA1C) -c -
 
 ## analyse - regenerate build/codemap.json from the ROM
 analyse: verify-rom
@@ -172,11 +176,11 @@ build/test_z80_timing: tests/test_z80_timing.c src/z80.c include/z80.h
 
 build/test_ym: tests/test_ym.c src/ym2612.c include/ym2612.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+	$(CC) $(CFLAGS) -Iinclude $(filter %.c,$^) -o $@ -lm   # .c only: a .h in $^ makes clang try to precompile it
 
 build/test_psg: tests/test_psg.c src/psg.c include/psg.h
 	@mkdir -p build
-	$(CC) $(CFLAGS) -Iinclude $^ -o $@ -lm
+	$(CC) $(CFLAGS) -Iinclude $(filter %.c,$^) -o $@ -lm   # .c only: a .h in $^ makes clang try to precompile it
 
 build/ym2612.o: src/ym2612.c include/ym2612.h include/psg.h
 	@mkdir -p build
