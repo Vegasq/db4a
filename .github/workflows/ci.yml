@@ -9,7 +9,11 @@
 #   build     the full build on all three platforms. Needs the cartridge,
 #             because code generation translates it into C.
 #   checks    the heavier equivalence and replay tests. Linux only: they are
-#             slow, and nothing in them is platform-specific.
+#             slow. The code they exercise is not platform-specific, but the
+#             shell-and-python harness around it is -- two scripts handed an
+#             absolute /tmp path to a native Windows binary and reported the
+#             missing file as a content mismatch. So the build tier runs one
+#             cheap check (~3 s) on every platform to keep that honest.
 #
 # Portability, per docs/roadmap.md: src/ uses no POSIX-only headers and the
 # language baseline is C11 plus SDL2, so a platform is a build-system problem.
@@ -98,6 +102,10 @@ jobs:
         run: make
       - name: Every discovered instruction parses
         run: make check-operands
+      # Cheap, and the only thing in the build tier that drives the binary
+      # through the shell harness: mktemp, ppm captures, cmp, the lot.
+      - name: Start skips the intro
+        run: make check-skipintro
 
   build-windows:
     name: build (windows)
@@ -114,6 +122,7 @@ jobs:
           install: >-
             make
             coreutils
+            diffutils
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-SDL2
@@ -128,6 +137,8 @@ jobs:
         run: make
       - name: Every discovered instruction parses
         run: make check-operands
+      - name: Start skips the intro
+        run: make check-skipintro
 
   checks:
     name: equivalence and replay checks (linux)
