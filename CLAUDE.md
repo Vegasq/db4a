@@ -112,18 +112,26 @@ Recursive descent from the vectors, following direct branches and calls, then
 iterating jump-table recovery to a fixpoint. Current expected output:
 
 ```
-round  1: +36 tables, +5808 instructions
-round  2: +10 tables, +401 instructions
-round  3: +2 tables, +36 instructions
-round  4: +0 tables, +0 instructions
+state-pointer handlers seeded: 4
+runtime seeds applied: 49
+round  1: +42 tables, +531 seeds, +11326 instructions
+round  2: +10 tables, +145 seeds, +531 instructions
+round  3: +0 tables, +1 seeds, +0 instructions
+overlapping decodes  : 28
 
-instructions decoded : 31525
-bytes covered as code: 106732 (10.2% of ROM)
-function entry points: 768
-jump tables resolved : 48
-still unresolved     : 13
-failed decodes       : 0
+instructions decoded : 41107
+bytes covered as code: 137782 (13.1% of ROM)
+function entry points: 1149
+jump tables resolved : 52
+still unresolved     : 26
+seeds rejected as data: 43
+  no table produced a suspect target
 ```
+
+The 10.2%/31525 this section used to quote was the figure before
+`data/seeds.txt` grew. Coverage rising is seeds being added, not the static
+passes improving -- the plateau described under "The RAM dispatch problem" is
+still the reason it is 13% and not 90%.
 
 `build/codemap.json` contains `insns` (addr → size/mnemonic/operands),
 `starts` (function entry points), `tables` (resolved dispatches), `indirect`
