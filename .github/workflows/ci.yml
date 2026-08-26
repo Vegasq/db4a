@@ -118,9 +118,10 @@ jobs:
             mingw-w64-x86_64-pkg-config
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-python
-            mingw-w64-x86_64-python-pip
-      - name: Install capstone
-        run: python3 -m pip install --break-system-packages capstone || python3 -m pip install capstone
+            mingw-w64-x86_64-python-capstone
+      # capstone comes from MSYS2, not pip. pip has no wheel for MSYS2's Python,
+      # so it falls back to building from source, which wants cmake and then
+      # fails looking for a capstone.dll it never produced.
       - name: The cartridge must be present
         run: make verify-rom
       - name: Build and run the unit tests
@@ -133,9 +134,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install SDL2 and capstone
+      - name: Install SDL2, capstone and PIL
         run: |
-          sudo apt-get update && sudo apt-get install -y libsdl2-dev
+          sudo apt-get update && sudo apt-get install -y libsdl2-dev python3-pil
           python3 -m pip install --break-system-packages capstone || python3 -m pip install capstone
       - name: Build
         run: make
