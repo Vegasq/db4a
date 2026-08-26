@@ -356,10 +356,33 @@ void render_frame(void) {
                pixels. Every pixel it paints was already backdrop.
                .
                So it is not the cause of the black bar at the left edge; the
-               game's own tilemap holds black there. See docs/widescreen.md. */
+               game's own tilemap holds black there. See docs/widescreen.md.
+               .
+               THAT LAST LINE STOPPED BEING TRUE. It was measured when the
+               margin came from the tilemap, which held black there anyway --
+               "every pixel it paints was already backdrop". The margin now
+               comes from the game's MAP, so the pixels it paints are real
+               map, and this guard erases them before the map path below ever
+               runs. It paints exactly render_world_offset() - (hscroll mod
+               512) pixels, which is a black bar at the left edge that grows
+               and shrinks as you scroll -- reported from play, reproduced
+               from a save state at CAM_X=1493, nowhere near a camera limit,
+               over map cells the game had already explored:
+               .
+                   guard on   black bar 39 px      (margin 80, hscroll 41)
+                   guard off  black bar  0 px
+               .
+               and 39 = 80 - 41 held at every view width tried, 400 through
+               640, which is what identified it.
+               .
+               So it now applies only where it was measured inert: the
+               fallback path, before mapview has learned the map base. There
+               the tilemap really can wrap its 512-pixel plane. The map path
+               cannot -- it is indexed by absolute world position, with no
+               ring to wrap around. */
             static int noguard = -1;
             if (noguard < 0) noguard = getenv("DB4A_WIDE_NOGUARD") ? 1 : 0;
-            if (!noguard && x < render_world_offset()) {
+            if (!noguard && !mapview_ready() && x < render_world_offset()) {
                 int hs = ((hs_b % 512) + 512) % 512;
                 if (x - render_world_offset() + hs < 0) {
                     memcpy(FB[y][x], backdrop, 3);
