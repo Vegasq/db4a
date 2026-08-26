@@ -2943,3 +2943,80 @@ the margin shows map, and 2.0M cells are counted `unfilled` -- the cartridge
 leaving `$0000` where it has nothing to show. That is the documented
 camera-limit case rather than a disagreement (mismatched stays at 0.00%), but
 it has not been explained frame by frame.
+
+## 2026-08-25 — the black bar was ours: a guard that outlived its measurement
+
+Reported from play and pinned down from a save state the player took at the
+moment it was visible (`data/states/worms-report.state`, a later Atreides
+mission, `CAM_X=1493` inside limits 112..1696 -- nowhere near a camera edge).
+
+The bar is **39 pixels wide, with a straight vertical edge**: 138 of 217 rows
+have their first lit pixel at exactly x=39. Fog has a blobby, cell-aligned
+boundary; this did not. And the map under it was not fog either -- the plane-B
+words there are real terrain (`$007E`, `$008F`), and the same value renders
+blank at x<39 and drawn at x>=39, so the map data cannot be what decides it.
+
+What identified it was measuring the bar at several view widths:
+
+```
+  margin  80 px   bar  39      640x480 ... every one of them
+  margin 120 px   bar  79      is margin - 41
+  margin 160 px   bar 119
+  margin 240 px   bar 199
+  margin 320 px   bar 279
+```
+
+A constant subtracted from the margin, not a fraction of it. 41 was that
+frame's `hscroll mod 512`, and the player's own description -- "you can press
+left/right to move it a bit" -- is that constant changing as they scroll.
+
+### The cause
+
+`render.c` had a wrap guard that runs BEFORE the margin is drawn and
+`continue`s onto the backdrop:
+
+```c
+if (!noguard && x < render_world_offset()) {
+    int hs = ((hs_b % 512) + 512) % 512;
+    if (x - render_world_offset() + hs < 0) { ...backdrop...; continue; }
+}
+```
+
+It paints exactly `render_world_offset() - (hscroll mod 512)` pixels of black
+at the left edge. Its own comment carried the measurement that made it look
+harmless -- rendering 32 frames with and without it gave byte-identical output,
+and "every pixel it paints was already backdrop".
+
+**That measurement was taken when the margin came from the tilemap**, which
+held black there anyway. Since mapview landed, the margin comes from the game's
+map, and the guard erases real map before the map path below it ever runs. The
+comment even says not to trust its reasoning without re-measuring; re-measured,
+it is now the cause of the very symptom it disclaims.
+
+Confirmed by the switch that was already there:
+
+```
+  guard on   (default)        black bar 39 px
+  guard off  (NOGUARD set)    black bar  0 px
+```
+
+Note `DB4A_WIDE_NOGUARD` tests only whether the variable is SET, so `=0`
+disables the guard as surely as `=1`. That cost a measurement here.
+
+### The fix
+
+The guard now applies only where it was measured inert: `!mapview_ready()`,
+the fallback path before the map base is known, where the tilemap really can
+wrap its 512-pixel plane. The map path cannot wrap -- it is indexed by absolute
+world position, with no ring involved.
+
+At the reported state the bar goes to 0 px at 400 and 480 wide. `check-res`
+(nine sizes EXACT), `check-map` (0.00% at every size), `check-margins`,
+`check-mission` (bit-identical at three sizes) and `check-cursor` all pass.
+
+### Still open
+
+At 640 wide the same state keeps a 44-pixel black edge, and it is NOT fog: the
+cells under it hold real plane-B tiles (143, 127, 142, 139, 138), none of them
+the map's fog tile `$00B`. Something else bounds the fill that far west. It
+does not affect the default 400, which is where this was reported.
