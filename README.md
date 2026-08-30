@@ -1,19 +1,21 @@
 # db4a project page
 
-The source of <https://vegasq.github.io/db4a/>, the page advertising the
-`remaster` branch: mouse control, widescreen, and the comforts around them.
+The source of <https://vegasq.github.io/db4a/>, the page advertising db4a:
+mouse control, widescreen, and the comforts around them.
 
 ## Why this is an orphan branch
 
-It shares no history with `master` or `remaster`. That is deliberate:
+It shares no history with `master`. That is deliberate: Pages serving from
+`master`'s `/docs` would publish the design notes in there as well, which are
+working documents and not written for visitors.
 
-- `remaster` is **rebased** onto `master` and force-pushed, which makes it a
-  poor Pages source -- every update would rewrite the published site's history.
-- Pages serving from `master`'s `/docs` would publish the design notes in there
-  as well, which are working documents and not written for visitors.
+There used to be a second reason -- the site advertised the `remaster` branch,
+which was rebased and force-pushed and so made a poor Pages source. That branch
+was folded into `master` on 2026-08-30 and deleted; `remaster` survives only as
+the name of the product. The remaining reason is enough on its own.
 
-So the site lives on its own branch, and neither of the other two has to know
-about it.
+So the site lives on its own branch, and `master` does not have to know about
+it.
 
 ## Layout
 
