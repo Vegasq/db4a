@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>db4a &mdash; Dune: The Battle for Arrakis, rebuilt native</title>
-<meta name="description" content="A community remaster of Dune: The Battle for Arrakis (Mega Drive, 1993). The cartridge's 68000 code is statically recompiled into C: one native Linux binary, with mouse control, widescreen and save states.">
+<meta name="description" content="A community remaster of Dune: The Battle for Arrakis (Mega Drive, 1993). The cartridge's 68000 code is statically recompiled into C: one native binary for Linux, macOS and Windows, with mouse control, widescreen and save states.">
 <meta property="og:title" content="db4a &mdash; Dune: The Battle for Arrakis, rebuilt native">
 <meta property="og:description" content="A community remaster of the Mega Drive original. Mouse control, widescreen, save states &mdash; running from statically recompiled 68000 code, not an emulator.">
 <meta property="og:type" content="website">
@@ -27,7 +27,7 @@
       <a href="#quality">Comforts</a>
       <a href="#campaign">Campaign</a>
       <a href="#accuracy">Accuracy</a>
-      <a href="#get">Get it</a>
+      <a href="#get">Download</a>
       <a href="https://github.com/Vegasq/db4a">Source</a>
     </nav>
   </div>
@@ -47,11 +47,13 @@
       <b>mouse</b>, it plays <b>wider than a Mega Drive could</b>, and it saves state
       wherever you like.</p>
       <div class="cta">
-        <a class="btn" href="https://github.com/Vegasq/db4a">Source on GitHub</a>
-        <a class="btn ghost" href="#get">How to build it</a>
+        <a class="btn" href="https://github.com/Vegasq/db4a/releases/tag/remaster-latest">Download</a>
+        <a class="btn ghost" href="https://github.com/Vegasq/db4a">Source on GitHub</a>
       </div>
-      <p class="dim" style="font-size:13.5px">You supply your own ROM. This project ships
-      no game data &mdash; no cartridge, no extracted assets &mdash; and never will.</p>
+      <p class="dim" style="font-size:13.5px"><b>Windows and Linux</b> builds &mdash; unzip and
+      run, the Windows one needs nothing installed. The archives <b>include the cartridge</b>,
+      because the translated code reads its graphics, maps and sound out of it while it runs; no
+      claim is made that this is permitted. <a href="#cartridge">What that means</a>.</p>
     </div>
     <figure>
       <div class="screen"><img src="img/title.png" alt="The Dune: The Battle for Arrakis title screen, rendered by db4a" width="320" height="224"></div>
@@ -319,11 +321,32 @@
 
 <section id="get">
   <div class="wrap">
-    <div class="sec-head"><h2>Get it</h2></div>
-    <p class="sec-sub">Linux, SDL2, and a cartridge you own.</p>
+    <div class="sec-head"><h2>Download</h2></div>
+    <p class="sec-sub">A build to run, or the source to build. Both play the same game.</p>
     <div class="cols2">
       <div>
-        <h3>Build and play</h3>
+        <h3>Ready to run</h3>
+        <div class="cta" style="margin-top:0">
+          <a class="btn" href="https://github.com/Vegasq/db4a/releases/tag/remaster-latest">Latest build</a>
+        </div>
+        <table class="stats">
+          <tr><td>Windows</td><td><code>*-windows.zip</code> &mdash; unzip anywhere and run
+            <code>play.bat</code>. <b>SDL2.dll is in the folder; there is nothing to install.</b></td></tr>
+          <tr><td>Linux</td><td><code>*-linux.tar.gz</code> &mdash; needs SDL2 from your
+            distribution, and <code>./play.sh</code> names the package if it is missing.</td></tr>
+          <tr><td>macOS</td><td>Builds and passes its tests in CI, but no package is made for it
+            yet. Build it from source.</td></tr>
+        </table>
+        <p class="dim">Every archive carries a <code>BUILD.txt</code> that identifies the build
+        exactly &mdash; quote it in a bug report &mdash; and a <code>report/</code> directory.
+        <code>play.bat --record</code> writes your inputs there, and a recording replays
+        deterministically, so a bug caught in one can be reproduced rather than hunted for.</p>
+        <p class="dim">The tag rolls: there is no version scheme yet, so the release is replaced
+        on every push and always describes the current tip. Keep the file if you want to keep
+        the build.</p>
+      </div>
+      <div>
+        <h3>Build it yourself</h3>
 <pre>git clone https://github.com/Vegasq/db4a
 <span class="p">cd</span> db4a
 
@@ -332,24 +355,35 @@ make play     <span class="c"># play</span>
 
 make play WIDE=320    <span class="c"># the cartridge's own view</span>
 DB4A_MOUSE=0 make play <span class="c"># keyboard and pad only</span></pre>
-        <p class="dim">Developed on Fedora 44; any distribution with SDL2 and the analysis
-        tools should work. Mouse control and the widened view are on by default and each
-        switches off, as above; the <code>faithful-v1</code> tag is the recompile with no
-        modernisation compiled in at all.</p>
+        <p class="dim">Linux, macOS and Windows &mdash; CI builds and tests all three on every
+        push. Developed on Fedora 44; any distribution with SDL2 and the analysis tools should
+        work.</p>
+        <p class="dim">Mouse control and the widened view are on by default and each switches
+        off, as above. The <code>faithful-v1</code> tag is the recompile with no modernisation
+        compiled in at all.</p>
       </div>
-      <div>
-        <h3>The ROM</h3>
-        <p>Place a legally obtained dump of the European cartridge here:</p>
+    </div>
+
+    <div class="note bevel" id="cartridge">
+      <h4>About the cartridge</h4>
+      <p>The build <b>translates the ROM's 68000 code into C</b>, so without it there is nothing
+      to compile &mdash; not from a clean checkout, and not in CI. So the repository includes a
+      copy of the European cartridge, and <b>the download archives contain it too</b>, because
+      the binary keeps reading its graphics, maps and sound data out of it while it runs.</p>
+      <p>Nothing about the game's age changes who owns it, and <b>no claim is made here that
+      including it is permitted.</b> If a rights holder asks for it to be removed, it will be
+      removed &mdash; promptly, and from the history rather than just the tip, so clones stop
+      carrying it. Open an issue or contact the repository owner.</p>
+      <p>The rest of the project stands without it. Every tool, every test and every line of
+      hand-written C here is original work, and the build falls back to requiring a dump you
+      supply yourself, exactly as it did before:</p>
 <pre>roms/Dune-The-Battle-for-Arrakis_Genesis_EN/
     Dune - The Battle for Arrakis (E).bin
 
 sha1  133cc86b43afe133fc9c9142b448340c17fa668e</pre>
-        <p><code>make verify-rom</code> checks it. The build reads the ROM to generate code and
-        the binary loads it at runtime; <b>neither the ROM nor anything extracted from it is
-        distributed here.</b></p>
-        <p class="dim">Obtaining it is your responsibility. In most places that means dumping a
-        cartridge you own.</p>
-      </div>
+      <p class="dim"><code>make verify-rom</code> checks it. Nothing else derived from the
+      cartridge is published &mdash; framebuffers, RAM dumps, save states and audio captures are
+      all regenerable from a <code>make</code> target, and <code>.gitignore</code> enforces it.</p>
     </div>
   </div>
 </section>
@@ -393,9 +427,12 @@ sha1  133cc86b43afe133fc9c9142b448340c17fa668e</pre>
     <div class="rule"></div>
     <p><b>db4a</b> is an unaffiliated technical exercise in binary translation, made by the
     community. It is not a Sega release and is not connected to the rights holders.</p>
-    <p><i>Dune: The Battle for Arrakis</i> is &copy; Virgin Interactive / Westwood Studios.
-    Box and cartridge photography is used here to identify the game it rebuilds; screenshots
-    are of db4a's own output. No game data is included in this project.</p>
+    <p><i>Dune: The Battle for Arrakis</i> is &copy; Virgin Interactive / Westwood Studios,
+    whose rights passed to Electronic Arts in 1998. Box and cartridge photography is used here
+    to identify the game it rebuilds; every screenshot is of db4a's own output.</p>
+    <p>The repository and the download archives <b>include a copy of the cartridge</b>, for the
+    reason set out under <a href="#cartridge">About the cartridge</a>. No claim is made that this
+    is permitted, and it will be removed on request.</p>
     <p><a href="https://github.com/Vegasq/db4a">github.com/Vegasq/db4a</a></p>
   </div>
 </footer>
