@@ -58,8 +58,8 @@ like save states are frontend-only and never alter emulation.
 
 ## Download
 
-Ready-to-run builds of the **`remaster`** branch -- the one with mouse control
-and the widened view -- are published on every push to it:
+Ready-to-run builds -- mouse control and the widened view included -- are
+published on every push to `master`:
 
 ### [db4a remaster (latest)](https://github.com/Vegasq/db4a/releases/tag/remaster-latest)
 
@@ -74,12 +74,15 @@ back. `play.sh --record` / `play.bat --record` writes your inputs to it, and a
 recording replays deterministically, so a bug caught in one can be reproduced
 rather than hunted for.
 
-That tag rolls. `remaster` is rebased onto `master` rather than merged, so it
-is force-pushed; the release is replaced on every push and always describes the
-current tip. Keep the file if you want to keep the build.
+That tag rolls. There is no version scheme yet, so the release is replaced on
+every push and always describes the current tip. Keep the file if you want to
+keep the build.
 
-The faithful `master` build, which matches the cartridge exactly, is not
-published -- build it from source.
+Nothing in the build is forced on you. `mouse = 0`, `wide = 320` and
+`skipintro = 0` in `db4a.conf` each hand back the cartridge's own behaviour,
+and with all three set the picture is byte-identical to a faithful build. If
+you want one with no departures compiled in at all, build the `faithful-v1`
+tag from source.
 
 ---
 

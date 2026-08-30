@@ -1,10 +1,15 @@
-# Release builds for remaster.
+# Release builds for master.
 #
-# remaster is REBASED onto master and force-pushed rather than merged, so every
-# update to it arrives as a push carrying new SHAs. Cutting a numbered release
-# per push would fill the releases page with one near-identical entry per
-# rebase, so this publishes a single rolling pre-release, `remaster-latest`,
-# replaced each time. The download URL stays put; the history stays in git.
+# This used to build the `remaster` branch. That branch was fast-forwarded into
+# master on 2026-08-30 and deleted, so master is now the one trunk and the one
+# thing worth publishing.
+#
+# There is no version scheme yet, and cutting a numbered release per push would
+# fill the releases page with near-identical entries, so this publishes a single
+# rolling pre-release, `remaster-latest`, replaced each time. The tag keeps that
+# name deliberately: `remaster` is what the website calls the PRODUCT, the name
+# outlives the branch, and renaming it would break every link already handed
+# out. The download URL stays put; the history stays in git.
 #
 # Windows and Linux only for now. macOS builds in CI but has never had a
 # package built for it -- tools/package.sh calls sha1sum, which macOS does not
@@ -18,7 +23,7 @@ name: Release
 
 on:
   push:
-    branches: [remaster]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
@@ -110,7 +115,7 @@ jobs:
 
           short=${GITHUB_SHA:0:7}
           {
-            echo "Automatic build of \`remaster\` at [\`$short\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)."
+            echo "Automatic build of \`master\` at [\`$short\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)."
             echo
             echo '| download | for |'
             echo '|---|---|'
@@ -119,7 +124,7 @@ jobs:
             echo
             echo 'Both archives carry `BUILD.txt`, which identifies the build exactly. Quote it in a bug report, and send `report/` with it.'
             echo
-            echo '**This tag rolls.** `remaster` is rebased onto `master` rather than merged, so it is force-pushed; this release is deleted and recreated on every push and always describes the current tip. Anything you want to keep, keep the file.'
+            echo '**This tag rolls.** There is no version scheme yet, so this release is deleted and recreated on every push to `master` and always describes the current tip. Anything you want to keep, keep the file.'
             echo
             echo 'The archives contain the cartridge, because the translated code reads its graphics, maps and sound data out of it at run time. See the Legal section of the repository README.'
           } > notes.md

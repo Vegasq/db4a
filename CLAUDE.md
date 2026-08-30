@@ -334,11 +334,13 @@ control rather than running unconditionally. The real fix is to interleave on
 absolute cycle position rather than block boundaries; do that before migrating
 more routines.
 
-Note what that gate now implies on `remaster`: mouse control is ON by default
-there, so the override is the default path and this cost is one the branch
-pays every run. It is bounded and measured, and it is the price of the branch's
-headline feature -- but the interleave fix stopped being optional cleanup when
-that default flipped. `master` is unaffected: it has no mouse control at all.
+Note what that gate implies now that mouse control is ON by default in
+`db4a-sdl`: the override is the default path for anyone playing, so this is a
+cost every ordinary run pays. It is bounded and measured, and it is the price
+of the headline feature -- but the interleave fix stopped being optional
+cleanup when that default flipped. The headless `build/db4a` is unaffected,
+which is why the comparison numbers did not move: it leaves mouse control off,
+so it never takes the override.
 
 ## Reference oracle
 
@@ -512,46 +514,77 @@ These cost real debugging time. Do not rediscover them.
 
 ## Branches
 
-Decided 2026-08-22.
+Decided 2026-08-30, replacing the two-branch split that stood here before.
 
-| branch | contents |
-|---|---|
-| `master` | the faithful recompile, matching the cartridge |
-| `remaster` | modern conveniences: mouse control, widescreen, and so on |
+**There is one branch: `master`.** It carries the recompiled core and the
+modern conveniences together.
 
-Fidelity work goes to `master`; anything that changes what the game does goes
-to `remaster`. The pre-existing `mousecontrol`, `menu-screens` and `widescreen`
-branches are the history behind `remaster` and are not merged to `master`.
+It used to be two. `master` was the faithful recompile and `remaster` was a
+rebased stack of deliberate departures on top of it -- mouse control,
+widescreen, the intro skip. That split was right while the departures were
+experiments that might not survive; it stopped being right once they became
+the thing people actually run. Keeping it cost a force-push per update, split
+CI and releases across two refs, and meant every fixture and seed had to be
+landed twice.
 
-**`remaster` is always REBASED onto `master`, never merged.** Decided
-2026-08-23. It is a stack of patches on top of the faithful recompile, and it
-should read as one: `git log master..remaster` is the patch set, and every
-commit in it is a deliberate departure from the cartridge.
+So `remaster` was fast-forwarded into `master` and deleted. Nothing was lost:
+`master` was a strict ancestor, so the merge added 75 commits and removed
+none, and the whole history reads linearly.
+
+**`faithful-v1` tags the last faithful commit.** That is the tag to build if
+you want the cartridge's behaviour with no departures compiled in at all, and
+it is what the fidelity policy used to mean by "master".
 
 ```bash
-git checkout remaster && git rebase master
-git push --force-with-lease origin remaster
+git checkout faithful-v1     # note: predates the committed cartridge, so
+                             # you must supply roms/ yourself
 ```
 
-So updating it rewrites published history and needs a force-push. That is
-accepted here -- the alternative is merge commits accumulating in the patch
-set, which is what this rule exists to prevent. Take a backup ref first
-(`git branch remaster-prerebase remaster`) and use `--force-with-lease`, never
-a bare `--force`.
+### What replaced the split
 
-Because it is rebased, the fixture frames in `tests/menus.sh` and the seeds in
-`data/seeds.txt` belong on `master` even when a `remaster`-only feature is what
-exposed them, so both branches get them.
+**A departure from the cartridge goes behind a setting in `db4a.conf`, and the
+faithful behaviour stays reachable by turning that setting off.** The branch
+boundary became a runtime boundary. Every departure obeys it today:
 
-**Pushing `remaster` publishes a release.** `.github/workflows/release.yml`
+| setting | faithful | `db4a-sdl` default |
+|---|---|---|
+| `mouse`     | `0`   | on    |
+| `wide`      | `320` | `400` |
+| `skipintro` | `0`   | on    |
+
+(`tall` belongs to the same family but already defaults to the cartridge's
+224.) At the faithful values output is byte-identical to a `faithful-v1`
+build -- that equivalence is the point of the rule, not a coincidence, and a
+departure that cannot be switched off does not belong in the tree.
+
+**The two binaries differ, and that is what makes the comparisons safe.**
+`build/db4a`, the headless one every `check-*` target and every reference diff
+runs, resolves all three departures to their faithful values on its own:
+`mouse` and `skipintro` are never enabled without `DB4A_SKIP_AT`, and it keeps
+its own 320 default and its own `getenv` for `DB4A_WIDE` specifically so a
+stray `wide =` line in someone's config cannot change the size of the frames a
+comparison renders. `build/db4a-sdl`, the one a player runs, is where the
+defaults flip.
+
+So the oracle comparisons did not silently start measuring the wrong thing
+when the branches merged. Keep it that way: **a new departure defaults on in
+`sdl_main.c`, never in the shared initialiser**, and is read with `cfg()`
+there rather than in code the headless binary also runs.
+
+**Pushing `master` publishes a release.** `.github/workflows/release.yml`
 builds a package on Windows and Linux and replaces the rolling pre-release
-tagged `remaster-latest`. Rolling rather than versioned for the same reason
-the branch is rebased: every update to it is a force-push with new SHAs, and
-one release per rebase would be a page of near-identical entries. So a push to
-`remaster` is a publication -- treat it as one. `master` publishes nothing.
+tagged `remaster-latest` -- `remaster` survives as the name of the *product*,
+which is what the website has always called it, having stopped being the name
+of a branch. Rolling rather than versioned because there is no version scheme
+yet and a release per push would be a page of near-identical entries. So a
+push to `master` is a publication -- treat it as one.
 
 The archives contain the cartridge, as `tools/package.sh` has always made them
 do; the release notes say so and point at README's Legal section.
+
+The dead branches -- `mousecontrol`, `menu-screens`, `widescreen`,
+`fidelity`, `remaster-skip-intro`, `ci/multiplatform` -- are the history behind
+all this and are fully contained in `master`.
 
 ## Repository layout
 

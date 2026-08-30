@@ -108,15 +108,22 @@ on it, not after.** A blocking task sat in the backlog for a day because of it.
 
 ## Where this lives
 
-The mechanism and the faithful override are on `master`: replacing recompiled
-blocks with equivalent C is fidelity work, not a change to the game. `remaster`
-rebases on top and adds the parts that deliberately differ -- the modern scroll
-band, the placement override -- along with `include/probe.h`, which only the
-mouse-driven menu screens use.
+This used to be split across two branches -- the mechanism and the faithful
+overrides on `master`, the deliberate departures on `remaster`. Since the two
+merged on 2026-08-30 they live side by side in one tree, and the line between
+them is drawn at run time instead.
 
-That is why `TABLE` carries a `faithful` flag and `native_lookup` refuses
-non-faithful entries: on `master` there are none, and the check costs nothing,
-but it means `remaster` can add them without touching the lookup.
+`TABLE` carries a `faithful` flag, and that flag is now the whole boundary.
+`native_lookup` returns a non-faithful entry only when the feature that wants
+it is actually on -- `placement_override_active()` for the placement override
+-- so a run with the modern settings off never takes one, and `check-native`
+never sees one. `native_faithful_only` reports the same flag to `dispatch.c`,
+which is what keeps the equivalence checker pointed at the overrides that are
+supposed to match the cartridge and away from the ones that are not.
+
+That is the rule for anything added here: an override that reproduces the
+cartridge is `faithful` and always live; an override that departs is not, and
+must gate itself on the setting that asks for it.
 
 ## Overrides that deliberately differ
 

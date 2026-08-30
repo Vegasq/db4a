@@ -99,7 +99,7 @@
 #   Gamepads are picked up automatically and are not affected by this.
 
 
-# skipintro = 0                                      (remaster branch only)
+# skipintro = 0
 #
 #   Sit through the opening sequence, the way the cartridge makes you.
 #
@@ -133,7 +133,7 @@
 
 
 # =========================================================================
-# Display                                            (remaster branch only)
+# Display
 # =========================================================================
 
 # fullscreen = 1
@@ -185,7 +185,7 @@
 #   That last one is why the default is 400 and not the 1024 the map allows.
 #
 #   The game's own 320 pixels are unaffected either way: at `wide = 320` output
-#   is byte-identical to the faithful build on master.
+#   is byte-identical to a build of the `faithful-v1` tag.
 #
 #   docs/widescreen.md records the measurements, and the three possible ways
 #   forward.
@@ -224,7 +224,7 @@
 
 
 # =========================================================================
-# Mouse control                                      (remaster branch only)
+# Mouse control
 # =========================================================================
 
 # mouse = 0

@@ -164,7 +164,7 @@ Delete it, with `check-map` and `check-margins` as the guard.
 Only once the rest is stable. The HUD is currently sprites anchored by shifting
 the whole picture, which is why the console jump (#28) and the offset rules
 exist. Drawing it ourselves in screen space would remove that whole category —
-but it changes what the game looks like, so it belongs to `remaster` and wants
+but it changes what the game looks like, so it needs a setting of its own and
 a deliberate decision rather than a slide.
 
 ## Risks, and how each is contained

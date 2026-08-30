@@ -16,9 +16,9 @@ an oracle. A resolution feature must not cost that.
 | # | Criterion | Command | Status |
 |---|---|---|---|
 | A1 | At 320x224 the picture is byte-identical to the build before any resolution work | `make check-res` (320x224 row) | MET |
-| A2 | The recorded mission renders identically at 320 against the faithful branch | `make replay` + compare vs remaster | MET |
+| A2 | The recorded mission renders identically at 320 against the faithful branch | `make replay` + compare vs the faithful build | MET |
 | A3 | Menus pixel-match the reference at 320 | `make compare-screen SCENARIO=house FRAME=...` | pages 96-100%, **fades dip**, pre-existing |
-| A4 | The resolution work changes nothing at 320 | byte-compare vs master | MET |
+| A4 | The resolution work changes nothing at 320 | byte-compare vs `faithful-v1` | MET |
 
 A3 and A4 are the ones that mean "matches the original release". Measured
 against Genesis-Plus-GX with `ref/gpgx` built, scenario `house`, all figures

@@ -3205,3 +3205,86 @@ to be discovered.
 The release jobs run `make` and `check-skipintro` before packaging, so a build
 that does not compile or start cannot be published, but they are not gated on
 the full CI run, which happens alongside on the same push.
+
+## 2026-08-30 — the two-branch split ends: remaster becomes master
+
+`master` was the faithful recompile; `remaster` was a rebased stack of
+deliberate departures on top of it. That split existed because the departures
+were experiments, and it made sense while they might not survive. They did.
+Mouse control, widescreen and the intro skip are the reason anyone runs this
+rather than an emulator, and they had been the default on `remaster` since
+2026-08-25.
+
+So the split had stopped paying for itself. What it cost, concretely:
+
+- every update to `remaster` was a rebase and a force-push of published history
+- CI and releases were split across two refs, and only one of them was tested
+  on Windows and macOS
+- fixtures and seeds had to be landed on `master` and rebased through, per a
+  rule written here specifically to work around the split
+- the cartridge itself, and the entire CI workflow, existed **only** on
+  `remaster` -- so the branch the fidelity policy was written to protect was
+  the one that could not build from a clean checkout and had no CI at all
+
+### It was a fast-forward, not a merge
+
+`master` was a strict ancestor of `remaster` -- the rebase discipline had kept
+it that way, which is the one thing the old rule bought that survived it:
+
+```
+git merge-base --is-ancestor origin/master origin/remaster   # true
+git rev-list --count origin/master..origin/remaster          # 75
+git rev-list --count origin/remaster..origin/master          # 0
+```
+
+75 commits gained, none lost, no force-push, and the history stays linear. The
+old tip is tagged `faithful-v1` and annotated with what it means and what it
+measured. Note that the tag predates the cartridge being committed, so a
+checkout of it cannot build without supplying `roms/` yourself.
+
+`remaster` was then deleted, local and remote.
+
+### The boundary moved from branches to settings
+
+The rule that replaces "fidelity work on `master`, departures on `remaster`" is
+that **a departure goes behind a setting in `db4a.conf` and the faithful
+behaviour stays reachable by turning it off**. That was already true of all
+three -- `mouse = 0`, `wide = 320`, `skipintro = 0` -- so nothing had to change
+in the code to adopt it.
+
+The thing worth writing down is *why the oracle comparisons did not silently
+break*, because that was the obvious risk and it was already handled. The two
+binaries resolve the departures differently:
+
+| | `build/db4a` (headless) | `build/db4a-sdl` |
+|---|---|---|
+| `mouse` | never enabled | on |
+| `skipintro` | only under `DB4A_SKIP_AT` | on |
+| `wide` | own 320 default, own `getenv` | `cfg()`, 400 |
+
+Every `check-*` target and every reference diff runs the headless one. Its
+`DB4A_WIDE` deliberately bypasses `cfg()` so a stray `wide =` line in someone's
+config cannot resize the frames a comparison renders — a decision made for a
+different reason months ago that turns out to be exactly what makes the merge
+safe. The defaults flip in `sdl_main.c` and nowhere else.
+
+That is now the rule for the next departure: default it on in `sdl_main.c`,
+read it with `cfg()` there, and never in code the headless binary also runs.
+
+### What moved
+
+`ci.yml` triggered on `[master, remaster]` and `release.yml` on `[remaster]`;
+both now trigger on `master` alone. Deleting the branch without that would have
+stopped releases silently, which is the kind of failure nobody notices for a
+week.
+
+The rolling release keeps the tag `remaster-latest`. `remaster` stops being the
+name of a branch and stays the name of the *product* -- which is what the
+website has always called it -- and renaming the tag would break every download
+link already handed out for nothing.
+
+`docs/natives.md` needed the most rewriting: it described the `faithful` flag
+on `TABLE` as the thing that let `remaster` add non-faithful overrides without
+touching the lookup. That flag is now the entire boundary rather than a
+preparation for one, and `native_lookup` gating a non-faithful entry on
+`placement_override_active()` is what a branch used to do.
