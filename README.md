@@ -384,3 +384,17 @@ did before.
 Everything else derived from the cartridge stays out of the repository, and
 `.gitignore` enforces it: framebuffers, RAM dumps, save states, audio captures
 and packaged builds are all regenerable from a `make` target.
+
+### Licence
+
+This project's own work is **MIT licensed** — see [LICENSE](LICENSE). That
+covers everything written here: the analysis tools, the semantics table and the
+code generated from it, the C runtime, the SDL2 hardware layer, the tests and
+the documentation.
+
+**It does not cover the cartridge**, at
+`roms/Dune-The-Battle-for-Arrakis_Genesis_EN/`, or anything derived from it.
+That is not ours to license, and the MIT grant above should not be read as
+purporting to give you any rights in it. The generated C under `src/gen/` is a
+translation of the cartridge's code and inherits that same status, which is why
+it is a build output rather than a tracked source file.
